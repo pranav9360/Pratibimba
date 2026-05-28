@@ -1,0 +1,221 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Forgot Password - Pratibimba</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary": "#ffffff",
+                        "surface-container-high": "#dfe9fa",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-container": "#1d3989",
+                        "on-primary-fixed": "#370e00",
+                        "on-error-container": "#93000a",
+                        "inverse-surface": "#27313e",
+                        "primary-fixed": "#ffdbce",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-fixed": "#410002",
+                        "on-secondary-fixed-variant": "#264191",
+                        "on-secondary-fixed": "#00164e",
+                        "primary": "#a33900",
+                        "on-primary-container": "#fffbff",
+                        "secondary-fixed-dim": "#b6c4ff",
+                        "primary-fixed-dim": "#ffb599",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdad6",
+                        "secondary-container": "#8fa7fe",
+                        "outline-variant": "#e2bfb2",
+                        "surface": "#f8f9ff",
+                        "on-tertiary-fixed-variant": "#93000b",
+                        "outline": "#8e7166",
+                        "on-surface-variant": "#5a4138",
+                        "on-tertiary-container": "#fffbff",
+                        "surface-bright": "#f8f9ff",
+                        "surface-dim": "#d1dbec",
+                        "surface-tint": "#a73a00",
+                        "surface-container-low": "#eef4ff",
+                        "on-error": "#ffffff",
+                        "inverse-on-surface": "#eaf1ff",
+                        "tertiary": "#bb0112",
+                        "on-surface": "#121c28",
+                        "background": "#f8f9ff",
+                        "tertiary-container": "#e02928",
+                        "surface-variant": "#d9e3f4",
+                        "on-background": "#121c28",
+                        "surface-container-highest": "#d9e3f4",
+                        "error": "#ba1a1a",
+                        "secondary": "#4059aa",
+                        "on-primary-fixed-variant": "#7f2b00",
+                        "secondary-fixed": "#dce1ff",
+                        "tertiary-fixed-dim": "#ffb4ab",
+                        "primary-container": "#cc4900",
+                        "on-primary": "#ffffff",
+                        "surface-container": "#e5eeff",
+                        "inverse-primary": "#ffb599"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "lg": "24px",
+                        "xl": "32px",
+                        "md": "16px",
+                        "xs": "4px",
+                        "sidebar-width": "260px",
+                        "base": "4px",
+                        "container-max": "1440px"
+                    },
+                    "fontFamily": {
+                        "data-mono": ["JetBrains Mono"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-sm": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "display-lg": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "display-lg": ["36px", {"lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-color: #FFF7ED; /* Warm cream background as per instructions */
+            font-family: 'Inter', sans-serif;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .auth-card {
+            box-shadow: 0 4px 12px rgba(30, 58, 138, 0.05); /* Soft blue-tinted shadow from style guidance */
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-between antialiased overflow-x-hidden">
+<!-- Top App Bar (Restricted Shell) -->
+<header class="bg-background dark:bg-background fixed docked full-width top-0 z-50 w-full">
+<div class="flex justify-between items-center w-full px-lg py-md max-w-container-max mx-auto">
+<div class="flex items-center gap-2">
+<span class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed-dim">Pratibimba</span>
+</div>
+<div class="hidden md:flex items-center gap-xl">
+<a class="font-body-md text-body-md text-on-surface-variant dark:text-surface-variant hover:text-primary transition-colors duration-200 cursor-pointer" href="#">Help &amp; Support</a>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-grow flex items-center justify-center w-full px-md pt-32 pb-16">
+<div class="w-full max-w-[440px] animate-in fade-in slide-in-from-bottom-4 duration-700">
+<!-- Authentication Card -->
+<div class="auth-card bg-surface-container-lowest rounded-xl p-xl flex flex-col border border-outline-variant/20 shadow-lg gap-6">
+<!-- Header Icon & Text -->
+<div class="flex flex-col items-center text-center gap-sm"><div class="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center mb-4">
+  <span class="material-symbols-outlined text-[32px] text-primary">lock_reset</span>
+</div>
+<h1 class="font-display text-headline-md text-on-surface mb-2">Forgot Password?</h1>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-[320px] mb-4">
+  No worries, it happens. Enter your email or mobile number and we'll send you a link to reset your password.
+</p></div>
+<!-- Form -->
+<form class="flex flex-col gap-lg" onsubmit="return false;">
+<div class="flex flex-col gap-xs">
+<label class="font-label-md text-label-md text-on-surface-variant ml-1" for="identifier">Email or Mobile Number</label>
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors" data-icon="alternate_email">alternate_email</span>
+<input class="w-full pl-11 pr-md py-md rounded-lg border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all outline-none bg-white text-body-lg font-body-lg" id="identifier" name="identifier" placeholder="name@company.com" required="" type="text">
+</div>
+</div>
+<button class="w-full bg-primary hover:bg-on-primary-fixed-variant text-on-primary py-md px-lg rounded-lg font-headline-sm text-headline-sm transition-all duration-200 active:scale-[0.98] flex items-center justify-center gap-sm shadow-md font-bold" id="submit-btn" type="submit">Send Reset Link <span class="material-symbols-outlined text-xl">arrow_forward</span></button>
+</form>
+<!-- Back to Login -->
+<div class="flex items-center justify-center pt-6 border-t border-outline-variant/10">
+  <a class="flex items-center gap-2 font-body-md text-primary hover:underline transition-all group" href="#">
+    <span class="material-symbols-outlined text-[18px]">keyboard_backspace</span>
+    Back to Login
+  </a>
+</div>
+</div>
+<!-- Contextual Illustration/Branding -->
+<div class="mt-xl text-center">
+<p class="font-body-md text-body-md text-on-surface-variant opacity-60">
+                    Secure identity verification powered by Rashtrotthana Group
+                </p>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="bg-background dark:bg-background w-full">
+<div class="flex flex-col md:flex-row justify-between items-center w-full px-lg py-md max-w-container-max mx-auto border-t border-outline-variant/30">
+<div class="mb-sm md:mb-0">
+<span class="font-label-md text-label-md font-bold text-secondary dark:text-secondary-fixed-dim">Pratibimba</span>
+<span class="font-body-md text-body-md text-secondary dark:text-secondary-fixed-dim ml-2">© 2024 Rashtrotthana Group. All rights reserved.</span>
+</div>
+<div class="flex gap-lg">
+<a class="font-body-md text-body-md text-on-surface-variant dark:text-surface-variant hover:text-secondary transition-colors cursor-pointer" href="#">Privacy Policy</a>
+<a class="font-body-md text-body-md text-on-surface-variant dark:text-surface-variant hover:text-secondary transition-colors cursor-pointer" href="#">Terms of Service</a>
+<a class="font-body-md text-body-md text-on-surface-variant dark:text-surface-variant hover:text-secondary transition-colors cursor-pointer" href="#">Security Audit</a>
+</div>
+</div>
+</footer>
+<!-- Feedback Toast (Hidden by Default) -->
+<div class="fixed bottom-lg left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface px-xl py-md rounded-full shadow-lg flex items-center gap-sm opacity-0 translate-y-8 transition-all duration-300 pointer-events-none z-[100]" id="toast">
+<span class="material-symbols-outlined text-on-primary-fixed" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-body-md text-body-md">Reset link has been sent to your identifier!</span>
+</div>
+<script>
+        // Micro-interaction for submit button
+        const submitBtn = document.getElementById('submit-btn');
+        const toast = document.getElementById('toast');
+        const input = document.getElementById('identifier');
+
+        submitBtn.addEventListener('click', (e) => {
+            if (input.value.trim() !== "") {
+                submitBtn.innerHTML = '<span class="material-symbols-outlined animate-spin" data-icon="progress_activity">progress_activity</span> Sending...';
+                submitBtn.classList.add('opacity-80', 'cursor-not-allowed');
+                
+                setTimeout(() => {
+                    toast.classList.remove('opacity-0', 'translate-y-8');
+                    toast.classList.add('opacity-100', 'translate-y-0');
+                    
+                    submitBtn.innerHTML = 'Reset Link Sent';
+                    submitBtn.classList.remove('bg-primary');
+                    submitBtn.classList.add('bg-secondary');
+                    
+                    setTimeout(() => {
+                        toast.classList.add('opacity-0', 'translate-y-8');
+                        toast.classList.remove('opacity-100', 'translate-y-0');
+                    }, 4000);
+                }, 1500);
+            }
+        });
+
+        // Background Atmospheric Micro-interaction
+        document.addEventListener('mousemove', (e) => {
+            const x = e.clientX / window.innerWidth;
+            const y = e.clientY / window.innerHeight;
+            document.body.style.background = `radial-gradient(circle at ${x * 100}% ${y * 100}%, #fffbf7 0%, #FFF7ED 50%)`;
+        });
+    </script>
+
+
+</body></html>

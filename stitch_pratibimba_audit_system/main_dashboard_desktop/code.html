@@ -1,0 +1,432 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Pratibimba | Audit Management Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Hanken+Grotesk:wght@600;700;800&amp;family=JetBrains+Mono:wght@400&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "tertiary": "#bb0112",
+                    "surface-container-low": "#eef4ff",
+                    "on-surface-variant": "#5a4138",
+                    "error": "#ba1a1a",
+                    "surface": "#f8f9ff",
+                    "secondary-container": "#8fa7fe",
+                    "on-secondary-container": "#1d3989",
+                    "surface-tint": "#a73a00",
+                    "on-primary": "#ffffff",
+                    "surface-bright": "#f8f9ff",
+                    "on-secondary-fixed": "#00164e",
+                    "inverse-primary": "#ffb599",
+                    "surface-container-high": "#dfe9fa",
+                    "on-tertiary": "#ffffff",
+                    "inverse-surface": "#27313e",
+                    "error-container": "#ffdad6",
+                    "outline-variant": "#e2bfb2",
+                    "on-surface": "#121c28",
+                    "on-error": "#ffffff",
+                    "inverse-on-surface": "#eaf1ff",
+                    "outline": "#8e7166",
+                    "primary-container": "#cc4900",
+                    "secondary": "#4059aa",
+                    "background": "#f8f9ff",
+                    "tertiary-fixed-dim": "#ffb4ab",
+                    "primary": "#a33900",
+                    "on-tertiary-container": "#fffbff",
+                    "secondary-fixed": "#dce1ff",
+                    "on-tertiary-fixed-variant": "#93000b",
+                    "tertiary-fixed": "#ffdad6",
+                    "on-secondary": "#ffffff",
+                    "on-background": "#121c28",
+                    "surface-container-highest": "#d9e3f4",
+                    "surface-container": "#e5eeff",
+                    "on-error-container": "#93000a",
+                    "tertiary-container": "#e02928",
+                    "surface-container-lowest": "#ffffff",
+                    "on-tertiary-fixed": "#410002",
+                    "on-primary-fixed-variant": "#7f2b00",
+                    "primary-fixed-dim": "#ffb599",
+                    "surface-dim": "#d1dbec",
+                    "on-primary-container": "#fffbff",
+                    "surface-variant": "#d9e3f4",
+                    "on-secondary-fixed-variant": "#264191",
+                    "primary-fixed": "#ffdbce",
+                    "on-primary-fixed": "#370e00",
+                    "secondary-fixed-dim": "#b6c4ff",
+                    "cream-bg": "#FFF7ED"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.8rem",
+                    "xl": "1rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "sidebar-width": "260px",
+                    "container-max": "1440px",
+                    "sm": "8px",
+                    "lg": "24px",
+                    "xs": "4px",
+                    "md": "16px",
+                    "base": "4px",
+                    "xl": "32px"
+            },
+            "fontFamily": {
+                    "body-lg": ["Inter"],
+                    "label-md": ["Inter"],
+                    "headline-sm": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "display-lg": ["Hanken Grotesk"],
+                    "data-mono": ["JetBrains Mono"],
+                    "body-md": ["Inter"]
+            },
+            "fontSize": {
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "display-lg": ["36px", {"lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+            },
+            "boxShadow": {
+                "soft": "0 4px 12px rgba(30, 58, 138, 0.05)",
+                "floating": "0 10px 25px -5px rgba(30, 58, 138, 0.08)"
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { background-color: #FFF7ED; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .sidebar-active { border-left: 4px solid #a33900; background: rgba(255,255,255,0.1); color: #ffffff; font-weight: 700; }
+        .sidebar-inactive { color: rgba(255,255,255,0.7); font-weight: 500; }
+        .status-pill { border-radius: 9999px; padding: 2px 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+        .chart-container { position: relative; width: 100%; height: 200px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+        .zebra-table tr:nth-child(even) { background-color: #FFFBF7; }
+    </style>
+</head>
+<body class="font-body-md text-on-surface antialiased">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-sidebar-width bg-secondary shadow-md flex flex-col py-lg z-50 overflow-y-auto">
+<div class="px-lg mb-xl">
+<h1 class="font-headline-md text-headline-md font-bold text-on-secondary">Pratibimba</h1>
+<p class="text-label-md font-label-md text-on-secondary/60 tracking-wider uppercase">Audit Management</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-md px-lg py-md sidebar-active transition-colors" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md sidebar-inactive hover:bg-white/5 transition-colors" href="#">
+<span class="material-symbols-outlined">list_alt</span>
+<span>Audit Logs</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md sidebar-inactive hover:bg-white/5 transition-colors" href="#">
+<span class="material-symbols-outlined">add_circle</span>
+<span>Submit Audit</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md sidebar-inactive hover:bg-white/5 transition-colors" href="#">
+<span class="material-symbols-outlined">playlist_add_check</span>
+<span>Verification Queue</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md sidebar-inactive hover:bg-white/5 transition-colors" href="#">
+<span class="material-symbols-outlined">analytics</span>
+<span>Reports &amp; Analytics</span>
+</a>
+<div class="pt-lg pb-sm px-lg">
+<span class="text-[10px] font-bold text-on-secondary/40 uppercase tracking-[0.2em]">Personal</span>
+</div>
+<a class="flex items-center gap-md px-lg py-md sidebar-inactive hover:bg-white/5 transition-colors relative" href="#">
+<span class="material-symbols-outlined">notifications</span>
+<span>Notifications</span>
+<span class="absolute right-lg w-2 h-2 bg-primary rounded-full"></span>
+</a>
+<a class="flex items-center gap-md px-lg py-md sidebar-inactive hover:bg-white/5 transition-colors" href="#">
+<span class="material-symbols-outlined">group</span>
+<span>User Management</span>
+</a>
+<a class="flex items-center gap-md px-lg py-md sidebar-inactive hover:bg-white/5 transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span>Settings</span>
+</a>
+</nav>
+<div class="px-lg mt-xl">
+<button class="w-full py-md bg-primary hover:bg-primary-container text-on-primary font-bold rounded-lg transition-all active:scale-95 shadow-lg flex items-center justify-center gap-sm">
+<span class="material-symbols-outlined text-[20px]">add</span>
+<span>New Audit Request</span>
+</button>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-sidebar-width min-h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="sticky top-0 z-40 w-full h-16 bg-surface shadow-sm px-xl flex justify-between items-center">
+<div class="flex items-center gap-xl">
+<div class="flex items-center text-on-surface-variant font-label-md text-label-md">
+<span>Home</span>
+<span class="material-symbols-outlined text-[14px] mx-2">chevron_right</span>
+<span class="text-primary font-bold">Dashboard</span>
+</div>
+<div class="relative w-80">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/60">search</span>
+<input class="w-full pl-10 pr-12 py-2 bg-surface-container-lowest border border-outline-variant/30 rounded-lg text-body-md focus:ring-2 focus:ring-primary/20 focus:outline-none transition-all" placeholder="Search audits, files, or users..." type="text">
+<span class="absolute right-3 top-1/2 -translate-y-1/2 font-data-mono text-[10px] text-on-surface-variant/40 bg-surface-container-high px-1.5 py-0.5 rounded">⌘K</span>
+</div>
+</div>
+<div class="flex items-center gap-lg">
+<button class="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="flex items-center gap-md cursor-pointer hover:bg-surface-container-low p-1.5 rounded-full transition-all">
+<img alt="User Profile Avatar" class="w-8 h-8 rounded-full bg-secondary-container" data-alt="A professional headshot of a mature South Asian woman wearing formal corporate attire. She has a warm but serious expression, representing institutional authority and expertise. The lighting is soft and corporate, set against a clean, high-key office background that aligns with the cream and white UI palette." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAAIpuL-U_ffphU8A-seDe9Ac5PK57PBY46gFlqVDNkpHP0EIvHfTZ-pbeiHpglpRHInbXE3CnrQ3a3mr8zPy4dbzMDRzsenvfiAho4h398LRfdKvDoZG1lub2x8U6xHjoYmU7IZ03R9AF13OA1X0LlmP1KUs3DBG7QkTpXNp25Jr_SC09qTNFBInhru9R8TRAKTrTG-Yj9Jvawsk8_tz75UTqMM6aGCiJbV1t8Lor5lSQAGd4Sfs92J1US4p35Do9w3vdFkM6JqBiT">
+<div class="hidden lg:block text-left pr-2">
+<p class="font-bold text-body-md leading-tight">Ananya Iyer</p>
+<p class="text-label-md text-on-surface-variant/70">Chief Auditor</p>
+</div>
+</div>
+</div>
+</header>
+<div class="p-xl space-y-xl">
+<!-- Summary Stats Widgets -->
+<section class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-lg">
+<!-- Total Audits -->
+<div class="bg-white p-lg rounded-xl shadow-soft border border-outline-variant/10">
+<p class="text-label-md text-on-surface-variant/70 font-medium">Total Audits</p>
+<div class="flex items-end justify-between mt-xs">
+<h3 class="font-display-lg text-display-lg text-on-surface">1,284</h3>
+<span class="text-primary font-data-mono text-label-md">+4.2%</span>
+</div>
+</div>
+<!-- Pending -->
+<div class="bg-white p-lg rounded-xl shadow-soft border border-outline-variant/10">
+<p class="text-label-md text-on-surface-variant/70 font-medium">Pending</p>
+<div class="flex items-end justify-between mt-xs">
+<h3 class="font-display-lg text-display-lg text-secondary">42</h3>
+<div class="w-8 h-1.5 bg-secondary-fixed rounded-full overflow-hidden">
+<div class="bg-secondary h-full w-[35%]"></div>
+</div>
+</div>
+</div>
+<!-- Verified -->
+<div class="bg-white p-lg rounded-xl shadow-soft border border-outline-variant/10">
+<p class="text-label-md text-on-surface-variant/70 font-medium">Verified</p>
+<div class="flex items-end justify-between mt-xs">
+<h3 class="font-display-lg text-display-lg text-on-primary-fixed-variant">942</h3>
+<span class="material-symbols-outlined text-on-primary-fixed-variant" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+</div>
+<!-- Failed -->
+<div class="bg-white p-lg rounded-xl shadow-soft border border-outline-variant/10">
+<p class="text-label-md text-on-surface-variant/70 font-medium">Failed</p>
+<div class="flex items-end justify-between mt-xs">
+<h3 class="font-display-lg text-display-lg text-error">30</h3>
+<span class="text-error text-label-md font-bold">⚠️ High</span>
+</div>
+</div>
+<!-- Escalated -->
+<div class="bg-white p-lg rounded-xl shadow-soft border border-outline-variant/10">
+<p class="text-label-md text-on-surface-variant/70 font-medium">Escalated</p>
+<div class="flex items-end justify-between mt-xs">
+<h3 class="font-display-lg text-display-lg text-tertiary">7</h3>
+<div class="flex space-x-[-8px]">
+<div class="w-6 h-6 rounded-full border-2 border-white bg-on-tertiary-fixed text-[10px] flex items-center justify-center text-white">MK</div>
+<div class="w-6 h-6 rounded-full border-2 border-white bg-secondary text-[10px] flex items-center justify-center text-white">JP</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Middle Section: Charts -->
+<section class="grid grid-cols-1 lg:grid-cols-3 gap-xl">
+<!-- Audit Trends -->
+<div class="lg:col-span-2 bg-white p-lg rounded-xl shadow-soft border border-outline-variant/10">
+<div class="flex justify-between items-center mb-lg">
+<h2 class="font-headline-sm text-headline-sm">Monthly Audit Trends</h2>
+<div class="flex gap-sm">
+<button class="px-3 py-1 text-label-md font-bold bg-surface-container text-primary rounded-full">Last 6 Months</button>
+<button class="px-3 py-1 text-label-md font-medium text-on-surface-variant/60 hover:bg-surface-container rounded-full transition-all">Yearly</button>
+</div>
+</div>
+<div class="chart-container flex items-end justify-between px-4 pb-2">
+<!-- Simulated Area Chart -->
+<div class="w-full h-full relative overflow-hidden flex items-end">
+<svg class="w-full h-full preserve-3d" preserveAspectRatio="none" viewBox="0 0 800 200">
+<path d="M0,180 L100,140 L200,160 L300,90 L400,110 L500,40 L600,60 L700,20 L800,40 L800,200 L0,200 Z" fill="rgba(163, 57, 0, 0.08)"></path>
+<path d="M0,180 L100,140 L200,160 L300,90 L400,110 L500,40 L600,60 L700,20 L800,40" fill="none" stroke="#a33900" stroke-linecap="round" stroke-width="3"></path>
+<!-- Data points -->
+<circle cx="500" cy="40" fill="#a33900" r="4"></circle>
+</svg>
+</div>
+</div>
+<div class="flex justify-between px-4 mt-md font-data-mono text-label-md text-on-surface-variant/40">
+<span>JAN</span><span>FEB</span><span>MAR</span><span>APR</span><span>MAY</span><span>JUN</span><span>JUL</span>
+</div>
+</div>
+<!-- Completion Gauge -->
+<div class="bg-white p-lg rounded-xl shadow-soft border border-outline-variant/10 flex flex-col items-center justify-center text-center">
+<h2 class="font-headline-sm text-headline-sm mb-lg w-full text-left">Completion Goal</h2>
+<div class="relative w-40 h-40 flex items-center justify-center mb-md">
+<svg class="w-full h-full transform -rotate-90">
+<circle class="text-surface-container-high" cx="80" cy="80" fill="transparent" r="70" stroke="currentColor" stroke-width="12"></circle>
+<circle class="text-primary" cx="80" cy="80" fill="transparent" r="70" stroke="currentColor" stroke-dasharray="439.8" stroke-dashoffset="110" stroke-linecap="round" stroke-width="12"></circle>
+</svg>
+<div class="absolute inset-0 flex flex-col items-center justify-center">
+<span class="font-display-lg text-[32px] text-on-surface">75%</span>
+<span class="text-label-md text-on-surface-variant/60 font-medium">Compliance Rate</span>
+</div>
+</div>
+<p class="text-body-md text-on-surface-variant/70 italic px-lg">"Maintain 85% to reach Tier-1 Institution status."</p>
+</div>
+</section>
+<!-- Bottom Section: Activities & Tasks -->
+<section class="grid grid-cols-1 lg:grid-cols-2 gap-xl">
+<!-- Recent Activities -->
+<div class="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden flex flex-col">
+<div class="p-lg flex justify-between items-center border-b border-outline-variant/5">
+<h2 class="font-headline-sm text-headline-sm">Recent Audit Activities</h2>
+<button class="text-primary text-label-md font-bold hover:underline">View All</button>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full zebra-table">
+<thead>
+<tr class="text-left font-label-md text-on-surface-variant/60 bg-surface-container-lowest">
+<th class="py-md px-lg">AUDIT ID</th>
+<th class="py-md px-lg">INSTITUTION</th>
+<th class="py-md px-lg">STATUS</th>
+<th class="py-md px-lg text-right">DATE</th>
+</tr>
+</thead>
+<tbody class="text-body-md">
+<tr class="hover:bg-primary/5 transition-colors group">
+<td class="py-md px-lg font-data-mono">#AUD-9921</td>
+<td class="py-md px-lg font-medium">Sarvodaya Education Trust</td>
+<td class="py-md px-lg">
+<span class="status-pill bg-[#fff2e0] text-[#a33900]">Pending</span>
+</td>
+<td class="py-md px-lg text-right font-data-mono text-on-surface-variant/60">Oct 24, 09:12</td>
+</tr>
+<tr class="hover:bg-primary/5 transition-colors group">
+<td class="py-md px-lg font-data-mono">#AUD-9918</td>
+<td class="py-md px-lg font-medium">Rural Uplift Foundation</td>
+<td class="py-md px-lg">
+<span class="status-pill bg-[#e7f5ed] text-[#2e7d32]">Verified</span>
+</td>
+<td class="py-md px-lg text-right font-data-mono text-on-surface-variant/60">Oct 23, 14:45</td>
+</tr>
+<tr class="hover:bg-primary/5 transition-colors group">
+<td class="py-md px-lg font-data-mono">#AUD-9915</td>
+<td class="py-md px-lg font-medium">Bright Vision NGO</td>
+<td class="py-md px-lg">
+<span class="status-pill bg-[#fdecea] text-[#ba1a1a]">Failed</span>
+</td>
+<td class="py-md px-lg text-right font-data-mono text-on-surface-variant/60">Oct 23, 11:30</td>
+</tr>
+<tr class="hover:bg-primary/5 transition-colors group">
+<td class="py-md px-lg font-data-mono">#AUD-9910</td>
+<td class="py-md px-lg font-medium">Healthcare for All</td>
+<td class="py-md px-lg">
+<span class="status-pill bg-[#e7f5ed] text-[#2e7d32]">Verified</span>
+</td>
+<td class="py-md px-lg text-right font-data-mono text-on-surface-variant/60">Oct 22, 16:50</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Upcoming Tasks -->
+<div class="bg-white p-lg rounded-xl shadow-soft border border-outline-variant/10">
+<div class="flex justify-between items-center mb-lg">
+<h2 class="font-headline-sm text-headline-sm">Priority Tasks</h2>
+<div class="flex -space-x-2">
+<span class="w-8 h-8 rounded-full border-2 border-white bg-primary/20 text-primary font-bold text-[10px] flex items-center justify-center">12+</span>
+</div>
+</div>
+<div class="space-y-md h-[280px] overflow-y-auto custom-scrollbar pr-2">
+<!-- Task Item -->
+<div class="p-md bg-surface-container-lowest border border-outline-variant/20 rounded-lg flex items-start gap-md group cursor-pointer hover:border-primary/40 transition-all">
+<div class="mt-1 w-10 h-10 rounded-lg bg-tertiary-container/10 text-tertiary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined">priority_high</span>
+</div>
+<div class="flex-1">
+<p class="font-bold text-body-md text-on-surface group-hover:text-primary transition-colors">Review Escalated Case: Sarv-90</p>
+<p class="text-label-md text-on-surface-variant/70 mt-0.5 line-clamp-1">Suspicious transaction logs detected in Q3 report.</p>
+<div class="mt-md flex items-center gap-md">
+<span class="font-data-mono text-[11px] text-tertiary bg-tertiary/5 px-2 py-0.5 rounded">Due Today</span>
+<span class="flex items-center gap-xs text-on-surface-variant/40 text-[11px] font-medium">
+<span class="material-symbols-outlined text-[14px]">account_circle</span>
+                                        Lead: Rajesh Kumar
+                                    </span>
+</div>
+</div>
+</div>
+<!-- Task Item -->
+<div class="p-md bg-surface-container-lowest border border-outline-variant/20 rounded-lg flex items-start gap-md group cursor-pointer hover:border-primary/40 transition-all">
+<div class="mt-1 w-10 h-10 rounded-lg bg-secondary-container/10 text-secondary flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined">history_edu</span>
+</div>
+<div class="flex-1">
+<p class="font-bold text-body-md text-on-surface group-hover:text-primary transition-colors">Finalize Annual Compliance Audit</p>
+<p class="text-label-md text-on-surface-variant/70 mt-0.5 line-clamp-1">Consolidate findings from 12 regional sub-offices.</p>
+<div class="mt-md flex items-center gap-md">
+<span class="font-data-mono text-[11px] text-secondary bg-secondary/5 px-2 py-0.5 rounded">Due in 2 days</span>
+<span class="flex items-center gap-xs text-on-surface-variant/40 text-[11px] font-medium">
+<span class="material-symbols-outlined text-[14px]">group</span>
+                                        Team: Central Admin
+                                    </span>
+</div>
+</div>
+</div>
+<!-- Task Item -->
+<div class="p-md bg-surface-container-lowest border border-outline-variant/20 rounded-lg flex items-start gap-md group cursor-pointer hover:border-primary/40 transition-all opacity-60 hover:opacity-100">
+<div class="mt-1 w-10 h-10 rounded-lg bg-surface-container text-on-surface-variant/40 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined">description</span>
+</div>
+<div class="flex-1">
+<p class="font-bold text-body-md text-on-surface">Update NGO Verification Protocols</p>
+<p class="text-label-md text-on-surface-variant/70 mt-0.5 line-clamp-1">Refining standard operating procedures for 2024.</p>
+<div class="mt-md flex items-center gap-md">
+<span class="font-data-mono text-[11px] text-on-surface-variant/60 bg-surface-container px-2 py-0.5 rounded">Next Week</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Footer -->
+<footer class="mt-auto p-xl text-center text-label-md text-on-surface-variant/40 border-t border-outline-variant/5">
+<p>© 2024 Pratibimba Institutional Trust. All Audit Trails Encrypted &amp; Secured. Version 4.8.2-stable</p>
+</footer>
+</main>
+<!-- FAB (Suppressed on Dashboard as per rules, but shown here for UI richness if requested by user - suppressing since instructions for Dashboard don't strictly require it but rules say context is Home) -->
+<div class="fixed bottom-xl right-xl z-50">
+<button class="w-14 h-14 bg-primary text-on-primary rounded-full shadow-floating flex items-center justify-center hover:scale-110 active:scale-95 transition-all group overflow-hidden">
+<span class="material-symbols-outlined text-[32px] group-hover:rotate-90 transition-transform">add</span>
+<span class="absolute right-16 bg-on-surface text-on-primary px-3 py-1 rounded text-label-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">Request Audit</span>
+</button>
+</div>
+<script>
+        // Simple micro-interactions for the cards
+        document.querySelectorAll('.bg-white').forEach(card => {
+            card.addEventListener('mouseenter', () => {
+                card.style.transform = 'translateY(-2px)';
+                card.style.transition = 'transform 0.2s ease-out';
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = 'translateY(0px)';
+            });
+        });
+    </script>
+</body></html>

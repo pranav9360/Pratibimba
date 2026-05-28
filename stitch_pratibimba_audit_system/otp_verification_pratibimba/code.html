@@ -1,0 +1,259 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>OTP Verification | Pratibimba</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Hanken+Grotesk:wght@600;700&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary": "#ffffff",
+                    "surface-container-high": "#dfe9fa",
+                    "surface-container-lowest": "#ffffff",
+                    "on-secondary-container": "#1d3989",
+                    "on-primary-fixed": "#370e00",
+                    "on-error-container": "#93000a",
+                    "inverse-surface": "#27313e",
+                    "primary-fixed": "#ffdbce",
+                    "on-secondary": "#ffffff",
+                    "on-tertiary-fixed": "#410002",
+                    "on-secondary-fixed-variant": "#264191",
+                    "on-secondary-fixed": "#00164e",
+                    "primary": "#a33900",
+                    "on-primary-container": "#fffbff",
+                    "secondary-fixed-dim": "#b6c4ff",
+                    "primary-fixed-dim": "#ffb599",
+                    "error-container": "#ffdad6",
+                    "tertiary-fixed": "#ffdad6",
+                    "secondary-container": "#8fa7fe",
+                    "outline-variant": "#e2bfb2",
+                    "surface": "#f8f9ff",
+                    "on-tertiary-fixed-variant": "#93000b",
+                    "outline": "#8e7166",
+                    "on-surface-variant": "#5a4138",
+                    "on-tertiary-container": "#fffbff",
+                    "surface-bright": "#f8f9ff",
+                    "surface-dim": "#d1dbec",
+                    "surface-tint": "#a73a00",
+                    "surface-container-low": "#eef4ff",
+                    "on-error": "#ffffff",
+                    "inverse-on-surface": "#eaf1ff",
+                    "tertiary": "#bb0112",
+                    "on-surface": "#121c28",
+                    "background": "#f8f9ff",
+                    "tertiary-container": "#e02928",
+                    "surface-variant": "#d9e3f4",
+                    "on-background": "#121c28",
+                    "surface-container-highest": "#d9e3f4",
+                    "error": "#ba1a1a",
+                    "secondary": "#4059aa",
+                    "on-primary-fixed-variant": "#7f2b00",
+                    "secondary-fixed": "#dce1ff",
+                    "tertiary-fixed-dim": "#ffb4ab",
+                    "primary-container": "#cc4900",
+                    "on-primary": "#ffffff",
+                    "surface-container": "#e5eeff",
+                    "inverse-primary": "#ffb599"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "sm": "8px",
+                    "lg": "24px",
+                    "xl": "32px",
+                    "md": "16px",
+                    "xs": "4px",
+                    "sidebar-width": "260px",
+                    "base": "4px",
+                    "container-max": "1440px"
+            },
+            "fontFamily": {
+                    "data-mono": ["JetBrains Mono"],
+                    "body-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "label-md": ["Inter"],
+                    "headline-sm": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "display-lg": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                    "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "display-lg": ["36px", {"lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            background-color: #f8f9ff; /* Tonal background from config */
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(255, 247, 237, 0.8) 0, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(229, 238, 255, 0.5) 0, transparent 50%);
+        }
+        .otp-card {
+            box-shadow: 0 4px 12px rgba(30, 58, 138, 0.05);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .otp-input:focus {
+            outline: none;
+            border-color: #a33900;
+            box-shadow: 0 0 0 2px rgba(163, 57, 0, 0.15);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-body-md text-on-surface antialiased">
+<!-- Top Navigation Anchor -->
+<header class="bg-background dark:bg-background fixed docked full-width top-0 z-50">
+<div class="flex justify-between items-center w-full px-lg py-md max-w-container-max mx-auto">
+<div class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed-dim">
+                Pratibimba
+            </div>
+<div class="flex items-center gap-md">
+<span class="font-label-md text-label-md text-on-surface-variant cursor-pointer hover:text-primary transition-colors">Help &amp; Support</span>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-grow flex items-center justify-center px-md pt-32 pb-16">
+<div class="w-full max-w-[480px]">
+<!-- Centered White Card -->
+<div class="otp-card bg-surface-container-lowest rounded-xl p-xl md:p-[48px] border border-outline-variant/20">
+<!-- Branding/Icon Section -->
+<div class="flex flex-col items-center mb-xl text-center">
+<div class="w-16 h-16 bg-primary-fixed rounded-full flex items-center justify-center mb-lg">
+<span class="material-symbols-outlined text-primary text-[32px]">shield_person</span>
+</div>
+<h1 class="font-headline-md text-headline-md text-on-surface mb-sm">Verification Required</h1>
+<p class="font-body-md text-on-surface-variant px-md">
+                        For your security, we've sent a 6-digit code to <span class="font-semibold text-on-surface">ad***@rashtrotthana.org</span>
+</p>
+</div>
+<!-- OTP Input Grid -->
+<form class="space-y-xl" id="otpForm">
+<div class="flex justify-between gap-2 md:gap-3" id="otpContainer">
+<input class="otp-input w-full aspect-square text-center text-headline-md font-bold bg-surface-container-low border border-outline-variant/50 rounded-lg transition-all focus:border-primary focus:ring-1 focus:ring-primary" inputmode="numeric" maxlength="1" pattern="\d*" type="text">
+<input class="otp-input w-full aspect-square text-center text-headline-md font-bold bg-surface-container-low border border-outline-variant/50 rounded-lg transition-all focus:border-primary focus:ring-1 focus:ring-primary" inputmode="numeric" maxlength="1" pattern="\d*" type="text">
+<input class="otp-input w-full aspect-square text-center text-headline-md font-bold bg-surface-container-low border border-outline-variant/50 rounded-lg transition-all focus:border-primary focus:ring-1 focus:ring-primary" inputmode="numeric" maxlength="1" pattern="\d*" type="text">
+<input class="otp-input w-full aspect-square text-center text-headline-md font-bold bg-surface-container-low border border-outline-variant/50 rounded-lg transition-all focus:border-primary focus:ring-1 focus:ring-primary" inputmode="numeric" maxlength="1" pattern="\d*" type="text">
+<input class="otp-input w-full aspect-square text-center text-headline-md font-bold bg-surface-container-low border border-outline-variant/50 rounded-lg transition-all focus:border-primary focus:ring-1 focus:ring-primary" inputmode="numeric" maxlength="1" pattern="\d*" type="text">
+<input class="otp-input w-full aspect-square text-center text-headline-md font-bold bg-surface-container-low border border-outline-variant/50 rounded-lg transition-all focus:border-primary focus:ring-1 focus:ring-primary" inputmode="numeric" maxlength="1" pattern="\d*" type="text">
+</div>
+<!-- Resend Logic -->
+<div class="text-center">
+<p class="font-label-md text-label-md text-on-surface-variant mb-xs hidden" id="timerContainer">
+                            Resend code in <span class="font-data-mono text-on-surface-variant font-medium" id="timer">00:59</span>
+</p>
+<button class="text-secondary font-semibold font-label-md hover:underline disabled:opacity-50 disabled:cursor-not-allowed" id="resendBtn" type="button">
+                            Didn't receive the code? Resend
+                        </button>
+</div>
+<!-- Action Button -->
+<button class="w-full bg-primary text-on-primary rounded-lg font-headline-sm hover:bg-primary-container transition-all active:scale-[0.98] shadow-sm py-3.5 shadow-md" type="submit">
+                        Verify
+                    </button>
+</form>
+<!-- Secure Info -->
+<div class="mt-xl pt-lg border-t border-outline-variant/10 flex items-center justify-center gap-2 opacity-60">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">lock</span>
+<span class="font-label-md text-[11px] uppercase tracking-wider text-on-surface-variant">Secure AES-256 Encrypted Session</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer Blueprint -->
+<footer class="bg-background dark:bg-background mt-auto">
+<div class="flex flex-col md:flex-row justify-between items-center w-full px-lg py-md max-w-container-max mx-auto border-t border-outline-variant/30">
+<span class="font-label-md text-label-md font-bold text-secondary mb-md md:mb-0">Pratibimba</span>
+<div class="flex flex-wrap justify-center gap-md font-body-md text-body-md text-on-surface-variant mb-md md:mb-0">
+<a class="hover:text-secondary transition-colors" href="#">Privacy Policy</a>
+<a class="hover:text-secondary transition-colors" href="#">Terms of Service</a>
+<a class="hover:text-secondary transition-colors" href="#">Security Audit</a>
+<a class="hover:text-secondary transition-colors" href="#">Compliance</a>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant text-center md:text-right">
+                © 2024 Rashtrotthana Group. All rights reserved.
+            </p>
+</div>
+</footer>
+<script>
+        // OTP Input Behavior
+        const inputs = document.querySelectorAll('.otp-input');
+        inputs.forEach((input, index) => {
+            input.addEventListener('input', (e) => {
+                if (e.target.value.length === 1 && index < inputs.length - 1) {
+                    inputs[index + 1].focus();
+                }
+            });
+
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                    inputs[index - 1].focus();
+                }
+            });
+        });
+
+        // Countdown Timer Logic
+        let timeLeft = 60;
+        const timerDisplay = document.getElementById('timer');
+        const resendBtn = document.getElementById('resendBtn');
+        const timerContainer = document.getElementById('timerContainer');
+
+        const startTimer = () => {
+            timeLeft = 60;
+            resendBtn.classList.add('hidden');
+            timerContainer.classList.remove('hidden');
+            
+            const countdown = setInterval(() => {
+                timeLeft--;
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                if (timeLeft <= 0) {
+                    clearInterval(countdown);
+                    timerContainer.classList.add('hidden');
+                    resendBtn.classList.remove('hidden');
+                }
+            }, 1000);
+        };
+
+        resendBtn.addEventListener('click', () => {
+            // Mock resend action
+            startTimer();
+            console.log("OTP Resent");
+        });
+
+        startTimer();
+
+        // Form Submission
+        document.getElementById('otpForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const otp = Array.from(inputs).map(i => i.value).join('');
+            if (otp.length === 6) {
+                alert('Verification Successful! Redirecting to dashboard...');
+                // Integration: window.location.href = '/dashboard';
+            } else {
+                alert('Please enter a valid 6-digit code.');
+            }
+        });
+    </script>
+
+
+</body></html>

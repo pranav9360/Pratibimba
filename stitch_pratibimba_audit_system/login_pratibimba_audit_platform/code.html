@@ -1,0 +1,235 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Login | Pratibimba Audit Platform</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary": "#ffffff",
+                        "surface-container-high": "#dfe9fa",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-container": "#1d3989",
+                        "on-primary-fixed": "#370e00",
+                        "on-error-container": "#93000a",
+                        "inverse-surface": "#27313e",
+                        "primary-fixed": "#ffdbce",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-fixed": "#410002",
+                        "on-secondary-fixed-variant": "#264191",
+                        "on-secondary-fixed": "#00164e",
+                        "primary": "#a33900",
+                        "on-primary-container": "#fffbff",
+                        "secondary-fixed-dim": "#b6c4ff",
+                        "primary-fixed-dim": "#ffb599",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdad6",
+                        "secondary-container": "#8fa7fe",
+                        "outline-variant": "#e2bfb2",
+                        "surface": "#f8f9ff",
+                        "on-tertiary-fixed-variant": "#93000b",
+                        "outline": "#8e7166",
+                        "on-surface-variant": "#5a4138",
+                        "on-tertiary-container": "#fffbff",
+                        "surface-bright": "#f8f9ff",
+                        "surface-dim": "#d1dbec",
+                        "surface-tint": "#a73a00",
+                        "surface-container-low": "#eef4ff",
+                        "on-error": "#ffffff",
+                        "inverse-on-surface": "#eaf1ff",
+                        "tertiary": "#bb0112",
+                        "on-surface": "#121c28",
+                        "background": "#f8f9ff",
+                        "tertiary-container": "#e02928",
+                        "surface-variant": "#d9e3f4",
+                        "on-background": "#121c28",
+                        "surface-container-highest": "#d9e3f4",
+                        "error": "#ba1a1a",
+                        "secondary": "#4059aa",
+                        "on-primary-fixed-variant": "#7f2b00",
+                        "secondary-fixed": "#dce1ff",
+                        "tertiary-fixed-dim": "#ffb4ab",
+                        "primary-container": "#cc4900",
+                        "on-primary": "#ffffff",
+                        "surface-container": "#e5eeff",
+                        "inverse-primary": "#ffb599"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "lg": "24px",
+                        "xl": "32px",
+                        "md": "16px",
+                        "xs": "4px",
+                        "sidebar-width": "260px",
+                        "base": "4px",
+                        "container-max": "1440px"
+                    },
+                    "fontFamily": {
+                        "data-mono": ["JetBrains Mono"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-sm": ["Hanken Grotesk"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "display-lg": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "display-lg": ["36px", {"lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-color: #FFF7ED; /* Warm cream background as requested */
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .login-card-shadow {
+            box-shadow: 0 4px 12px rgba(30, 58, 138, 0.05); /* Soft blue-tinted shadow from style guide */
+        }
+        .transition-soft {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-body-md text-on-surface">
+<!-- Top AppBar (Simplified for Login) -->
+<header class="fixed top-0 left-0 right-0 z-50 bg-transparent">
+<div class="flex justify-between items-center w-full px-lg py-md max-w-container-max mx-auto">
+<div class="flex items-center gap-sm">
+<span class="font-headline-md text-headline-md font-bold text-primary">Pratibimba</span>
+</div>
+<div class="hidden md:flex items-center gap-lg">
+<span class="text-on-surface-variant font-label-md cursor-pointer hover:text-primary transition-colors">Help &amp; Support</span>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-grow flex items-center justify-center px-md py-xl relative">
+<!-- Atmospheric Background Elements -->
+<div class="absolute inset-0 overflow-hidden pointer-events-none">
+<div class="absolute -top-[10%] -right-[5%] w-[400px] h-[400px] rounded-full bg-secondary/5 blur-[100px]"></div>
+<div class="absolute -bottom-[10%] -left-[5%] w-[300px] h-[300px] rounded-full bg-primary/5 blur-[80px]"></div>
+</div>
+<!-- Login Card -->
+<div class="w-full max-w-[440px] bg-white rounded-xl login-card-shadow p-xl md:p-[48px] z-10 border border-outline-variant/10">
+<!-- Brand Section -->
+<div class="flex flex-col items-center text-center mb-xl">
+<div class="mb-xl">
+<img alt="Logo" class="w-16 h-16 rounded-lg mb-sm" data-alt="A professional and clean corporate logo for Rashtrotthana Group featuring a stylized blue emblem on a white background. The logo reflects institutional authority and modern administrative efficiency. It is presented in a minimalist digital style with crisp edges and soft professional lighting. The overall mood is secure and established." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDqYey4Z1UBFHG_Vs11mI5PFBpECQuPE8un9ee59nkG7fd7K7YpMZJ5HN0Cu5FnAtzXhtTiXSoWD7tP0kzqDnC0eClxQnYVTee2ylu7X4c47863YQa11kST0kKqULrUurfpNR-1ZceLSMlnMU9plS-51k1X0yplY0b3QxuyRtlXziMZWV_5QOZa3oRTbpZJJt1i96Sjt5g1dIXmSryNQEjLGzfqxEhP5NEC88Cv4lmP4GATvYJHNcLgbBewzVRUSb1-AbyARQNYSeJU">
+<p class="font-label-md text-label-md text-secondary uppercase tracking-widest font-bold">Rashtrotthana Group</p>
+</div>
+<h1 class="font-display-lg text-display-lg text-on-surface font-bold tracking-tight mb-sm">Welcome Back</h1>
+<p class="font-body-md text-body-md text-on-surface-variant opacity-70" style="opacity: 0;">Enter your credentials to access the audit portal.</p>
+</div>
+<!-- Login Form -->
+<form class="space-y-lg" id="login-form">
+<!-- Username/Email Field -->
+<div class="space-y-sm">
+<label class="font-label-md text-label-md text-on-surface-variant block" for="identifier">Email or Mobile Number</label>
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] group-focus-within:text-primary transition-soft">person</span>
+<input class="w-full pl-11 pr-4 py-3 rounded-lg border border-gray-200 bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-soft font-body-md text-on-surface" id="identifier" name="identifier" placeholder="name@company.com" required="" type="text">
+</div>
+</div>
+<!-- Password Field -->
+<div class="space-y-sm">
+<div class="flex justify-between items-center">
+<label class="font-label-md text-label-md text-on-surface-variant block" for="password">Password</label>
+<a class="font-label-md text-label-md text-primary hover:underline transition-soft" href="#">Forgot Password?</a>
+</div>
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] group-focus-within:text-primary transition-soft">lock</span>
+<input class="w-full pl-11 pr-11 py-3 rounded-lg border border-gray-200 bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-soft font-body-md text-on-surface" id="password" name="password" placeholder="••••••••" required="" type="password">
+<button class="absolute right-md top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface transition-soft" id="toggle-password" type="button">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</div>
+</div>
+<!-- Remember Me -->
+<div class="flex items-center gap-sm">
+<input class="w-4 h-4 rounded border-outline-variant text-primary focus:ring-primary" id="remember" type="checkbox">
+<label class="font-body-md text-body-md text-on-surface-variant select-none cursor-pointer" for="remember">Keep me logged in</label>
+</div>
+<!-- Action Button -->
+<button class="w-full text-on-primary font-headline-sm text-headline-sm rounded-lg transition-soft shadow-lg transform active:scale-[0.98] bg-[#ea580c] hover:bg-[#d44d0b] py-4 shadow-orange-500/20" type="submit">
+                    Sign In to Pratibimba
+                </button>
+</form>
+<!-- Secondary Action -->
+<div class="mt-xl pt-lg border-t border-outline-variant/30 text-center">
+<p class="font-body-md text-body-md text-on-surface-variant opacity-70" style="opacity: 0;">Enter your credentials to access the audit portal.</p>
+</div>
+</div>
+</main>
+<!-- Simple Footer -->
+<footer class="w-full px-lg py-md border-t border-outline-variant/30">
+<div class="max-w-container-max mx-auto flex flex-col md:flex-row justify-between items-center gap-md">
+<span class="font-label-md text-label-md text-on-surface-variant">© 2024 Rashtrotthana Group. All rights reserved.</span>
+<div class="flex gap-lg">
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-secondary transition-colors" href="#">Privacy Policy</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-secondary transition-colors" href="#">Security Audit</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-secondary transition-colors" href="#">Compliance</a>
+</div>
+</div>
+</footer>
+<script>
+        // Micro-interactions and UI Logic
+        const togglePassword = document.getElementById('toggle-password');
+        const passwordInput = document.getElementById('password');
+        const passwordIcon = togglePassword.querySelector('.material-symbols-outlined');
+
+        togglePassword.addEventListener('click', () => {
+            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            passwordInput.setAttribute('type', type);
+            passwordIcon.textContent = type === 'password' ? 'visibility' : 'visibility_off';
+        });
+
+        // Form Submission visual effect
+        const loginForm = document.getElementById('login-form');
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const btn = loginForm.querySelector('button[type="submit"]');
+            btn.innerHTML = '<span class="flex items-center justify-center gap-sm"><svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Authenticating...</span>';
+            btn.disabled = true;
+            
+            // Mock delay
+            setTimeout(() => {
+                btn.innerHTML = 'Sign In to Pratibimba';
+                btn.disabled = false;
+                alert('In a real environment, you would be redirected now.');
+            }, 1500);
+        });
+
+        // Background movement on mouse move
+        document.addEventListener('mousemove', (e) => {
+            const moveX = (e.clientX - window.innerWidth / 2) * 0.01;
+            const moveY = (e.clientY - window.innerHeight / 2) * 0.01;
+            document.querySelectorAll('.blur-[100px], .blur-[80px]').forEach(el => {
+                el.style.transform = `translate(${moveX}px, ${moveY}px)`;
+            });
+        });
+    </script>
+
+
+</body></html>

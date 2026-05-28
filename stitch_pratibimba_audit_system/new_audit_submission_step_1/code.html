@@ -1,0 +1,381 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Pratibimba - Audit Submission Workflow</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Hanken+Grotesk:wght@600;700&amp;family=JetBrains+Mono&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-primary": "#ffffff",
+                      "surface-container-lowest": "#ffffff",
+                      "error-container": "#ffdad6",
+                      "on-error-container": "#93000a",
+                      "inverse-surface": "#27313e",
+                      "surface": "#f8f9ff",
+                      "on-background": "#121c28",
+                      "surface-tint": "#a73a00",
+                      "on-primary-fixed-variant": "#7f2b00",
+                      "on-tertiary-fixed": "#410002",
+                      "on-surface-variant": "#5a4138",
+                      "error": "#ba1a1a",
+                      "tertiary": "#bb0112",
+                      "on-primary-fixed": "#370e00",
+                      "primary": "#a33900",
+                      "on-error": "#ffffff",
+                      "on-secondary-container": "#1d3989",
+                      "inverse-primary": "#ffb599",
+                      "surface-container-highest": "#d9e3f4",
+                      "on-secondary-fixed": "#00164e",
+                      "on-secondary": "#ffffff",
+                      "surface-bright": "#f8f9ff",
+                      "inverse-on-surface": "#eaf1ff",
+                      "tertiary-fixed-dim": "#ffb4ab",
+                      "on-tertiary-fixed-variant": "#93000b",
+                      "surface-dim": "#d1dbec",
+                      "on-primary-container": "#fffbff",
+                      "outline": "#8e7166",
+                      "tertiary-container": "#e02928",
+                      "on-tertiary-container": "#fffbff",
+                      "on-secondary-fixed-variant": "#264191",
+                      "tertiary-fixed": "#ffdad6",
+                      "primary-container": "#cc4900",
+                      "secondary-fixed-dim": "#b6c4ff",
+                      "on-tertiary": "#ffffff",
+                      "background": "#f8f9ff",
+                      "secondary-container": "#8fa7fe",
+                      "surface-container": "#e5eeff",
+                      "on-surface": "#121c28",
+                      "outline-variant": "#e2bfb2",
+                      "surface-container-high": "#dfe9fa",
+                      "surface-container-low": "#eef4ff",
+                      "secondary": "#4059aa",
+                      "primary-fixed": "#ffdbce",
+                      "secondary-fixed": "#dce1ff",
+                      "surface-variant": "#d9e3f4",
+                      "primary-fixed-dim": "#ffb599"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "xl": "32px",
+                      "sidebar-width": "260px",
+                      "md": "16px",
+                      "container-max": "1440px",
+                      "base": "4px",
+                      "xs": "4px",
+                      "lg": "24px",
+                      "sm": "8px"
+              },
+              "fontFamily": {
+                      "headline-sm": ["Hanken Grotesk"],
+                      "data-mono": ["JetBrains Mono"],
+                      "headline-md": ["Hanken Grotesk"],
+                      "display-lg": ["Hanken Grotesk"],
+                      "body-lg": ["Inter"],
+                      "label-md": ["Inter"],
+                      "body-md": ["Inter"]
+              },
+              "fontSize": {
+                      "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                      "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "display-lg": ["36px", {"lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                      "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+              }
+            },
+          },
+        }
+    </script>
+<style>
+        .custom-shadow {
+            box-shadow: 0 4px 20px -2px rgba(18, 28, 40, 0.08), 0 2px 8px -1px rgba(18, 28, 40, 0.04);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #a33900;
+            box-shadow: 0 0 0 3px rgba(163, 57, 0, 0.1);
+        }
+        .stepper-line {
+            height: 2px;
+            background: #d9e3f4;
+            flex-grow: 1;
+            margin: 0 12px;
+            position: relative;
+            top: 18px;
+        }
+        .stepper-line.active {
+            background: #a33900;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-background font-body-md antialiased">
+<!-- SideNavBar Shell -->
+<aside class="w-[260px] h-screen fixed left-0 top-0 bg-secondary flex flex-col py-xl z-50">
+<div class="px-lg mb-xl">
+<h1 class="font-headline-md text-headline-md text-white font-bold tracking-tight">Pratibimba</h1>
+<p class="text-white/60 text-label-md font-label-md uppercase tracking-widest">Institutional Integrity</p>
+</div>
+<nav class="flex-1 space-y-base overflow-y-auto">
+<a class="flex items-center px-lg py-md text-white/70 font-normal hover:bg-white/5 transition-all" href="#">
+<span class="material-symbols-outlined mr-md">dashboard</span>
+<span class="font-body-md text-body-md">Dashboard</span>
+</a>
+<a class="flex items-center px-lg py-md border-l-4 border-primary bg-white/10 text-white font-bold transition-all" href="#">
+<span class="material-symbols-outlined mr-md">assignment_turned_in</span>
+<span class="font-body-md text-body-md">Audit Logs</span>
+</a>
+<a class="flex items-center px-lg py-md text-white/70 font-normal hover:bg-white/5 transition-all" href="#">
+<span class="material-symbols-outlined mr-md">verified_user</span>
+<span class="font-body-md text-body-md">Compliance</span>
+</a>
+<a class="flex items-center px-lg py-md text-white/70 font-normal hover:bg-white/5 transition-all" href="#">
+<span class="material-symbols-outlined mr-md">account_balance</span>
+<span class="font-body-md text-body-md">Entities</span>
+</a>
+<a class="flex items-center px-lg py-md text-white/70 font-normal hover:bg-white/5 transition-all" href="#">
+<span class="material-symbols-outlined mr-md">assessment</span>
+<span class="font-body-md text-body-md">Reports</span>
+</a>
+<a class="flex items-center px-lg py-md text-white/70 font-normal hover:bg-white/5 transition-all" href="#">
+<span class="material-symbols-outlined mr-md">settings</span>
+<span class="font-body-md text-body-md">Settings</span>
+</a>
+</nav>
+<div class="px-lg mt-auto">
+<button class="w-full bg-primary text-white py-md rounded-xl font-bold flex items-center justify-center gap-sm active:scale-[0.98] transition-transform shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined">add</span>
+<span>New Audit</span>
+</button>
+</div>
+</aside>
+<!-- TopNavBar Shell -->
+<header class="h-16 fixed top-0 right-0 left-[260px] bg-white border-b border-outline-variant flex justify-between items-center px-lg z-40">
+<div class="flex items-center gap-md">
+<h2 class="font-headline-sm text-headline-sm text-on-surface font-bold">New Audit Submission</h2>
+</div>
+<div class="flex items-center gap-lg">
+<div class="relative group">
+<span class="absolute inset-y-0 left-0 pl-3 flex items-center text-on-surface-variant">
+<span class="material-symbols-outlined text-[20px]">search</span>
+</span>
+<input class="bg-surface-container-low border border-outline-variant rounded-full pl-10 pr-4 py-1.5 text-body-md focus:ring-2 focus:ring-primary w-64 transition-all" placeholder="Search audits..." type="text">
+<span class="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant font-data-mono text-[10px] bg-outline-variant/20 px-1.5 py-0.5 rounded uppercase">⌘K</span>
+</div>
+<div class="flex items-center gap-md">
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">help_outline</span>
+</button>
+<div class="h-9 w-9 rounded-full bg-primary-fixed-dim border border-primary/20 flex items-center justify-center overflow-hidden">
+<img alt="Auditor Profile" class="h-full w-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCBv9X-L53hjNPIsRnQrp_MFmptZtttIjMVXesLKT7uhfWkLvxp_XtvQGA98GJFjOHMK5KdUHAUOovuZ_c0ZlIr8uX5SrWKDBwvuZvXKUMmSWMsv7EE3AzNUEcSyaN-QHLI8EFCusUb8lUPcN7vONGWStYJL4BNKOYO4ZIiseju7XVuDhwI5kCqEotcdGwt__mOjl3Qa8VSaGwX938bJKEa2LNdEfNxzmtFQ0D0SSJMvNs35at0IIPeTeraW7ckXW_GJ3_s9Ywbpxlm">
+</div>
+</div>
+</div>
+</header>
+<!-- Main Canvas -->
+<main class="ml-[260px] pt-16 min-h-screen p-xl flex flex-col gap-xl bg-surface">
+<!-- Workflow Container -->
+<div class="max-w-[1000px] mx-auto w-full">
+<!-- High Fidelity Stepper -->
+<div class="bg-white rounded-t-2xl p-xl custom-shadow border-b border-surface-container">
+<div class="flex justify-between items-start">
+<!-- Step 1: Active -->
+<div class="flex flex-col items-center gap-2 flex-1 group">
+<div class="flex items-center w-full">
+<div class="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center font-bold shadow-md shadow-primary/20 ring-4 ring-primary/10 transition-all">1</div>
+<div class="stepper-line"></div>
+</div>
+<span class="text-label-md font-bold text-primary mr-12">General Info</span>
+</div>
+<!-- Step 2 -->
+<div class="flex flex-col items-center gap-2 flex-1">
+<div class="flex items-center w-full">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest text-on-surface-variant flex items-center justify-center font-bold transition-all">2</div>
+<div class="stepper-line"></div>
+</div>
+<span class="text-label-md font-medium text-on-surface-variant mr-12">Findings</span>
+</div>
+<!-- Step 3 -->
+<div class="flex flex-col items-center gap-2 flex-1">
+<div class="flex items-center w-full">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest text-on-surface-variant flex items-center justify-center font-bold transition-all">3</div>
+<div class="stepper-line"></div>
+</div>
+<span class="text-label-md font-medium text-on-surface-variant mr-12">Risk</span>
+</div>
+<!-- Step 4 -->
+<div class="flex flex-col items-center gap-2 flex-1">
+<div class="flex items-center w-full">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest text-on-surface-variant flex items-center justify-center font-bold transition-all">4</div>
+<div class="stepper-line"></div>
+</div>
+<span class="text-label-md font-medium text-on-surface-variant mr-12">Evidence</span>
+</div>
+<!-- Step 5 -->
+<div class="flex flex-col items-center gap-2 flex-1">
+<div class="flex items-center w-full">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest text-on-surface-variant flex items-center justify-center font-bold transition-all">5</div>
+<div class="stepper-line"></div>
+</div>
+<span class="text-label-md font-medium text-on-surface-variant mr-12">Action</span>
+</div>
+<!-- Step 6 -->
+<div class="flex flex-col items-center gap-2">
+<div class="w-9 h-9 rounded-full bg-surface-container-highest text-on-surface-variant flex items-center justify-center font-bold transition-all">6</div>
+<span class="text-label-md font-medium text-on-surface-variant whitespace-nowrap">Final Review</span>
+</div>
+</div>
+</div>
+<!-- Form Content -->
+<div class="bg-white p-xl custom-shadow space-y-xl">
+<div class="border-b border-surface-container pb-md">
+<h3 class="font-headline-md text-headline-md text-on-background mb-1">Step 1: General Information</h3>
+<p class="text-on-surface-variant text-body-md">Verify the metadata for the institutional integrity audit.</p>
+</div>
+<form class="space-y-lg">
+<!-- Audit Title -->
+<div class="space-y-base">
+<label class="block text-label-md font-semibold text-on-surface-variant uppercase tracking-wider">Audit Title</label>
+<input class="w-full border border-outline-variant rounded-xl p-md text-body-md focus:ring-2 focus:ring-primary/20" type="text" value="Laboratory Safety Audit - Wing A">
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-xl">
+<!-- Department -->
+<div class="space-y-base">
+<label class="block text-label-md font-semibold text-on-surface-variant uppercase tracking-wider">Department</label>
+<select class="w-full border border-outline-variant rounded-xl p-md text-body-md bg-white">
+<option>Diagnostics / Lab A</option>
+<option>Radiology</option>
+<option>Emergency Services</option>
+<option>Pathology</option>
+</select>
+</div>
+<!-- Assigned Auditor -->
+<div class="space-y-base">
+<label class="block text-label-md font-semibold text-on-surface-variant uppercase tracking-wider">Assigned Auditor</label>
+<div class="relative">
+<input class="w-full border border-outline-variant rounded-xl p-md text-body-md bg-surface-container-low cursor-not-allowed pr-10" readonly="" type="text" value="Dr. Sarah J.">
+<span class="material-symbols-outlined absolute right-md top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[18px]">lock</span>
+</div>
+</div>
+<!-- Audit Date -->
+<div class="space-y-base">
+<label class="block text-label-md font-semibold text-on-surface-variant uppercase tracking-wider">Audit Date</label>
+<input class="w-full border border-outline-variant rounded-xl p-md text-body-md" type="date" value="2023-11-24">
+</div>
+<!-- Category -->
+<div class="space-y-base">
+<label class="block text-label-md font-semibold text-on-surface-variant uppercase tracking-wider">Audit Category</label>
+<select class="w-full border border-outline-variant rounded-xl p-md text-body-md bg-white">
+<option>Health &amp; Safety</option>
+<option>Financial Compliance</option>
+<option>Clinical Quality</option>
+<option>Operational Protocol</option>
+</select>
+</div>
+</div>
+<!-- Priority Level -->
+<div class="space-y-base">
+<label class="block text-label-md font-semibold text-on-surface-variant uppercase tracking-wider">Priority Level</label>
+<div class="flex bg-surface-container-low border border-outline-variant/50 rounded-xl p-1 w-fit">
+<button class="py-2 px-6 rounded-lg text-body-md text-on-surface-variant hover:bg-white transition-all" type="button">Low</button>
+<button class="py-2 px-6 rounded-lg text-body-md text-on-surface-variant hover:bg-white transition-all" type="button">Medium</button>
+<button class="py-2 px-6 rounded-lg text-body-md bg-primary text-white font-bold shadow-sm" type="button">High</button>
+</div>
+</div>
+<!-- Upload Section (Refined) -->
+<div class="space-y-base pt-md">
+<label class="block text-label-md font-semibold text-on-surface-variant uppercase tracking-wider">Initial Evidence (Optional)</label>
+<div class="border-2 border-dashed border-outline-variant rounded-2xl p-xl flex flex-col items-center justify-center gap-sm bg-surface-container-lowest hover:bg-surface-container-low transition-colors cursor-pointer group">
+<div class="w-12 h-12 rounded-full bg-primary/5 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[32px]">cloud_upload</span>
+</div>
+<div class="text-center">
+<p class="text-body-md font-semibold text-on-surface">Click to upload or drag and drop</p>
+<p class="text-label-md text-on-surface-variant">PDF, JPG, PNG or DOCX (max. 10MB)</p>
+</div>
+</div>
+</div>
+</form>
+</div>
+<!-- Footer Actions -->
+<div class="bg-surface-container-low p-lg rounded-b-2xl custom-shadow flex justify-between items-center border-t border-outline-variant/30">
+<button class="flex items-center gap-sm text-on-surface font-bold px-lg py-md rounded-xl border border-outline hover:bg-white transition-colors active:scale-95">
+<span class="material-symbols-outlined text-[20px]">drafts</span>
+                Save Draft
+            </button>
+<button class="flex items-center gap-sm bg-primary text-white font-bold px-xl py-md rounded-xl shadow-lg shadow-primary/20 hover:shadow-xl hover:bg-primary-container transition-all active:scale-95">
+                Next: Audit Findings
+                <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+</button>
+</div>
+<!-- Secondary Info Section (Increased Separation) -->
+<div class="mt-xl grid grid-cols-1 md:grid-cols-3 gap-lg">
+<div class="bg-white p-lg rounded-2xl custom-shadow border-t-4 border-secondary">
+<div class="flex items-center gap-2 mb-sm text-secondary">
+<span class="material-symbols-outlined text-[18px]">policy</span>
+<h4 class="text-label-md font-bold uppercase tracking-wider">Audit Policy</h4>
+</div>
+<p class="text-body-md text-on-surface-variant leading-relaxed">Section 4.2: Health and safety audits must be filed within 48 hours of inspection.</p>
+</div>
+<div class="bg-white p-lg rounded-2xl custom-shadow border-t-4 border-tertiary">
+<div class="flex items-center gap-2 mb-sm text-tertiary">
+<span class="material-symbols-outlined text-[18px]">warning</span>
+<h4 class="text-label-md font-bold uppercase tracking-wider">High Risk Flag</h4>
+</div>
+<p class="text-body-md text-on-surface-variant leading-relaxed">This category requires an executive summary from the Head of Diagnostics.</p>
+</div>
+<div class="bg-white p-lg rounded-2xl custom-shadow border-t-4 border-primary">
+<div class="flex items-center gap-2 mb-sm text-primary">
+<span class="material-symbols-outlined text-[18px]">description</span>
+<h4 class="text-label-md font-bold uppercase tracking-wider">Template Used</h4>
+</div>
+<p class="text-body-md text-on-surface-variant leading-relaxed">Standard Laboratory Safety Protocol V3.4 (Revised Jan 2023)</p>
+</div>
+</div>
+</div>
+</main>
+<script>
+    // Micro-interactions for form focus effects
+    const inputs = document.querySelectorAll('input, select, textarea');
+    inputs.forEach(input => {
+        input.addEventListener('focus', () => {
+            const container = input.closest('.space-y-base');
+            if(container) container.classList.add('translate-x-1');
+            input.classList.add('transition-all');
+        });
+        input.addEventListener('blur', () => {
+            const container = input.closest('.space-y-base');
+            if(container) container.classList.remove('translate-x-1');
+        });
+    });
+
+    // Toggle Segmented Control
+    const priorityButtons = document.querySelectorAll('.flex.bg-surface-container-low button');
+    priorityButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            priorityButtons.forEach(b => {
+                b.classList.remove('bg-primary', 'text-white', 'font-bold', 'shadow-sm');
+                b.classList.add('text-on-surface-variant', 'hover:bg-white');
+            });
+            btn.classList.add('bg-primary', 'text-white', 'font-bold', 'shadow-sm');
+            btn.classList.remove('text-on-surface-variant', 'hover:bg-white');
+        });
+    });
+</script>
+</body></html>

@@ -1,0 +1,503 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Pratibimba | Verification Queue</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed": "#370e00",
+                        "primary-fixed-dim": "#ffb599",
+                        "on-secondary-fixed": "#00164e",
+                        "error-container": "#ffdad6",
+                        "primary-container": "#cc4900",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f8f9ff",
+                        "surface-container-high": "#dfe9fa",
+                        "primary": "#a33900",
+                        "surface": "#f8f9ff",
+                        "on-tertiary-fixed": "#410002",
+                        "error": "#ba1a1a",
+                        "on-background": "#121c28",
+                        "surface-variant": "#d9e3f4",
+                        "outline": "#8e7166",
+                        "tertiary-fixed": "#ffdad6",
+                        "on-secondary-container": "#1d3989",
+                        "tertiary": "#bb0112",
+                        "on-primary-container": "#fffbff",
+                        "surface-tint": "#a73a00",
+                        "surface-container-highest": "#d9e3f4",
+                        "secondary-container": "#8fa7fe",
+                        "on-surface-variant": "#5a4138",
+                        "inverse-primary": "#ffb599",
+                        "on-primary-fixed-variant": "#7f2b00",
+                        "outline-variant": "#e2bfb2",
+                        "surface-dim": "#d1dbec",
+                        "on-tertiary-container": "#fffbff",
+                        "on-secondary": "#ffffff",
+                        "inverse-surface": "#27313e",
+                        "secondary-fixed-dim": "#b6c4ff",
+                        "on-surface": "#121c28",
+                        "surface-container-low": "#eef4ff",
+                        "secondary": "#4059aa",
+                        "inverse-on-surface": "#eaf1ff",
+                        "on-tertiary-fixed-variant": "#93000b",
+                        "on-error": "#ffffff",
+                        "surface-bright": "#f8f9ff",
+                        "primary-fixed": "#ffdbce",
+                        "on-primary": "#ffffff",
+                        "surface-container": "#e5eeff",
+                        "tertiary-fixed-dim": "#ffb4ab",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed": "#dce1ff",
+                        "tertiary-container": "#e02928",
+                        "on-secondary-fixed-variant": "#264191"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "lg": "24px",
+                        "xl": "32px",
+                        "sidebar-width": "260px",
+                        "md": "16px",
+                        "container-max": "1440px",
+                        "base": "4px",
+                        "sm": "8px"
+                    },
+                    "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-md": ["Hanken Grotesk"],
+                        "display-lg": ["Hanken Grotesk"],
+                        "data-mono": ["JetBrains Mono"],
+                        "body-md": ["Inter"],
+                        "headline-sm": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "display-lg": ["36px", {"lineHeight": "44px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { background-color: #f8f9ff; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .soft-shadow { box-shadow: 0 4px 12px rgba(30, 58, 138, 0.05); }
+        .sidebar-item-active { border-left: 4px solid #a33900; background: rgba(255, 255, 255, 0.1); color: #ffffff; font-weight: 700; }
+        .table-zebra tr:nth-child(even) { background-color: #fbfbf7; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d9e3f4; border-radius: 10px; }
+    </style>
+</head>
+<body class="font-body-md text-on-surface">
+<!-- SideNavBar Shell -->
+<aside class="fixed left-0 top-0 h-full w-sidebar-width bg-secondary dark:bg-on-secondary-fixed-variant shadow-md flex flex-col py-lg z-50">
+<div class="px-lg mb-xl">
+<h1 class="font-headline-md text-headline-md font-bold text-on-secondary">Pratibimba</h1>
+<p class="font-label-md text-label-md text-on-secondary/70 uppercase tracking-widest mt-xs">Audit Management</p>
+</div>
+<nav class="flex-1 space-y-xs overflow-y-auto px-xs">
+<!-- Navigation Items Mapping -->
+<a class="flex items-center px-lg py-md text-on-secondary/70 font-medium hover:bg-white/5 transition-colors group" href="#">
+<span class="material-symbols-outlined mr-md">dashboard</span>
+<span class="font-label-md">Dashboard</span>
+</a>
+<a class="flex items-center px-lg py-md text-on-secondary/70 font-medium hover:bg-white/5 transition-colors group" href="#">
+<span class="material-symbols-outlined mr-md">list_alt</span>
+<span class="font-label-md">Audit Logs</span>
+</a>
+<a class="flex items-center px-lg py-md text-on-secondary/70 font-medium hover:bg-white/5 transition-colors group" href="#">
+<span class="material-symbols-outlined mr-md">add_circle</span>
+<span class="font-label-md">Submit Audit</span>
+</a>
+<!-- Active State: Verification Queue -->
+<a class="flex items-center px-lg py-md border-l-4 border-primary bg-white/10 text-on-secondary font-bold group" href="#">
+<span class="material-symbols-outlined mr-md">playlist_add_check</span>
+<span class="font-label-md">Verification Queue</span>
+</a>
+<a class="flex items-center px-lg py-md text-on-secondary/70 font-medium hover:bg-white/5 transition-colors group" href="#">
+<span class="material-symbols-outlined mr-md">analytics</span>
+<span class="font-label-md">Reports &amp; Analytics</span>
+</a>
+<a class="flex items-center px-lg py-md text-on-secondary/70 font-medium hover:bg-white/5 transition-colors group" href="#">
+<span class="material-symbols-outlined mr-md">notifications</span>
+<span class="font-label-md">Notifications</span>
+</a>
+<a class="flex items-center px-lg py-md text-on-secondary/70 font-medium hover:bg-white/5 transition-colors group" href="#">
+<span class="material-symbols-outlined mr-md">group</span>
+<span class="font-label-md">User Management</span>
+</a>
+<a class="flex items-center px-lg py-md text-on-secondary/70 font-medium hover:bg-white/5 transition-colors group" href="#">
+<span class="material-symbols-outlined mr-md">settings</span>
+<span class="font-label-md">Settings</span>
+</a>
+</nav>
+<div class="px-lg mt-auto">
+<button class="w-full py-md bg-primary text-on-primary-container font-bold rounded-lg active:scale-95 duration-150 shadow-lg flex items-center justify-center gap-2">
+<span class="material-symbols-outlined">add</span>
+<span class="text-label-md">New Audit Request</span>
+</button>
+</div>
+</aside>
+<!-- Main Workspace -->
+<main class="ml-sidebar-width min-h-screen flex flex-col">
+<!-- TopNavBar Shell -->
+<header class="sticky top-0 z-40 w-full h-16 bg-surface dark:bg-background shadow-sm flex justify-between items-center px-xl">
+<div class="flex items-center gap-xl">
+<h2 class="font-headline-sm text-headline-sm font-bold text-primary">Verification Queue</h2>
+<div class="relative w-80 group">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full pl-10 pr-12 py-2 bg-surface-container rounded-full border-none focus:ring-2 focus:ring-primary/20 text-body-md" placeholder="Search audits... (Cmd+K)" type="text">
+<span class="absolute right-3 top-1/2 -translate-y-1/2 font-data-mono text-[10px] bg-white border border-outline-variant px-1 rounded">⌘K</span>
+</div>
+</div>
+<div class="flex items-center gap-lg">
+<button class="text-on-surface-variant hover:text-primary transition-all relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full"></span>
+</button>
+<div class="flex items-center gap-md">
+<div class="text-right hidden sm:block">
+<p class="font-label-md font-bold text-on-surface">Vikram Singh</p>
+<p class="text-[10px] text-on-surface-variant uppercase">Senior Compliance Officer</p>
+</div>
+<img alt="User Profile" class="w-10 h-10 rounded-full border-2 border-primary-fixed shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCEpeH3dyo93Lg0VX0_XRvyUPIE2V6npr1IQphXSJg9zHHVqdXJl3-QerHRuLOl1sbiwmJsVTmvxz9K6DY2kLhGV1h5bOr6i0xpg5aSz8GrVx3KabtY8KionyfVctXurHPJMqLSWJjQME98aC2IOK0bNXfkGmc9MaTR3S2Jru5PFZXrQSv6Oy5rXensxSL_iV7d3qT-rfwZoxZpr2BPao8ImGvLeZRv4JsQJONe1ocDfd1DLL9fUfT4EfB9_IvXc_Sgp0TzOEONTjEp">
+</div>
+</div>
+</header>
+<!-- Content Canvas -->
+<div class="p-xl space-y-xl">
+<!-- Verification Summary Cards -->
+<section class="grid grid-cols-1 md:grid-cols-5 gap-lg">
+<div class="bg-surface-container-lowest p-lg rounded-xl soft-shadow border-l-4 border-primary">
+<div class="flex justify-between items-start mb-sm">
+<span class="material-symbols-outlined text-primary">pending_actions</span>
+<span class="text-primary font-bold font-data-mono">+4%</span>
+</div>
+<p class="text-label-md text-on-surface-variant">Pending Reviews</p>
+<p class="font-display-lg text-display-lg text-on-surface">42</p>
+</div>
+<div class="bg-surface-container-lowest p-lg rounded-xl soft-shadow border-l-4 border-secondary">
+<div class="flex justify-between items-start mb-sm">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="text-secondary font-bold font-data-mono">+12%</span>
+</div>
+<p class="text-label-md text-on-surface-variant">Approved Audits</p>
+<p class="font-display-lg text-display-lg text-on-surface">1,284</p>
+</div>
+<div class="bg-surface-container-lowest p-lg rounded-xl soft-shadow border-l-4 border-tertiary">
+<div class="flex justify-between items-start mb-sm">
+<span class="material-symbols-outlined text-tertiary">cancel</span>
+<span class="text-tertiary font-bold font-data-mono">-2%</span>
+</div>
+<p class="text-label-md text-on-surface-variant">Rejected Audits</p>
+<p class="font-display-lg text-display-lg text-on-surface">86</p>
+</div>
+<div class="bg-surface-container-lowest p-lg rounded-xl soft-shadow border-l-4 border-on-secondary-container">
+<div class="flex justify-between items-start mb-sm">
+<span class="material-symbols-outlined text-on-secondary-container">warning</span>
+<span class="text-on-secondary-container font-bold font-data-mono">8 New</span>
+</div>
+<p class="text-label-md text-on-surface-variant">Escalated Cases</p>
+<p class="font-display-lg text-display-lg text-on-surface">14</p>
+</div>
+<div class="bg-surface-container-lowest p-lg rounded-xl soft-shadow border-l-4 border-outline">
+<div class="flex justify-between items-start mb-sm">
+<span class="material-symbols-outlined text-outline">timer</span>
+<span class="text-outline font-bold font-data-mono">Target: 4h</span>
+</div>
+<p class="text-label-md text-on-surface-variant">Avg. Review Time</p>
+<p class="font-display-lg text-display-lg text-on-surface">3.2<span class="text-headline-sm font-normal ml-xs">hrs</span></p>
+</div>
+</section>
+<!-- Main Content Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-xl">
+<!-- Left Column: Pending Verification Table -->
+<div class="lg:col-span-3 space-y-lg">
+<div class="bg-surface-container-lowest rounded-xl soft-shadow overflow-hidden flex flex-col min-h-[600px]">
+<!-- Table Toolbar -->
+<div class="p-lg border-b border-surface-container flex flex-wrap justify-between items-center gap-md">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Active Verification Queue</h3>
+<div class="flex gap-md">
+<select class="bg-surface border border-outline-variant text-body-md rounded-lg px-md py-xs focus:ring-primary/20">
+<option>Priority: All</option>
+<option>High</option>
+<option>Medium</option>
+<option>Low</option>
+</select>
+<select class="bg-surface border border-outline-variant text-body-md rounded-lg px-md py-xs focus:ring-primary/20">
+<option>Department: All</option>
+<option>Finance</option>
+<option>Operations</option>
+<option>HR</option>
+</select>
+<button class="flex items-center gap-xs px-md py-xs bg-surface border border-outline-variant rounded-lg hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-[18px]">filter_list</span>
+<span class="text-label-md font-medium">More Filters</span>
+</button>
+</div>
+</div>
+<!-- Data Table -->
+<div class="flex-1 overflow-x-auto">
+<table class="w-full text-left table-zebra">
+<thead class="bg-surface-container-low border-b border-surface-variant">
+<tr>
+<th class="px-lg text-label-md text-on-surface-variant uppercase tracking-wider py-lg">Audit ID</th>
+<th class="px-lg text-label-md text-on-surface-variant uppercase tracking-wider py-lg">Audit Title</th>
+<th class="px-lg text-label-md text-on-surface-variant uppercase tracking-wider py-lg">Dept.</th>
+<th class="px-lg text-label-md text-on-surface-variant uppercase tracking-wider py-lg">Submission</th>
+<th class="px-lg text-label-md text-on-surface-variant uppercase tracking-wider py-lg">Priority</th>
+<th class="px-lg text-label-md text-on-surface-variant uppercase tracking-wider py-lg">Status</th>
+<th class="px-lg text-label-md text-on-surface-variant uppercase tracking-wider text-right py-lg">Actions</th>
+</tr>
+</thead>
+<tbody class="text-body-md">
+<!-- Row 1 -->
+<tr class="border-b border-surface-variant hover:bg-primary-fixed/10 transition-colors">
+<td class="px-lg font-data-mono font-bold text-primary py-xl">#AUD-9042</td>
+<td class="px-lg py-xl">
+<p class="font-bold">Q3 Fiscal Integrity Audit</p>
+<p class="text-[11px] leading-tight text-on-surface-variant/80 mt-1">Submitted by Anita Rao</p>
+</td>
+<td class="px-lg py-xl">Finance</td>
+<td class="px-lg font-data-mono text-[12px] py-xl">2023-10-24 09:15</td>
+<td class="px-lg py-xl">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-error-container text-tertiary text-label-md font-bold tracking-tight shadow-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary mr-1.5"></span> High
+                                            </span>
+</td>
+<td class="px-lg py-xl">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-primary-fixed text-primary text-label-md font-bold tracking-tight shadow-sm">Pending</span>
+</td>
+<td class="px-lg text-right py-xl">
+<div class="flex justify-end gap-xs"><button class="p-1.5 hover:bg-secondary-container/20 border border-outline-variant/30 rounded-lg text-secondary transition-colors" title="Verify"><span class="material-symbols-outlined text-[18px]">check_circle</span></button><button class="p-1.5 hover:bg-error-container/20 border border-outline-variant/30 rounded-lg text-tertiary transition-colors" title="Reject"><span class="material-symbols-outlined text-[18px]">cancel</span></button><button class="p-1.5 hover:bg-surface-variant border border-outline-variant/30 rounded-lg text-on-surface-variant transition-colors"><span class="material-symbols-outlined text-[18px]">more_vert</span></button></div>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="border-b border-surface-variant hover:bg-primary-fixed/10 transition-colors">
+<td class="px-lg font-data-mono font-bold text-primary py-xl">#AUD-8831</td>
+<td class="px-lg py-xl">
+<p class="font-bold">Employee Benefit Compliance</p>
+<p class="text-[11px] leading-tight text-on-surface-variant/80 mt-1">Submitted by Rohan Mehra</p>
+</td>
+<td class="px-lg py-xl">HR</td>
+<td class="px-lg font-data-mono text-[12px] py-xl">2023-10-23 16:45</td>
+<td class="px-lg py-xl">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-primary-fixed text-primary-container text-label-md font-bold tracking-tight shadow-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-primary-container mr-1.5"></span> Medium
+                                            </span>
+</td>
+<td class="px-lg py-xl">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-secondary-container/30 text-secondary text-label-md font-bold tracking-tight shadow-sm">In Review</span>
+</td>
+<td class="px-lg text-right py-xl">
+<div class="flex justify-end gap-xs"><button class="p-1.5 hover:bg-secondary-container/20 border border-outline-variant/30 rounded-lg text-secondary transition-colors" title="Verify"><span class="material-symbols-outlined text-[18px]">check_circle</span></button><button class="p-1.5 hover:bg-error-container/20 border border-outline-variant/30 rounded-lg text-tertiary transition-colors" title="Reject"><span class="material-symbols-outlined text-[18px]">cancel</span></button><button class="p-1.5 hover:bg-surface-variant border border-outline-variant/30 rounded-lg text-on-surface-variant transition-colors"><span class="material-symbols-outlined text-[18px]">more_vert</span></button></div>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="border-b border-surface-variant hover:bg-primary-fixed/10 transition-colors">
+<td class="px-lg font-data-mono font-bold text-primary py-xl">#AUD-9015</td>
+<td class="px-lg py-xl">
+<p class="font-bold">Data Privacy Protocol Review</p>
+<p class="text-[11px] leading-tight text-on-surface-variant/80 mt-1">Submitted by Sarah Chen</p>
+</td>
+<td class="px-lg py-xl">IT Support</td>
+<td class="px-lg font-data-mono text-[12px] py-xl">2023-10-23 11:20</td>
+<td class="px-lg py-xl">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-surface-variant text-on-surface-variant text-label-md font-bold tracking-tight shadow-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-outline mr-1.5"></span> Low
+                                            </span>
+</td>
+<td class="px-lg py-xl">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-primary-fixed text-primary text-label-md font-bold tracking-tight shadow-sm">Pending</span>
+</td>
+<td class="px-lg text-right py-xl">
+<div class="flex justify-end gap-xs"><button class="p-1.5 hover:bg-secondary-container/20 border border-outline-variant/30 rounded-lg text-secondary transition-colors" title="Verify"><span class="material-symbols-outlined text-[18px]">check_circle</span></button><button class="p-1.5 hover:bg-error-container/20 border border-outline-variant/30 rounded-lg text-tertiary transition-colors" title="Reject"><span class="material-symbols-outlined text-[18px]">cancel</span></button><button class="p-1.5 hover:bg-surface-variant border border-outline-variant/30 rounded-lg text-on-surface-variant transition-colors"><span class="material-symbols-outlined text-[18px]">more_vert</span></button></div>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="border-b border-surface-variant hover:bg-primary-fixed/10 transition-colors">
+<td class="px-lg font-data-mono font-bold text-primary py-xl">#AUD-9055</td>
+<td class="px-lg py-xl">
+<p class="font-bold">Warehouse Safety Audit</p>
+<p class="text-[11px] leading-tight text-on-surface-variant/80 mt-1">Submitted by David Park</p>
+</td>
+<td class="px-lg py-xl">Logistics</td>
+<td class="px-lg font-data-mono text-[12px] py-xl">2023-10-22 14:30</td>
+<td class="px-lg py-xl">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-error-container text-tertiary text-label-md font-bold tracking-tight shadow-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary mr-1.5"></span> High
+                                            </span>
+</td>
+<td class="px-lg py-xl">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-primary-fixed text-primary text-label-md font-bold tracking-tight shadow-sm">Pending</span>
+</td>
+<td class="px-lg text-right py-xl">
+<div class="flex justify-end gap-xs"><button class="p-1.5 hover:bg-secondary-container/20 border border-outline-variant/30 rounded-lg text-secondary transition-colors" title="Verify"><span class="material-symbols-outlined text-[18px]">check_circle</span></button><button class="p-1.5 hover:bg-error-container/20 border border-outline-variant/30 rounded-lg text-tertiary transition-colors" title="Reject"><span class="material-symbols-outlined text-[18px]">cancel</span></button><button class="p-1.5 hover:bg-surface-variant border border-outline-variant/30 rounded-lg text-on-surface-variant transition-colors"><span class="material-symbols-outlined text-[18px]">more_vert</span></button></div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination -->
+<div class="p-lg bg-surface border-t border-surface-variant flex justify-between items-center">
+<p class="text-label-md text-on-surface-variant">Showing 1-10 of 42 audits</p>
+<div class="flex items-center gap-xs">
+<button class="p-2 rounded-lg border border-outline-variant hover:bg-surface-variant disabled:opacity-50" disabled="">
+<span class="material-symbols-outlined">chevron_left</span>
+</button>
+<button class="px-3 py-1.5 rounded-lg bg-primary text-on-primary-container font-bold text-label-md">1</button>
+<button class="px-3 py-1.5 rounded-lg hover:bg-surface-variant text-label-md">2</button>
+<button class="px-3 py-1.5 rounded-lg hover:bg-surface-variant text-label-md">3</button>
+<button class="p-2 rounded-lg border border-outline-variant hover:bg-surface-variant">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Column: Sidebar Panels -->
+<aside class="space-y-lg">
+<!-- Priority Alerts -->
+<div class="bg-surface-container-lowest rounded-xl soft-shadow p-lg">
+<div class="flex items-center gap-sm mb-lg">
+<span class="material-symbols-outlined text-tertiary" style="font-variation-settings: 'FILL' 1;">priority_high</span>
+<h4 class="font-headline-sm text-[16px] text-on-surface">Critical Alerts</h4>
+</div>
+<div class="space-y-md">
+<div class="p-md rounded-lg bg-error-container/20 border border-error-container">
+<p class="text-label-md font-bold text-tertiary mb-xs">Delayed Verification</p>
+<p class="text-body-md font-medium text-on-surface">#AUD-7721: Asset Inventory</p>
+<p class="text-label-md text-on-surface-variant mt-xs">Pending for 72+ hours</p>
+</div>
+<div class="p-md rounded-lg bg-tertiary-fixed/30 border border-tertiary-fixed">
+<p class="text-label-md font-bold text-on-tertiary-fixed-variant mb-xs">High Risk Conflict</p>
+<p class="text-body-md font-medium text-on-surface">#AUD-9011: Vendor Onboarding</p>
+<p class="text-label-md text-on-surface-variant mt-xs">Flagged for immediate review</p>
+</div>
+</div>
+</div>
+<!-- Reviewer Workload -->
+<div class="bg-surface-container-lowest rounded-xl soft-shadow p-lg">
+<h4 class="font-headline-sm text-[16px] text-on-surface mb-lg">Reviewer Workload</h4>
+<div class="space-y-lg">
+<div class="space-y-xs">
+<div class="flex justify-between text-label-md">
+<span class="font-medium">Vikram Singh</span>
+<span class="text-on-surface-variant">8/10 cases</span>
+</div>
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-primary h-full" style="width: 80%"></div>
+</div>
+</div>
+<div class="space-y-xs">
+<div class="flex justify-between text-label-md">
+<span class="font-medium">Ananya Iyer</span>
+<span class="text-on-surface-variant">3/10 cases</span>
+</div>
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-secondary h-full" style="width: 30%"></div>
+</div>
+</div>
+<div class="space-y-xs">
+<div class="flex justify-between text-label-md">
+<span class="font-medium">Suresh Prabhu</span>
+<span class="text-on-surface-variant">10/10 cases</span>
+</div>
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-tertiary h-full" style="width: 100%"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Recent Activity -->
+<div class="bg-surface-container-lowest rounded-xl soft-shadow p-lg">
+<h4 class="font-headline-sm text-[16px] text-on-surface mb-lg">Recent Actions</h4>
+<div class="space-y-lg relative">
+<!-- Timeline Line -->
+<div class="absolute left-[11px] top-2 bottom-2 w-0.5 bg-surface-container-highest"></div>
+<div class="relative flex gap-md pl-lg">
+<div class="absolute left-0 top-1 w-6 h-6 rounded-full bg-secondary-fixed flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px] text-secondary">check</span>
+</div>
+<div>
+<p class="text-body-md font-bold">#AUD-8921 Approved</p>
+<p class="text-label-md text-on-surface-variant">Verified by Ananya Iyer</p>
+<p class="text-[10px] font-data-mono text-on-surface-variant/70 mt-xs">22 MIN AGO</p>
+</div>
+</div>
+<div class="relative flex gap-md pl-lg">
+<div class="absolute left-0 top-1 w-6 h-6 rounded-full bg-error-container flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px] text-tertiary">close</span>
+</div>
+<div>
+<p class="text-body-md font-bold">#AUD-8854 Rejected</p>
+<p class="text-label-md text-on-surface-variant">Insufficient documentation</p>
+<p class="text-[10px] font-data-mono text-on-surface-variant/70 mt-xs">1 HR AGO</p>
+</div>
+</div>
+<div class="relative flex gap-md pl-lg">
+<div class="absolute left-0 top-1 w-6 h-6 rounded-full bg-primary-fixed flex items-center justify-center z-10">
+<span class="material-symbols-outlined text-[14px] text-primary">edit_note</span>
+</div>
+<div>
+<p class="text-body-md font-bold">#AUD-9033 Assigned</p>
+<p class="text-label-md text-on-surface-variant">Auto-routed to Vikram Singh</p>
+<p class="text-[10px] font-data-mono text-on-surface-variant/70 mt-xs">3 HR AGO</p>
+</div>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</div>
+</main>
+<!-- Micro-interactions Script -->
+<script>
+        // Search shortcut hint
+        window.addEventListener('keydown', (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                document.querySelector('input[type="text"]').focus();
+            }
+        });
+
+        // Simple Hover Effects for Table Rows
+        const rows = document.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            row.addEventListener('mouseenter', () => {
+                row.classList.add('scale-[1.002]', 'z-10', 'relative');
+            });
+            row.addEventListener('mouseleave', () => {
+                row.classList.remove('scale-[1.002]', 'z-10', 'relative');
+            });
+        });
+    </script>
+
+
+</body></html>
