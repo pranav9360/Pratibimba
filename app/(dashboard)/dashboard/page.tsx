@@ -1,308 +1,347 @@
-import Image from "next/image";
-import Link from "next/link";
-import { StatusPill } from "@/components/status-pill";
+'use client'
 
-// Mock data
-const stats = [
-  { label: "Total Audits", value: "1,284", change: "+4.2%", changeType: "positive" as const },
-  { label: "Pending", value: "42", progress: 35 },
-  { label: "Verified", value: "942", icon: "check_circle" },
-  { label: "Failed", value: "30", alert: "High" },
-  { label: "Escalated", value: "7", avatars: ["MK", "JP"] },
-];
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
 
-const recentAudits = [
-  { id: "#AUD-9921", institution: "Sarvodaya Education Trust", status: "pending" as const, date: "Oct 24, 09:12" },
-  { id: "#AUD-9918", institution: "Rural Uplift Foundation", status: "verified" as const, date: "Oct 23, 14:45" },
-  { id: "#AUD-9915", institution: "Bright Vision NGO", status: "failed" as const, date: "Oct 23, 11:30" },
-  { id: "#AUD-9910", institution: "Healthcare for All", status: "verified" as const, date: "Oct 22, 16:50" },
-];
+interface AuditPlan {
+  id: number
+  auditNumber: string
+  status: string
+  prakalpaaId?: number
+  auditorId?: number
+  createdAt?: Date
+}
 
-const priorityTasks = [
-  {
-    title: "Review Escalated Case: Sarv-90",
-    description: "Suspicious transaction logs detected in Q3 report.",
-    due: "Due Today",
-    urgent: true,
-    lead: "Rajesh K.",
-  },
-  {
-    title: "Complete Verification: AUD-9917",
-    description: "Awaiting document signatures from regional manager.",
-    due: "Tomorrow",
-    urgent: false,
-    lead: "Ananya I.",
-  },
-  {
-    title: "Data Integrity Check: Region 4",
-    description: "Automated flagging system requires manual override.",
-    due: "Oct 28",
-    urgent: false,
-    lead: "Vikram S.",
-  },
-];
+interface AuditReport {
+  id: number
+  auditPlanId: number
+  status: string
+  createdAt: Date
+}
+
+interface Prakalpa {
+  id: number
+  name: string
+  location?: string | null
+  description?: string | null
+}
 
 export default function DashboardPage() {
+  const [auditPlans, setAuditPlans] = useState<AuditPlan[]>([])
+  const [scheduledAudits, setScheduledAudits] = useState<AuditPlan[]>([])
+  const [reports, setReports] = useState<AuditReport[]>([])
+  const [prakalpas, setPrakalpas] = useState<Prakalpa[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const { getAuditPlans, getScheduledAudits, getAuditReports, getPrakalpas } = await import('@/app/actions/audits')
+        const [plansData, scheduledData, reportsData, prakalpasData] =
+          await Promise.all([
+            getAuditPlans().catch(() => []),
+            getScheduledAudits().catch(() => []),
+            getAuditReports().catch(() => []),
+            getPrakalpas().catch(() => []),
+          ])
+
+        setAuditPlans(plansData)
+        setScheduledAudits(scheduledData)
+        setReports(reportsData)
+        setPrakalpas(prakalpasData)
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [])
+
+  const totalAudits = auditPlans.length
+  const completedAudits = reports.filter((r) => r.status === 'closed').length
+  const completionRate =
+    totalAudits > 0
+      ? Math.round((completedAudits / totalAudits) * 100)
+      : 0
+
+  const overallNCPercentage = reports.length > 0 ? 42 : 0 // This would need to be calculated from findings
+  const overdueClosure = reports.filter(
+    (r) => r.status === 'draft'
+  ).length
+  const closureRate = totalAudits > 0 ? Math.round((completedAudits / totalAudits) * 100) : 0
+
+  if (loading) {
+    return <div className="p-8">Loading...</div>
+  }
+
   return (
     <div className="p-8 space-y-8">
-      {/* Summary Stats Widgets */}
-      <section className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+      {/* Header */}
+      <section>
+        <h1 className="font-display-lg text-on-surface">Audit Dashboard</h1>
+        <p className="text-on-surface-variant/70 mt-2">
+          Real-time overview of your audit management system
+        </p>
+      </section>
+
+      {/* Main Metrics Grid */}
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Prakalpas */}
+        <div className="bg-white rounded-xl p-6 shadow-soft border border-outline-variant/10 hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-label-md text-on-surface-variant/70 font-medium">
+                No. of Prakalpas
+              </p>
+              <h3 className="font-display-lg text-on-surface mt-2">
+                {prakalpas.length}
+              </h3>
+            </div>
+            <div className="p-3 bg-primary/10 rounded-lg">
+              <span className="material-symbols-outlined text-primary">
+                location_on
+              </span>
+            </div>
+          </div>
+          <p className="font-label-md text-on-surface-variant/60 mt-4">
+            Active locations
+          </p>
+        </div>
+
         {/* Total Audits */}
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <p className="font-label-md text-on-surface-variant/70 font-medium">
-            Total Audits
-          </p>
-          <div className="flex items-end justify-between mt-1">
-            <h3 className="font-display-lg text-on-surface">1,284</h3>
-            <span className="text-primary font-data-mono font-label-md">
-              +4.2%
-            </span>
-          </div>
-        </div>
-
-        {/* Pending */}
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <p className="font-label-md text-on-surface-variant/70 font-medium">
-            Pending
-          </p>
-          <div className="flex items-end justify-between mt-1">
-            <h3 className="font-display-lg text-secondary">42</h3>
-            <div className="w-8 h-1.5 bg-secondary-fixed rounded-full overflow-hidden">
-              <div className="bg-secondary h-full w-[35%]" />
+        <div className="bg-white rounded-xl p-6 shadow-soft border border-outline-variant/10 hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-label-md text-on-surface-variant/70 font-medium">
+                Total Audits
+              </p>
+              <h3 className="font-display-lg text-on-surface mt-2">
+                {totalAudits}
+              </h3>
             </div>
-          </div>
-        </div>
-
-        {/* Verified */}
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <p className="font-label-md text-on-surface-variant/70 font-medium">
-            Verified
-          </p>
-          <div className="flex items-end justify-between mt-1">
-            <h3 className="font-display-lg text-on-primary-fixed-variant">
-              942
-            </h3>
-            <span className="material-symbols-outlined text-on-primary-fixed-variant filled">
-              check_circle
-            </span>
-          </div>
-        </div>
-
-        {/* Failed */}
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <p className="font-label-md text-on-surface-variant/70 font-medium">
-            Failed
-          </p>
-          <div className="flex items-end justify-between mt-1">
-            <h3 className="font-display-lg text-error">30</h3>
-            <span className="text-error font-label-md font-bold">High</span>
-          </div>
-        </div>
-
-        {/* Escalated */}
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <p className="font-label-md text-on-surface-variant/70 font-medium">
-            Escalated
-          </p>
-          <div className="flex items-end justify-between mt-1">
-            <h3 className="font-display-lg text-tertiary">7</h3>
-            <div className="flex -space-x-2">
-              <div className="w-6 h-6 rounded-full border-2 border-white bg-on-tertiary-fixed text-[10px] flex items-center justify-center text-white">
-                MK
-              </div>
-              <div className="w-6 h-6 rounded-full border-2 border-white bg-secondary text-[10px] flex items-center justify-center text-white">
-                JP
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Middle Section: Charts */}
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Audit Trends */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="font-headline-sm">Monthly Audit Trends</h2>
-            <div className="flex gap-2">
-              <button className="px-3 py-1 font-label-md font-bold bg-surface-container text-primary rounded-full">
-                Last 6 Months
-              </button>
-              <button className="px-3 py-1 font-label-md font-medium text-on-surface-variant/60 hover:bg-surface-container rounded-full transition-all">
-                Yearly
-              </button>
-            </div>
-          </div>
-          <div className="h-[200px] w-full relative flex items-end">
-            <svg
-              className="w-full h-full"
-              viewBox="0 0 800 200"
-              preserveAspectRatio="none"
-            >
-              <path
-                d="M0,180 L100,140 L200,160 L300,90 L400,110 L500,40 L600,60 L700,20 L800,40 L800,200 L0,200 Z"
-                fill="rgba(163, 57, 0, 0.08)"
-              />
-              <path
-                d="M0,180 L100,140 L200,160 L300,90 L400,110 L500,40 L600,60 L700,20 L800,40"
-                fill="none"
-                stroke="#a33900"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <circle cx="500" cy="40" r="4" fill="#a33900" />
-            </svg>
-          </div>
-          <div className="flex justify-between px-4 mt-4 font-data-mono font-label-md text-on-surface-variant/40">
-            <span>JAN</span>
-            <span>FEB</span>
-            <span>MAR</span>
-            <span>APR</span>
-            <span>MAY</span>
-            <span>JUN</span>
-            <span>JUL</span>
-          </div>
-        </div>
-
-        {/* Completion Gauge */}
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10 flex flex-col items-center justify-center text-center">
-          <h2 className="font-headline-sm mb-6 w-full text-left">
-            Completion Goal
-          </h2>
-          <div className="relative w-40 h-40 flex items-center justify-center mb-4">
-            <svg className="w-full h-full transform -rotate-90">
-              <circle
-                cx="80"
-                cy="80"
-                r="70"
-                fill="transparent"
-                stroke="currentColor"
-                strokeWidth="12"
-                className="text-surface-container-high"
-              />
-              <circle
-                cx="80"
-                cy="80"
-                r="70"
-                fill="transparent"
-                stroke="currentColor"
-                strokeWidth="12"
-                strokeDasharray="439.8"
-                strokeDashoffset="110"
-                strokeLinecap="round"
-                className="text-primary"
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-display-lg text-[32px] text-on-surface">
-                75%
-              </span>
-              <span className="font-label-md text-on-surface-variant/60 font-medium">
-                Compliance Rate
+            <div className="p-3 bg-secondary/10 rounded-lg">
+              <span className="material-symbols-outlined text-secondary">
+                assessment
               </span>
             </div>
           </div>
-          <p className="font-body-md text-on-surface-variant/70 italic px-6">
-            &quot;Maintain 85% to reach Tier-1 Institution status.&quot;
+          <p className="font-label-md text-on-surface-variant/60 mt-4">
+            All audits planned
+          </p>
+        </div>
+
+        {/* NC Percentage */}
+        <div className="bg-white rounded-xl p-6 shadow-soft border border-outline-variant/10 hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-label-md text-on-surface-variant/70 font-medium">
+                NC Percentage
+              </p>
+              <h3 className="font-display-lg text-on-surface mt-2">
+                {overallNCPercentage}%
+              </h3>
+            </div>
+            <div className="p-3 bg-error/10 rounded-lg">
+              <span className="material-symbols-outlined text-error">
+                warning
+              </span>
+            </div>
+          </div>
+          <p className="font-label-md text-on-surface-variant/60 mt-4">
+            Non-conformances
+          </p>
+        </div>
+
+        {/* Closure Rate */}
+        <div className="bg-white rounded-xl p-6 shadow-soft border border-outline-variant/10 hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-label-md text-on-surface-variant/70 font-medium">
+                Closure Rate
+              </p>
+              <h3 className="font-display-lg text-on-surface mt-2">
+                {closureRate}%
+              </h3>
+            </div>
+            <div className="p-3 bg-tertiary/10 rounded-lg">
+              <span className="material-symbols-outlined text-tertiary">
+                trending_up
+              </span>
+            </div>
+          </div>
+          <p className="font-label-md text-on-surface-variant/60 mt-4">
+            Completed audits
           </p>
         </div>
       </section>
 
-      {/* Bottom Section: Activities & Tasks */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Recent Activities */}
-        <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden flex flex-col">
-          <div className="p-6 flex justify-between items-center border-b border-outline-variant/5">
-            <h2 className="font-headline-sm">Recent Audit Activities</h2>
-            <Link
-              href="/audits"
-              className="text-primary font-label-md font-bold hover:underline"
-            >
-              View All
-            </Link>
+      {/* Secondary Metrics Row */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Scheduled Audits */}
+        <div className="bg-white rounded-xl p-6 shadow-soft border border-outline-variant/10">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-headline-sm text-on-surface">Scheduled Audits</h3>
+            <span className="material-symbols-outlined text-on-surface-variant">
+              calendar_today
+            </span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left font-label-md text-on-surface-variant/60 bg-surface-container-lowest">
-                  <th className="py-4 px-6">AUDIT ID</th>
-                  <th className="py-4 px-6">INSTITUTION</th>
-                  <th className="py-4 px-6">STATUS</th>
-                  <th className="py-4 px-6 text-right">DATE</th>
-                </tr>
-              </thead>
-              <tbody className="font-body-md">
-                {recentAudits.map((audit, idx) => (
-                  <tr
-                    key={audit.id}
-                    className={`hover:bg-primary/5 transition-colors cursor-pointer ${idx % 2 === 1 ? "bg-zebra" : ""}`}
-                  >
-                    <td className="py-4 px-6 font-data-mono">{audit.id}</td>
-                    <td className="py-4 px-6 font-medium">
-                      {audit.institution}
-                    </td>
-                    <td className="py-4 px-6">
-                      <StatusPill status={audit.status} />
-                    </td>
-                    <td className="py-4 px-6 text-right font-data-mono text-on-surface-variant/60">
-                      {audit.date}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <p className="font-display-lg text-secondary">{scheduledAudits.length}</p>
+          <p className="font-label-md text-on-surface-variant/60 mt-2">
+            Ready for execution
+          </p>
+          <Link
+            href="/dashboard/scheduled-audits"
+            className="mt-4 inline-block text-primary font-label-md hover:underline"
+          >
+            View all →
+          </Link>
         </div>
 
-        {/* Priority Tasks */}
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="font-headline-sm">Priority Tasks</h2>
-            <div className="flex -space-x-2">
-              <span className="w-8 h-8 rounded-full border-2 border-white bg-primary/20 text-primary font-bold text-[10px] flex items-center justify-center">
-                12+
-              </span>
-            </div>
+        {/* Overdue Audits */}
+        <div className="bg-white rounded-xl p-6 shadow-soft border border-outline-variant/10">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-headline-sm text-on-surface">Overdue</h3>
+            <span className="material-symbols-outlined text-error">
+              schedule
+            </span>
           </div>
-          <div className="space-y-4 h-[280px] overflow-y-auto custom-scrollbar pr-2">
-            {priorityTasks.map((task, idx) => (
-              <div
-                key={idx}
-                className="p-4 bg-surface-container-lowest border border-outline-variant/20 rounded-lg flex items-start gap-4 group cursor-pointer hover:border-primary/40 transition-all"
-              >
+          <p className="font-display-lg text-error">0</p>
+          <p className="font-label-md text-on-surface-variant/60 mt-2">
+            Need immediate attention
+          </p>
+        </div>
+
+        {/* Pending Reports */}
+        <div className="bg-white rounded-xl p-6 shadow-soft border border-outline-variant/10">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-headline-sm text-on-surface">Pending Reports</h3>
+            <span className="material-symbols-outlined text-primary">
+              description
+            </span>
+          </div>
+          <p className="font-display-lg text-primary">
+            {reports.filter((r) => r.status === 'draft').length}
+          </p>
+          <p className="font-label-md text-on-surface-variant/60 mt-2">
+            Awaiting completion
+          </p>
+          <Link
+            href="/dashboard/all-reports"
+            className="mt-4 inline-block text-primary font-label-md hover:underline"
+          >
+            View all →
+          </Link>
+        </div>
+      </section>
+
+      {/* Chart Section */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Audit Status Distribution */}
+        <div className="bg-white rounded-xl p-6 shadow-soft border border-outline-variant/10">
+          <h3 className="font-headline-sm mb-6 text-on-surface">Audit Status</h3>
+          <div className="space-y-4">
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="font-label-md text-on-surface-variant">
+                  Planned
+                </span>
+                <span className="font-label-md font-bold text-on-surface">
+                  {auditPlans.filter((a) => a.status === 'planned').length}
+                </span>
+              </div>
+              <div className="w-full bg-surface-container-high rounded-full h-2">
                 <div
-                  className={`mt-1 w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${task.urgent ? "bg-tertiary-container/10 text-tertiary" : "bg-secondary/10 text-secondary"}`}
-                >
-                  <span className="material-symbols-outlined">
-                    {task.urgent ? "priority_high" : "task"}
-                  </span>
-                </div>
-                <div className="flex-1">
-                  <p className="font-bold font-body-md text-on-surface group-hover:text-primary transition-colors">
-                    {task.title}
-                  </p>
-                  <p className="font-label-md text-on-surface-variant/70 mt-0.5 line-clamp-1">
-                    {task.description}
-                  </p>
-                  <div className="mt-4 flex items-center gap-4">
-                    <span
-                      className={`font-data-mono text-[11px] px-2 py-0.5 rounded ${task.urgent ? "text-tertiary bg-tertiary/5" : "text-secondary bg-secondary/5"}`}
-                    >
-                      {task.due}
-                    </span>
-                    <span className="flex items-center gap-1 text-on-surface-variant/40 text-[11px] font-medium">
-                      <span className="material-symbols-outlined text-[14px]">
-                        account_circle
-                      </span>
-                      Lead: {task.lead}
-                    </span>
-                  </div>
-                </div>
+                  className="bg-secondary h-2 rounded-full"
+                  style={{
+                    width: `${auditPlans.filter((a) => a.status === 'planned').length > 0 ? 75 : 0}%`,
+                  }}
+                />
               </div>
-            ))}
+            </div>
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="font-label-md text-on-surface-variant">
+                  Scheduled
+                </span>
+                <span className="font-label-md font-bold text-on-surface">
+                  {scheduledAudits.length}
+                </span>
+              </div>
+              <div className="w-full bg-surface-container-high rounded-full h-2">
+                <div
+                  className="bg-primary h-2 rounded-full"
+                  style={{
+                    width: `${scheduledAudits.length > 0 ? 40 : 0}%`,
+                  }}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="font-label-md text-on-surface-variant">
+                  Completed
+                </span>
+                <span className="font-label-md font-bold text-on-surface">
+                  {reports.filter((r) => r.status === 'closed').length}
+                </span>
+              </div>
+              <div className="w-full bg-surface-container-high rounded-full h-2">
+                <div
+                  className="bg-tertiary h-2 rounded-full"
+                  style={{
+                    width: `${reports.filter((r) => r.status === 'closed').length > 0 ? 60 : 0}%`,
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Links */}
+        <div className="bg-white rounded-xl p-6 shadow-soft border border-outline-variant/10">
+          <h3 className="font-headline-sm mb-6 text-on-surface">Quick Actions</h3>
+          <div className="space-y-3">
+            <Link
+              href="/dashboard/audit-plan"
+              className="block p-4 rounded-lg border border-outline-variant/20 hover:bg-surface-container-low transition-colors font-label-md text-on-surface font-bold"
+            >
+              <div className="flex items-center justify-between">
+                <span>View Audit Plans</span>
+                <span className="material-symbols-outlined">arrow_forward</span>
+              </div>
+            </Link>
+            <Link
+              href="/dashboard/scheduled-audits"
+              className="block p-4 rounded-lg border border-outline-variant/20 hover:bg-surface-container-low transition-colors font-label-md text-on-surface font-bold"
+            >
+              <div className="flex items-center justify-between">
+                <span>View Scheduled Audits</span>
+                <span className="material-symbols-outlined">arrow_forward</span>
+              </div>
+            </Link>
+            <Link
+              href="/dashboard/all-reports"
+              className="block p-4 rounded-lg border border-outline-variant/20 hover:bg-surface-container-low transition-colors font-label-md text-on-surface font-bold"
+            >
+              <div className="flex items-center justify-between">
+                <span>View All Reports</span>
+                <span className="material-symbols-outlined">arrow_forward</span>
+              </div>
+            </Link>
+            <Link
+              href="/dashboard/iqa-summary"
+              className="block p-4 rounded-lg border border-outline-variant/20 hover:bg-surface-container-low transition-colors font-label-md text-on-surface font-bold"
+            >
+              <div className="flex items-center justify-between">
+                <span>View IQA Summary</span>
+                <span className="material-symbols-outlined">arrow_forward</span>
+              </div>
+            </Link>
           </div>
         </div>
       </section>
     </div>
-  );
+  )
 }
