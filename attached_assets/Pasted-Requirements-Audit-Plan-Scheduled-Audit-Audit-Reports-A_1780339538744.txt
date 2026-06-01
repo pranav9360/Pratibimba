@@ -1,0 +1,79 @@
+Requirements:
+Audit Plan
+Scheduled Audit 
+Audit Reports
+All Reports
+IQA Summary
+Dashboard
+ROLES:
+chief Auditor:
+create and edit Audit Plan
+Audit Plan:
+-each audit has a auto generated number (IQA number i.e #IQA2026XXXXXXX) this number will be shown in scheduled audit section also.
+-expected end date
+-most probable auditor
+-location(Prakalpa)
+-audit purpose
+
+the chief auditor will be able to move a single audit from audit plan to schedule audit using the schedule option
+
+Scheduled Audit (edit and update)
+-Start date End Date is updated
+-Auditor is finalized
+-everything else in the audit plan will reflect here
+-no longer in audit plan only visible in scheduled
+
+
+Auditors:
+view the Audit Plan
+view and notified about Scheduled Audit 
+-click on the scheduled audit and option will be there to create a report
+
+Create a Report
+-each report will have an auto generated report number (i.e IQR2026YYYYYYY)
+-Time he visited
+-everything should be reflected automatically
+-Automatically takes date of creating report
+-he should choose from 2 options (severity of the matter)
+            1)open for improvement
+            2)non Conformance
+-Audit findings
+-Proof (i.e images ,pdf video etc)
+-option to upload the audit report checklist(optional)
+-after he creates the report it will move to reports section and IQA summary section
+Reports section:
+-view all the audit reports with IQR number
+-Status of Audit
+     -open
+     -closed
+-keep count of no of days it is opened.
+      -it will be marked red if it is non Conformance and opened for more than 30 days
+-Based on the action taken by the Manager , auditor reviews and updates the status of audit
+
+Prakalpa Manager:
+-view the report for his Prakalpa
+-He will add action taken for open for improvement audits
+-He can not access any other function except reports for his Prakalpa.
+
+
+
+
+
+IQA Summary:
+- wrt audit numbers and report numbers
+-auDashboard:nd reports 
+- summary of all audits
+- download option for 1 to many audits and summary as a excel file
+- only details-horizontal then click one audit to show all details about that audit
+-on a double click full summary would open about the audit
+-this should be viewable by auditor and chief auditor
+
+Report Section:
+-can be edited by chief auditor (any audits)
+- Auditor can edit or update only his Prakalpa audits
+
+Dashboard :
+-it should include calculations based on IQA summary and audit plans and scheduled audits
+-can be viewed by both chief auditor and auditor.
+
+everything there should be an option to filter based on every category example Prakalpa, Auditor, Status ,Date etc.

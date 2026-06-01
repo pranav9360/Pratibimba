@@ -1,161 +1,218 @@
 import { Link } from "wouter";
-import { StatusPill } from "../components/status-pill";
-
-const recentAudits = [
-  { id: "#AUD-9921", institution: "Sarvodaya Education Trust", status: "pending" as const, date: "Oct 24, 09:12" },
-  { id: "#AUD-9918", institution: "Rural Uplift Foundation", status: "verified" as const, date: "Oct 23, 14:45" },
-  { id: "#AUD-9915", institution: "Bright Vision NGO", status: "failed" as const, date: "Oct 23, 11:30" },
-  { id: "#AUD-9910", institution: "Healthcare for All", status: "verified" as const, date: "Oct 22, 16:50" },
-];
-
-const priorityTasks = [
-  { title: "Review Escalated Case: Sarv-90", description: "Suspicious transaction logs detected in Q3 report.", due: "Due Today", urgent: true, lead: "Rajesh K." },
-  { title: "Complete Verification: AUD-9917", description: "Awaiting document signatures from regional manager.", due: "Tomorrow", urgent: false, lead: "Ananya I." },
-  { title: "Data Integrity Check: Region 4", description: "Automated flagging system requires manual override.", due: "Oct 28", urgent: false, lead: "Vikram S." },
-];
+import { useApp } from "../context/app-context";
 
 export default function DashboardPage() {
+  const { auditPlans, scheduledAudits, reports, getDaysOpen, isRedFlagged } = useApp();
+
+  const openReports = reports.filter((r) => r.status === "open");
+  const closedReports = reports.filter((r) => r.status === "closed");
+  const nonConformance = reports.filter((r) => r.severity === "non_conformance");
+  const openForImprovement = reports.filter((r) => r.severity === "open_for_improvement");
+  const redFlagged = reports.filter(isRedFlagged);
+  const activeScheduled = scheduledAudits.filter((s) => {
+    const end = new Date(s.endDate);
+    return end >= new Date();
+  });
+
+  const overallCompliance = reports.length > 0
+    ? Math.round((closedReports.length / reports.length) * 100)
+    : 0;
+
+  const avgDaysOpen = openReports.length > 0
+    ? Math.round(openReports.reduce((acc, r) => acc + getDaysOpen(r), 0) / openReports.length)
+    : 0;
+
   return (
     <div className="p-8 space-y-8">
-      <section className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <p className="font-label-md text-on-surface-variant/70 font-medium">Total Audits</p>
-          <div className="flex items-end justify-between mt-1">
-            <h3 className="font-display-lg text-on-surface">1,284</h3>
-            <span className="text-primary font-data-mono font-label-md">+4.2%</span>
-          </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-headline-md text-on-surface">IQA Dashboard</h2>
+          <p className="font-body-md text-on-surface-variant mt-0.5">Overview of audit plans, schedules, and compliance status.</p>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <p className="font-label-md text-on-surface-variant/70 font-medium">Pending</p>
-          <div className="flex items-end justify-between mt-1">
-            <h3 className="font-display-lg text-secondary">42</h3>
-            <div className="w-8 h-1.5 bg-secondary-fixed rounded-full overflow-hidden">
-              <div className="bg-secondary h-full w-[35%]" />
+        <div className="font-data-mono text-[11px] text-on-surface-variant/60 bg-surface-container-low px-3 py-2 rounded-lg">
+          {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {[
+          { label: "Audit Plans", value: auditPlans.length, icon: "event_note", color: "text-secondary", border: "border-l-secondary" },
+          { label: "Scheduled", value: scheduledAudits.length, icon: "calendar_month", color: "text-primary", border: "border-l-primary" },
+          { label: "Active Audits", value: activeScheduled.length, icon: "pending_actions", color: "text-on-secondary-container", border: "border-l-on-secondary-container" },
+          { label: "Open Reports", value: openReports.length, icon: "fact_check", color: "text-on-surface", border: "border-l-outline-variant" },
+          { label: "Non-Conformance", value: nonConformance.length, icon: "error_outline", color: "text-error", border: "border-l-error" },
+          { label: "🚨 Red Flagged", value: redFlagged.length, icon: "flag", color: "text-error font-black", border: "border-l-error bg-error/5" },
+        ].map((stat) => (
+          <div key={stat.label} className={`bg-white p-4 rounded-xl shadow-soft border-l-4 ${stat.border}`}>
+            <div className="flex justify-between items-start">
+              <p className="font-label-md text-on-surface-variant/80 leading-tight">{stat.label}</p>
+              <span className={`material-symbols-outlined text-[18px] opacity-40 ${stat.color}`}>{stat.icon}</span>
             </div>
+            <p className={`font-display-lg mt-1 ${stat.color}`}>{stat.value}</p>
           </div>
-        </div>
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <p className="font-label-md text-on-surface-variant/70 font-medium">Verified</p>
-          <div className="flex items-end justify-between mt-1">
-            <h3 className="font-display-lg text-on-primary-fixed-variant">942</h3>
-            <span className="material-symbols-outlined text-on-primary-fixed-variant filled">check_circle</span>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <p className="font-label-md text-on-surface-variant/70 font-medium">Failed</p>
-          <div className="flex items-end justify-between mt-1">
-            <h3 className="font-display-lg text-error">30</h3>
-            <span className="text-error font-label-md font-bold">High</span>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <p className="font-label-md text-on-surface-variant/70 font-medium">Escalated</p>
-          <div className="flex items-end justify-between mt-1">
-            <h3 className="font-display-lg text-tertiary">7</h3>
-            <div className="flex -space-x-2">
-              <div className="w-6 h-6 rounded-full border-2 border-white bg-on-tertiary-fixed text-[10px] flex items-center justify-center text-white">MK</div>
-              <div className="w-6 h-6 rounded-full border-2 border-white bg-secondary text-[10px] flex items-center justify-center text-white">JP</div>
-            </div>
-          </div>
-        </div>
+        ))}
       </section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="font-headline-sm">Monthly Audit Trends</h2>
-            <div className="flex gap-2">
-              <button className="px-3 py-1 font-label-md font-bold bg-surface-container text-primary rounded-full">Last 6 Months</button>
-              <button className="px-3 py-1 font-label-md font-medium text-on-surface-variant/60 hover:bg-surface-container rounded-full transition-all">Yearly</button>
-            </div>
-          </div>
-          <div className="h-[200px] w-full relative flex items-end">
-            <svg className="w-full h-full" viewBox="0 0 800 200" preserveAspectRatio="none">
-              <path d="M0,180 L100,140 L200,160 L300,90 L400,110 L500,40 L600,60 L700,20 L800,40 L800,200 L0,200 Z" fill="rgba(163, 57, 0, 0.08)" />
-              <path d="M0,180 L100,140 L200,160 L300,90 L400,110 L500,40 L600,60 L700,20 L800,40" fill="none" stroke="#a33900" strokeWidth="3" strokeLinecap="round" />
-              <circle cx="500" cy="40" r="4" fill="#a33900" />
-            </svg>
-          </div>
-          <div className="flex justify-between px-4 mt-4 font-data-mono font-label-md text-on-surface-variant/40">
-            <span>JAN</span><span>FEB</span><span>MAR</span><span>APR</span><span>MAY</span><span>JUN</span><span>JUL</span>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10 flex flex-col items-center justify-center text-center">
-          <h2 className="font-headline-sm mb-6 w-full text-left">Completion Goal</h2>
-          <div className="relative w-40 h-40 flex items-center justify-center mb-4">
-            <svg className="w-full h-full transform -rotate-90">
-              <circle cx="80" cy="80" r="70" fill="transparent" stroke="currentColor" strokeWidth="12" className="text-surface-container-high" />
-              <circle cx="80" cy="80" r="70" fill="transparent" stroke="currentColor" strokeWidth="12" strokeDasharray="439.8" strokeDashoffset="110" strokeLinecap="round" className="text-primary" />
+      {/* Row 2 */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Compliance Ring */}
+        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10 flex flex-col items-center justify-center gap-4">
+          <h3 className="font-headline-sm w-full">Closure Rate</h3>
+          <div className="relative w-36 h-36">
+            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+              <circle cx="18" cy="18" r="14" fill="transparent" stroke="currentColor" strokeWidth="4" className="text-surface-container-high" />
+              <circle cx="18" cy="18" r="14" fill="transparent" stroke="currentColor" strokeWidth="4"
+                strokeDasharray={`${overallCompliance * 87.96 / 100} 87.96`}
+                strokeLinecap="round"
+                className={overallCompliance >= 70 ? "text-secondary" : overallCompliance >= 40 ? "text-primary" : "text-error"}
+              />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-display-lg text-[32px] text-on-surface">75%</span>
-              <span className="font-label-md text-on-surface-variant/60 font-medium">Compliance Rate</span>
+              <span className="font-display-lg text-[28px] text-on-surface">{overallCompliance}%</span>
+              <span className="font-label-md text-on-surface-variant/60 text-[10px]">CLOSED</span>
             </div>
           </div>
-          <p className="font-body-md text-on-surface-variant/70 italic px-6">
-            &quot;Maintain 85% to reach Tier-1 Institution status.&quot;
-          </p>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden flex flex-col">
-          <div className="p-6 flex justify-between items-center border-b border-outline-variant/5">
-            <h2 className="font-headline-sm">Recent Audit Activities</h2>
-            <Link href="/audits" className="text-primary font-label-md font-bold hover:underline">View All</Link>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left font-label-md text-on-surface-variant/60 bg-surface-container-lowest">
-                  <th className="py-4 px-6">AUDIT ID</th>
-                  <th className="py-4 px-6">INSTITUTION</th>
-                  <th className="py-4 px-6">STATUS</th>
-                  <th className="py-4 px-6 text-right">DATE</th>
-                </tr>
-              </thead>
-              <tbody className="font-body-md">
-                {recentAudits.map((audit, idx) => (
-                  <tr key={audit.id} className={`hover:bg-primary/5 transition-colors cursor-pointer ${idx % 2 === 1 ? "bg-zebra" : ""}`}>
-                    <td className="py-4 px-6 font-data-mono">{audit.id}</td>
-                    <td className="py-4 px-6 font-medium">{audit.institution}</td>
-                    <td className="py-4 px-6"><StatusPill status={audit.status} /></td>
-                    <td className="py-4 px-6 text-right font-data-mono text-on-surface-variant/60">{audit.date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="w-full grid grid-cols-2 gap-3 text-center">
+            <div className="bg-surface-container-lowest rounded-lg p-2">
+              <p className="font-display-lg text-[22px] text-secondary">{closedReports.length}</p>
+              <p className="font-label-md text-on-surface-variant/70">Closed</p>
+            </div>
+            <div className="bg-surface-container-lowest rounded-lg p-2">
+              <p className="font-display-lg text-[22px] text-primary">{openReports.length}</p>
+              <p className="font-label-md text-on-surface-variant/70">Open</p>
+            </div>
           </div>
         </div>
 
+        {/* Severity Breakdown */}
         <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="font-headline-sm">Priority Tasks</h2>
-            <div className="flex -space-x-2">
-              <span className="w-8 h-8 rounded-full border-2 border-white bg-primary/20 text-primary font-bold text-[10px] flex items-center justify-center">12+</span>
+          <h3 className="font-headline-sm mb-5">Severity Breakdown</h3>
+          <div className="space-y-4">
+            <div>
+              <div className="flex justify-between font-label-md mb-1">
+                <span className="text-error font-bold">Non-Conformance</span>
+                <span>{nonConformance.length} ({reports.length ? Math.round(nonConformance.length / reports.length * 100) : 0}%)</span>
+              </div>
+              <div className="h-3 bg-surface-container rounded-full overflow-hidden">
+                <div className="bg-error h-full rounded-full" style={{ width: `${reports.length ? nonConformance.length / reports.length * 100 : 0}%` }} />
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between font-label-md mb-1">
+                <span className="text-primary font-bold">Open for Improvement</span>
+                <span>{openForImprovement.length} ({reports.length ? Math.round(openForImprovement.length / reports.length * 100) : 0}%)</span>
+              </div>
+              <div className="h-3 bg-surface-container rounded-full overflow-hidden">
+                <div className="bg-primary h-full rounded-full" style={{ width: `${reports.length ? openForImprovement.length / reports.length * 100 : 0}%` }} />
+              </div>
             </div>
           </div>
-          <div className="space-y-4 h-[280px] overflow-y-auto custom-scrollbar pr-2">
-            {priorityTasks.map((task, idx) => (
-              <div key={idx} className="p-4 bg-surface-container-lowest border border-outline-variant/20 rounded-lg flex items-start gap-4 group cursor-pointer hover:border-primary/40 transition-all">
-                <div className={`mt-1 w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${task.urgent ? "bg-tertiary-container/10 text-tertiary" : "bg-secondary/10 text-secondary"}`}>
-                  <span className="material-symbols-outlined">{task.urgent ? "priority_high" : "task"}</span>
+          <div className="mt-6 p-4 bg-error/5 rounded-lg border border-error/20 flex items-center gap-3">
+            <span className="material-symbols-outlined text-error">flag</span>
+            <div>
+              <p className="font-label-md font-bold text-error">{redFlagged.length} Red-Flagged Reports</p>
+              <p className="text-[11px] text-on-surface-variant/70">Non-Conformance open &gt;30 days</p>
+            </div>
+          </div>
+          <div className="mt-3 p-3 bg-surface-container-low rounded-lg flex items-center gap-3">
+            <span className="material-symbols-outlined text-on-surface-variant/60">timer</span>
+            <div>
+              <p className="font-label-md font-bold text-on-surface">Avg. {avgDaysOpen} days open</p>
+              <p className="text-[11px] text-on-surface-variant/70">Across all open reports</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="bg-white p-6 rounded-xl shadow-soft border border-outline-variant/10">
+          <div className="flex justify-between items-center mb-5">
+            <h3 className="font-headline-sm">Recent Reports</h3>
+            <Link href="/all-reports" className="font-label-md text-primary hover:underline">View All</Link>
+          </div>
+          <div className="space-y-3">
+            {reports.slice(0, 4).map((report) => (
+              <div key={report.id} className={`flex items-start gap-3 p-3 rounded-lg border ${isRedFlagged(report) ? "border-error/40 bg-error/5" : "border-outline-variant/20"}`}>
+                <span className={`material-symbols-outlined text-[16px] mt-0.5 ${report.severity === "non_conformance" ? "text-error" : "text-primary"}`}>
+                  {report.severity === "non_conformance" ? "error_outline" : "info"}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-data-mono text-[11px] font-bold text-on-surface truncate">{report.iqrNumber}</p>
+                  <p className="font-label-md text-on-surface-variant/70 truncate">{report.prakalpa}</p>
                 </div>
-                <div className="flex-1">
-                  <p className="font-bold font-body-md text-on-surface group-hover:text-primary transition-colors">{task.title}</p>
-                  <p className="font-label-md text-on-surface-variant/70 mt-0.5 line-clamp-1">{task.description}</p>
-                  <div className="mt-4 flex items-center gap-4">
-                    <span className={`font-data-mono text-[11px] px-2 py-0.5 rounded ${task.urgent ? "text-tertiary bg-tertiary/5" : "text-secondary bg-secondary/5"}`}>{task.due}</span>
-                    <span className="flex items-center gap-1 text-on-surface-variant/40 text-[11px] font-medium">
-                      <span className="material-symbols-outlined text-[14px]">account_circle</span>
-                      Lead: {task.lead}
-                    </span>
-                  </div>
-                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${report.status === "open" ? "bg-primary/10 text-primary" : "bg-secondary/10 text-secondary"}`}>
+                  {report.status}
+                </span>
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Audit Plans & Scheduled */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
+          <div className="p-5 border-b border-outline-variant/10 flex justify-between items-center">
+            <h3 className="font-headline-sm">Pending Audit Plans</h3>
+            <Link href="/audit-plan" className="font-label-md text-primary hover:underline">View All ({auditPlans.length})</Link>
+          </div>
+          {auditPlans.length === 0 ? (
+            <div className="p-8 text-center text-on-surface-variant/50 font-body-md">No audit plans pending</div>
+          ) : (
+            <div className="divide-y divide-outline-variant/10">
+              {auditPlans.slice(0, 3).map((plan) => (
+                <div key={plan.id} className="p-4 flex items-center gap-4">
+                  <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-secondary text-[16px]">event_note</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-data-mono text-[11px] text-primary font-bold">{plan.iqaNumber}</p>
+                    <p className="font-body-md font-medium text-on-surface truncate">{plan.prakalpa}</p>
+                    <p className="font-label-md text-on-surface-variant/70 truncate">{plan.purpose}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-data-mono text-[11px] text-on-surface-variant/60">Due</p>
+                    <p className="font-label-md font-bold text-on-surface">{new Date(plan.expectedEndDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
+          <div className="p-5 border-b border-outline-variant/10 flex justify-between items-center">
+            <h3 className="font-headline-sm">Scheduled Audits</h3>
+            <Link href="/scheduled-audits" className="font-label-md text-primary hover:underline">View All ({scheduledAudits.length})</Link>
+          </div>
+          {scheduledAudits.length === 0 ? (
+            <div className="p-8 text-center text-on-surface-variant/50 font-body-md">No scheduled audits</div>
+          ) : (
+            <div className="divide-y divide-outline-variant/10">
+              {scheduledAudits.slice(0, 3).map((audit) => {
+                const now = new Date();
+                const start = new Date(audit.startDate);
+                const end = new Date(audit.endDate);
+                const isOngoing = start <= now && end >= now;
+                const isUpcoming = start > now;
+                return (
+                  <div key={audit.id} className="p-4 flex items-center gap-4">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isOngoing ? "bg-primary/10" : "bg-surface-container"}`}>
+                      <span className={`material-symbols-outlined text-[16px] ${isOngoing ? "text-primary" : "text-on-surface-variant"}`}>calendar_month</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-data-mono text-[11px] text-primary font-bold">{audit.iqaNumber}</p>
+                      <p className="font-body-md font-medium text-on-surface truncate">{audit.prakalpa}</p>
+                      <p className="font-label-md text-on-surface-variant/70">{audit.finalAuditor}</p>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${isOngoing ? "bg-primary/10 text-primary" : isUpcoming ? "bg-secondary/10 text-secondary" : "bg-surface-container text-on-surface-variant"}`}>
+                      {isOngoing ? "Ongoing" : isUpcoming ? "Upcoming" : "Completed"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
     </div>
