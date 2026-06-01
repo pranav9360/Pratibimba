@@ -207,3 +207,53 @@ export async function getProofDocuments(findingId: number) {
     .where(eq(proofDocuments.findingId, findingId))
     .orderBy(desc(proofDocuments.uploadedAt))
 }
+
+// GET REPORTS WITH AUDIT PLAN DETAILS
+export async function getAuditReportsWithDetails() {
+  const reports = await db
+    .select()
+    .from(auditReports)
+    .orderBy(desc(auditReports.createdAt))
+  
+  const enriched = await Promise.all(
+    reports.map(async (report) => {
+      const plan = await db
+        .select()
+        .from(auditPlans)
+        .where(eq(auditPlans.id, report.auditPlanId))
+        .limit(1)
+      
+      const auditFindings = await db
+        .select()
+        .from(findings)
+        .where(eq(findings.reportId, report.id))
+      
+      return {
+        ...report,
+        plan: plan[0],
+        findings: auditFindings,
+      }
+    })
+  )
+  
+  return enriched
+}
+
+// GET ALL DATA FOR DASHBOARD
+export async function getAllAuditData() {
+  const [plans, scheduled, reports, prakalpasData, auditorsData] = await Promise.all([
+    getAuditPlans(),
+    getScheduledAudits(),
+    getAuditReportsWithDetails(),
+    getPrakalpas(),
+    getAuditors(),
+  ])
+  
+  return {
+    plans,
+    scheduled,
+    reports,
+    prakalpas: prakalpasData,
+    auditors: auditorsData,
+  }
+}

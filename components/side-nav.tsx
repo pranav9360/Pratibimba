@@ -11,11 +11,8 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: "dashboard" },
-  { label: "Audit Plan", href: "/dashboard/audit-plan", icon: "event" },
-  { label: "Scheduled Audits", href: "/dashboard/scheduled-audits", icon: "calendar_today" },
-  { label: "All Reports", href: "/dashboard/all-reports", icon: "assessment" },
-  { label: "IQA Summary", href: "/dashboard/iqa-summary", icon: "summary" },
+  { label: "Audit Management", href: "/dashboard/audit", icon: "dashboard" },
+  { label: "Dashboard", href: "/dashboard", icon: "analytics" },
 ];
 
 export function SideNav() {
@@ -58,14 +55,14 @@ export function SideNav() {
         })}
       </nav>
 
-      {/* New Audit Plan Button */}
+      {/* New Audit Button */}
       <div className="px-6 mt-auto">
         <Link
-          href="/dashboard/audit-plan"
+          href="/dashboard/audit"
           className="w-full py-3 bg-primary text-on-primary font-bold rounded-lg flex items-center justify-center gap-2 active:scale-95 duration-150 shadow-lg hover:bg-primary-container transition-colors"
         >
           <span className="material-symbols-outlined">add</span>
-          <span className="font-label-md">New Audit Plan</span>
+          <span className="font-label-md">Go to Audits</span>
         </Link>
       </div>
     </aside>
