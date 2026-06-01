@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Pratibimba | Audit Management Platform"
+version = "1.0.0"
+id = "artifacts/pratibimba"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18227
+
+[services.development]
+run = "pnpm --filter @workspace/pratibimba run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/pratibimba", "run", "build" ]
+publicDir = "artifacts/pratibimba/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18227"
+BASE_PATH = "/"
