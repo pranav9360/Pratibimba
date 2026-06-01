@@ -1,12 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import {
-  getAuditPlans,
-  getScheduledAudits,
-  getAuditReports,
-  getPrakalpas,
-} from '@/app/actions/audits'
 import Link from 'next/link'
 
 interface AuditPlan {
@@ -42,12 +36,13 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
+        const { getAuditPlans, getScheduledAudits, getAuditReports, getPrakalpas } = await import('@/app/actions/audits')
         const [plansData, scheduledData, reportsData, prakalpasData] =
           await Promise.all([
-            getAuditPlans(),
-            getScheduledAudits(),
-            getAuditReports(),
-            getPrakalpas(),
+            getAuditPlans().catch(() => []),
+            getScheduledAudits().catch(() => []),
+            getAuditReports().catch(() => []),
+            getPrakalpas().catch(() => []),
           ])
 
         setAuditPlans(plansData)

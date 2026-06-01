@@ -11,7 +11,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: "Audit Management", href: "/dashboard/audit", icon: "dashboard" },
+  { label: "Audit Management", href: "/audit-management", icon: "dashboard" },
   { label: "Dashboard", href: "/dashboard", icon: "analytics" },
 ];
 
@@ -58,7 +58,7 @@ export function SideNav() {
       {/* New Audit Button */}
       <div className="px-6 mt-auto">
         <Link
-          href="/dashboard/audit"
+          href="/audit-management"
           className="w-full py-3 bg-primary text-on-primary font-bold rounded-lg flex items-center justify-center gap-2 active:scale-95 duration-150 shadow-lg hover:bg-primary-container transition-colors"
         >
           <span className="material-symbols-outlined">add</span>
