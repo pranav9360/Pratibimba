@@ -11,8 +11,11 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: "Audit Management", href: "/audit-management", icon: "dashboard" },
   { label: "Dashboard", href: "/dashboard", icon: "analytics" },
+  { label: "Audit Plan", href: "/dashboard/audit-plan", icon: "event_note" },
+  { label: "Scheduled Audits", href: "/dashboard/scheduled-audits", icon: "calendar_today" },
+  { label: "All Reports", href: "/dashboard/all-reports", icon: "assessment" },
+  { label: "IQA Summary", href: "/dashboard/iqa-summary", icon: "summarize" },
 ];
 
 export function SideNav() {
@@ -58,11 +61,11 @@ export function SideNav() {
       {/* New Audit Button */}
       <div className="px-6 mt-auto">
         <Link
-          href="/audit-management"
+          href="/dashboard/audit-plan"
           className="w-full py-3 bg-primary text-on-primary font-bold rounded-lg flex items-center justify-center gap-2 active:scale-95 duration-150 shadow-lg hover:bg-primary-container transition-colors"
         >
           <span className="material-symbols-outlined">add</span>
-          <span className="font-label-md">Go to Audits</span>
+          <span className="font-label-md">New Audit Plan</span>
         </Link>
       </div>
     </aside>
