@@ -14,6 +14,7 @@ const navItems: NavItem[] = [
   { label: "Audit Plan", href: "/audit-plan", icon: "event_note", roles: ["chief_auditor", "auditor"] },
   { label: "Scheduled Audits", href: "/scheduled-audits", icon: "calendar_month", roles: ["chief_auditor", "auditor"] },
   { label: "All Reports", href: "/all-reports", icon: "fact_check", roles: ["chief_auditor", "auditor", "prakalpa_manager"] },
+  { label: "Open Reports", href: "/open-reports", icon: "inbox", roles: ["chief_auditor", "auditor", "prakalpa_manager"] },
   { label: "IQA Summary", href: "/iqa-summary", icon: "summarize", roles: ["chief_auditor", "auditor"] },
 ];
 
@@ -69,7 +70,7 @@ export function SideNav() {
       {currentUser.role === "chief_auditor" && (
         <div className="px-4 mt-auto pt-4">
           <Link
-            href="/audit-plan/new"
+            href="/audit-plan"
             className="w-full py-3 bg-primary text-on-primary font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-primary-container transition-colors shadow-lg text-sm"
           >
             <span className="material-symbols-outlined text-[18px]">add</span>

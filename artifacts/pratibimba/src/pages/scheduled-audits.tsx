@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import { useApp, PRAKALPAS, AUDITORS, type ScheduledAudit } from "../context/app-context";
+import { useApp, PRAKALPAS, AUDITORS, AUDIT_COORDINATORS, type ScheduledAudit } from "../context/app-context";
 
 interface EditScheduleModalProps {
   audit: ScheduledAudit;
@@ -24,7 +24,7 @@ function EditScheduleModal({ audit, onClose, onSave }: EditScheduleModalProps) {
         <div className="p-6 border-b border-outline-variant/10">
           <h3 className="font-headline-sm">Edit Scheduled Audit</h3>
           <p className="font-data-mono text-[11px] text-primary mt-1">{audit.iqaNumber}</p>
-          <p className="font-body-md text-on-surface-variant mt-0.5">{audit.prakalpa}</p>
+          <p className="font-body-md text-on-surface-variant mt-0.5">{audit.prakalpa}{audit.location ? ` — ${audit.location}` : ""}</p>
         </div>
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -63,6 +63,11 @@ interface ReportPromptModalProps {
 }
 
 function ReportPromptModal({ audit, onClose }: ReportPromptModalProps) {
+  const { reports } = useApp();
+  const auditReports = reports.filter((r) => r.iqaNumber === audit.iqaNumber);
+  const ncIARs = auditReports.filter((r) => r.severity === "non_conformance").length;
+  const ofiIARs = auditReports.filter((r) => r.severity === "open_for_improvement").length;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -73,7 +78,7 @@ function ReportPromptModal({ audit, onClose }: ReportPromptModalProps) {
         <div>
           <h3 className="font-headline-sm mb-1">Create Audit Report</h3>
           <p className="font-data-mono text-[12px] text-primary mb-1">{audit.iqaNumber}</p>
-          <p className="font-body-md text-on-surface-variant">{audit.prakalpa} — {audit.purpose}</p>
+          <p className="font-body-md text-on-surface-variant">{audit.prakalpa}{audit.location ? ` — ${audit.location}` : ""}</p>
         </div>
         <div className="bg-surface-container-lowest rounded-lg p-4 text-left space-y-2">
           <div className="flex justify-between font-body-md">
@@ -81,11 +86,21 @@ function ReportPromptModal({ audit, onClose }: ReportPromptModalProps) {
             <span className="font-medium text-on-surface">{audit.finalAuditor}</span>
           </div>
           <div className="flex justify-between font-body-md">
+            <span className="text-on-surface-variant">Coordinator</span>
+            <span className="font-medium text-on-surface">{audit.auditCoordinator}</span>
+          </div>
+          <div className="flex justify-between font-body-md">
             <span className="text-on-surface-variant">Period</span>
             <span className="font-medium text-on-surface">
               {new Date(audit.startDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} – {new Date(audit.endDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
             </span>
           </div>
+          {auditReports.length > 0 && (
+            <div className="flex justify-between font-body-md pt-1 border-t border-outline-variant/20">
+              <span className="text-on-surface-variant">NC IARs / OFI IARs</span>
+              <span className="font-medium text-on-surface">{ncIARs} / {ofiIARs}</span>
+            </div>
+          )}
         </div>
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 py-3 border border-outline-variant rounded-lg font-label-md">Cancel</button>
@@ -99,12 +114,16 @@ function ReportPromptModal({ audit, onClose }: ReportPromptModalProps) {
 }
 
 export default function ScheduledAuditsPage() {
-  const { scheduledAudits, currentUser, updateScheduledAudit } = useApp();
+  const { scheduledAudits, reports, currentUser, updateScheduledAudit } = useApp();
   const [editTarget, setEditTarget] = useState<ScheduledAudit | null>(null);
   const [reportTarget, setReportTarget] = useState<ScheduledAudit | null>(null);
   const [filterPrakalpa, setFilterPrakalpa] = useState("All");
   const [filterAuditor, setFilterAuditor] = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
+  const [filterCoordinator, setFilterCoordinator] = useState("All");
+  const [filterPramukh, setFilterPramukh] = useState("");
+  const [filterPlanPassword, setFilterPlanPassword] = useState("");
+  const [filterLocation, setFilterLocation] = useState("All");
   const [search, setSearch] = useState("");
 
   const isChief = currentUser.role === "chief_auditor";
@@ -119,18 +138,36 @@ export default function ScheduledAuditsPage() {
     return "ongoing";
   };
 
+  const allPramukhs = useMemo(() => {
+    const s = new Set<string>();
+    scheduledAudits.forEach((a) => { if (a.prakalphaPramukh) s.add(a.prakalphaPramukh); });
+    return Array.from(s);
+  }, [scheduledAudits]);
+
+  const allLocations = useMemo(() => {
+    const s = new Set<string>();
+    scheduledAudits.forEach((a) => { if (a.location) s.add(a.location); });
+    return Array.from(s);
+  }, [scheduledAudits]);
+
   const filtered = useMemo(() => {
     return scheduledAudits.filter((s) => {
       const status = getStatus(s);
+      const auditReports = reports.filter((r) => r.iqaNumber === s.iqaNumber);
+      const ncIARs = auditReports.filter((r) => r.severity === "non_conformance").length;
+      const ofiIARs = auditReports.filter((r) => r.severity === "open_for_improvement").length;
       const matchSearch = search === "" || s.iqaNumber.toLowerCase().includes(search.toLowerCase()) || s.prakalpa.toLowerCase().includes(search.toLowerCase());
       const matchPrakalpa = filterPrakalpa === "All" || s.prakalpa === filterPrakalpa;
+      const matchLocation = filterLocation === "All" || s.location === filterLocation;
       const matchAuditor = filterAuditor === "All" || s.finalAuditor === filterAuditor;
       const matchStatus = filterStatus === "All" || status === filterStatus.toLowerCase();
-      // auditor can only see their own scheduled audits
+      const matchCoordinator = filterCoordinator === "All" || s.auditCoordinator === filterCoordinator;
+      const matchPramukh = filterPramukh === "" || (s.prakalphaPramukh || "").toLowerCase().includes(filterPramukh.toLowerCase());
+      const matchPassword = filterPlanPassword === "" || (s.planPassword || "").toLowerCase().includes(filterPlanPassword.toLowerCase());
       const matchUser = !isAuditor || s.finalAuditor === currentUser.auditorName;
-      return matchSearch && matchPrakalpa && matchAuditor && matchStatus && matchUser;
+      return matchSearch && matchPrakalpa && matchLocation && matchAuditor && matchStatus && matchCoordinator && matchPramukh && matchPassword && matchUser;
     });
-  }, [scheduledAudits, search, filterPrakalpa, filterAuditor, filterStatus, isAuditor, currentUser]);
+  }, [scheduledAudits, reports, search, filterPrakalpa, filterLocation, filterAuditor, filterStatus, filterCoordinator, filterPramukh, filterPlanPassword, isAuditor, currentUser]);
 
   const statusBadge = (audit: ScheduledAudit) => {
     const s = getStatus(audit);
@@ -142,6 +179,14 @@ export default function ScheduledAuditsPage() {
     return { style: map[s], label: s.charAt(0).toUpperCase() + s.slice(1) };
   };
 
+  const clearFilters = () => {
+    setSearch(""); setFilterPrakalpa("All"); setFilterLocation("All");
+    setFilterAuditor("All"); setFilterStatus("All"); setFilterCoordinator("All");
+    setFilterPramukh(""); setFilterPlanPassword("");
+  };
+
+  const hasFilters = search || filterPrakalpa !== "All" || filterLocation !== "All" || filterAuditor !== "All" || filterStatus !== "All" || filterCoordinator !== "All" || filterPramukh || filterPlanPassword;
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex flex-wrap justify-between items-start gap-4">
@@ -152,27 +197,44 @@ export default function ScheduledAuditsPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-xl border border-outline-variant/20 shadow-soft flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px]">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[18px]">search</span>
-          <input type="text" placeholder="Search IQA number or Prakalpa..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-outline-variant/40 rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-surface-container-lowest" />
-        </div>
-        <select value={filterPrakalpa} onChange={(e) => setFilterPrakalpa(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
-          <option value="All">All Prakalpa</option>
-          {PRAKALPAS.map((p) => <option key={p}>{p}</option>)}
-        </select>
-        {!isAuditor && (
-          <select value={filterAuditor} onChange={(e) => setFilterAuditor(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
-            <option value="All">All Auditors</option>
-            {AUDITORS.map((a) => <option key={a}>{a}</option>)}
+      <div className="bg-white p-4 rounded-xl border border-outline-variant/20 shadow-soft space-y-3">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-[200px]">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[18px]">search</span>
+            <input type="text" placeholder="Search Audit ID or Prakalpa..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-outline-variant/40 rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-surface-container-lowest" />
+          </div>
+          <select value={filterPrakalpa} onChange={(e) => setFilterPrakalpa(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
+            <option value="All">All Prakalpa</option>
+            {PRAKALPAS.map((p) => <option key={p}>{p}</option>)}
           </select>
-        )}
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
-          <option value="All">All Status</option>
-          <option value="Upcoming">Upcoming</option>
-          <option value="Ongoing">Ongoing</option>
-          <option value="Completed">Completed</option>
-        </select>
+          <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
+            <option value="All">All Locations</option>
+            {allLocations.map((l) => <option key={l}>{l}</option>)}
+          </select>
+          {!isAuditor && (
+            <select value={filterAuditor} onChange={(e) => setFilterAuditor(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
+              <option value="All">All Auditors</option>
+              {AUDITORS.map((a) => <option key={a}>{a}</option>)}
+            </select>
+          )}
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
+            <option value="All">All Status</option>
+            <option value="Upcoming">Upcoming</option>
+            <option value="Ongoing">Ongoing</option>
+            <option value="Completed">Completed</option>
+          </select>
+        </div>
+        <div className="flex flex-wrap gap-3 items-center">
+          <select value={filterCoordinator} onChange={(e) => setFilterCoordinator(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
+            <option value="All">All Coordinators</option>
+            {AUDIT_COORDINATORS.map((c) => <option key={c}>{c}</option>)}
+          </select>
+          <input type="text" placeholder="Prakalpa Pramukh" value={filterPramukh} onChange={(e) => setFilterPramukh(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none w-44" />
+          <input type="text" placeholder="Plan Password" value={filterPlanPassword} onChange={(e) => setFilterPlanPassword(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none w-36" />
+          {hasFilters && (
+            <button onClick={clearFilters} className="font-label-md text-on-surface-variant/60 hover:text-primary transition-colors">Clear all</button>
+          )}
+        </div>
       </div>
 
       {/* Cards */}
@@ -185,20 +247,27 @@ export default function ScheduledAuditsPage() {
         <div className="space-y-4">
           {filtered.map((audit) => {
             const { style, label } = statusBadge(audit);
+            const auditReports = reports.filter((r) => r.iqaNumber === audit.iqaNumber);
+            const ncIARs = auditReports.filter((r) => r.severity === "non_conformance").length;
+            const ofiIARs = auditReports.filter((r) => r.severity === "open_for_improvement").length;
             return (
-              <div key={audit.id} className={`bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden`}>
+              <div key={audit.id} className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
                 <div className="p-5 flex flex-wrap items-start gap-4">
                   <div className="flex-1 min-w-0 space-y-2">
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="font-data-mono text-[12px] text-primary font-bold">{audit.iqaNumber}</span>
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${style}`}>{label}</span>
                     </div>
-                    <h3 className="font-headline-sm text-on-surface">{audit.prakalpa}</h3>
+                    <h3 className="font-headline-sm text-on-surface">{audit.prakalpa}{audit.location ? <span className="font-body-md text-on-surface-variant"> — {audit.location}</span> : ""}</h3>
                     <p className="font-body-md text-on-surface-variant">{audit.purpose}</p>
-                    <div className="flex flex-wrap gap-6 pt-1">
+                    <div className="flex flex-wrap gap-4 pt-1">
                       <div className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60">person</span>
                         <span className="font-label-md text-on-surface-variant">{audit.finalAuditor}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60">manage_accounts</span>
+                        <span className="font-label-md text-on-surface-variant">{audit.auditCoordinator}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60">date_range</span>
@@ -207,10 +276,27 @@ export default function ScheduledAuditsPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60">event</span>
-                        <span className="font-label-md text-on-surface-variant/70">Scheduled: {new Date(audit.scheduledDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</span>
+                        <span className="material-symbols-outlined text-[16px] text-on-surface-variant/60">lock</span>
+                        <span className="font-data-mono text-[11px] text-on-surface-variant">{audit.planPassword}</span>
                       </div>
                     </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {(audit.auditAreas || []).map((area) => (
+                        <span key={area} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-[11px] font-medium">{area}</span>
+                      ))}
+                    </div>
+                    {auditReports.length > 0 && (
+                      <div className="flex gap-3 pt-1">
+                        <span className="flex items-center gap-1 font-label-md text-[11px]">
+                          <span className="w-2 h-2 rounded-full bg-error" />
+                          NC IARs: <strong>{ncIARs}</strong>
+                        </span>
+                        <span className="flex items-center gap-1 font-label-md text-[11px]">
+                          <span className="w-2 h-2 rounded-full bg-primary" />
+                          OFI IARs: <strong>{ofiIARs}</strong>
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {(isAuditor && audit.finalAuditor === currentUser.auditorName) && (
@@ -232,7 +318,6 @@ export default function ScheduledAuditsPage() {
                     )}
                   </div>
                 </div>
-                {/* Progress bar for date range */}
                 {(() => {
                   const now = new Date().getTime();
                   const start = new Date(audit.startDate).getTime();

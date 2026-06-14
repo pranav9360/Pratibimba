@@ -13,6 +13,7 @@ import DashboardPage from "./pages/dashboard";
 import AuditPlanPage from "./pages/audit-plan";
 import ScheduledAuditsPage from "./pages/scheduled-audits";
 import AllReportsPage from "./pages/all-reports";
+import OpenReportsPage from "./pages/open-reports";
 import CreateReportPage from "./pages/create-report";
 import IQASummaryPage from "./pages/iqa-summary";
 
@@ -86,6 +87,7 @@ function Router() {
       <Route path="/audit-plan"><DashboardLayout><AuditPlanPage /></DashboardLayout></Route>
       <Route path="/scheduled-audits"><DashboardLayout><ScheduledAuditsPage /></DashboardLayout></Route>
       <Route path="/all-reports"><DashboardLayout><AllReportsPage /></DashboardLayout></Route>
+      <Route path="/open-reports"><DashboardLayout><OpenReportsPage /></DashboardLayout></Route>
       <Route path="/create-report/:id"><DashboardLayout><CreateReportPage /></DashboardLayout></Route>
       <Route path="/iqa-summary"><DashboardLayout><IQASummaryPage /></DashboardLayout></Route>
 
