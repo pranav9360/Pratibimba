@@ -1,0 +1,28 @@
+new audit: 
+auto input audit id in this page
+prakalpa(eg. yoga kendra, school etc) with new option
+then based on selected prakalpa locations shud be shown with new option
+replace expected start date to 'Audit planned date'
+add audit areas(with dropdown)
+Plan password add
+
+features in theirs- audit id, praklapa[new- prakalpa, prakalpa pramukh,, prakalpa pramukh email, pramukh senior email,(not compulsory-  auditors, auditor email, auditor phone number)], location(not compulsory), audit planned date, audit coordinator, planpassword
+
+for audit plan page- download option
+filters- audit id, prakalpa, location, audit plan id, audit coordinator, status, planpassword
+
+for scheduled audit- filters 
+audit id, prakalpa, location, audit coordinator, status, planpassword, prakalpa pramukh, NC IARs, OFI IARs, IQA summary report, Planpassword, audit areas
+
+all reports- download, filters- audit id, report id, prakalpa, location, prakalpa pramukh, internal audit date, audit area, audit findings, classification(ofi and nc), audit coordinator, status, corrective action, date closed, due date, IQA report pdf
+add new report- auto generated report id(IARXXXX), audit id IQAN26XXX(dropdown), location(dropdown), internal audit date, audit area, audit findings, classification status. 
+To add-audit area
+
+add new section- open reports
+filters- report id, praklapa, location, internal audit date, audit area, audit findings, classification, audit coordinator, status, corrective action, date closed, due date, iqa report pdf
+
+iqa summary- as a table 
+audit id, prakalpa, location, audit planned date, audit coordinator, audit start date, audit end date, audit days, auditors, auditors, audit areas, audit completion date, classification(ofi or nc), total audit findings, status(planned schedued, etc), praklapa pramukh, NCI IARs, OFI IARs
+filters- same as column, +iqa summary report, plan password, -audit start date end end date, audit days
+
+dashboard- assessment year, number of praklapas, no of prakalpas with a audit scope, iqa coverage, numer of audits planned, avg audits per prakalpa, audits completed, total NCs reprted, total OFI reported, NCs in open status, NCs closed, % NCs closed, OVerdue NCs, Overdue NCs %, Closure rate
