@@ -23,6 +23,7 @@ app.use("/api/scheduled-audits", require("./routes/scheduledAuditRoutes"));
 app.use("/api/reports", require("./routes/reportRoutes"));
 app.use("/api/iqa-summary", require("./routes/iqaSummaryRoutes"));
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
+app.use("/api/export", require("./routes/exportRoutes"));
 
 // MongoDB connection
 mongoose.connect(process.env.MONGO_URI)
