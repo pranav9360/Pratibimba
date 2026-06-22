@@ -16,11 +16,15 @@ app.get("/", (req, res) => {
   res.send("Pratibimba backend is running");
 });
 
+// API routes
 app.use("/api/prakalpas", require("./routes/prakalpaRoutes"));
 app.use("/api/audit-plans", require("./routes/auditPlanRoutes"));
 app.use("/api/scheduled-audits", require("./routes/scheduledAuditRoutes"));
 app.use("/api/reports", require("./routes/reportRoutes"));
+app.use("/api/iqa-summary", require("./routes/iqaSummaryRoutes"));
+app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 
+// MongoDB connection
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log("MongoDB connected");
