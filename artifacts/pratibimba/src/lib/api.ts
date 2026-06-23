@@ -74,6 +74,24 @@ export type AuditPlan = {
   updatedAt?: string;
 };
 
+export type ScheduledAudit = {
+  _id: string;
+  auditId?: string;
+  auditPlanId?: string | AuditPlan | null;
+  prakalpaId: string | Prakalpa;
+  locationId?: string | Location | null;
+  auditPlannedDate?: string;
+  auditStartDate?: string;
+  auditEndDate?: string;
+  auditCoordinator?: string;
+  finalizedAuditor?: string;
+  auditPurpose?: string;
+  auditAreas?: string[];
+  status?: "scheduled" | "in_progress" | "completed";
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type CreatePrakalpaPayload = {
   name: string;
   prakalpaPramukh?: string;
@@ -102,6 +120,14 @@ export type ScheduleAuditPayload = {
   startDate: string;
   endDate: string;
   finalAuditor: string;
+};
+
+export type UpdateScheduledAuditPayload = {
+  auditStartDate?: string;
+  auditEndDate?: string;
+  finalizedAuditor?: string;
+  auditPurpose?: string;
+  status?: "scheduled" | "in_progress" | "completed";
 };
 
 export function getToken() {
@@ -170,7 +196,10 @@ export function getLocationsByPrakalpa(prakalpaId: string) {
   return apiRequest<Location[]>(`/api/prakalpas/${prakalpaId}/locations`);
 }
 
-export function createLocation(prakalpaId: string, payload: CreateLocationPayload) {
+export function createLocation(
+  prakalpaId: string,
+  payload: CreateLocationPayload
+) {
   return apiRequest<Location>(`/api/prakalpas/${prakalpaId}/locations`, {
     method: "POST",
     body: JSON.stringify(payload)
@@ -189,7 +218,7 @@ export function createAuditPlan(payload: CreateAuditPlanPayload) {
 }
 
 export function scheduleAuditPlan(planId: string, payload: ScheduleAuditPayload) {
-  return apiRequest(`/api/audit-plans/${planId}/schedule`, {
+  return apiRequest<ScheduledAudit>(`/api/audit-plans/${planId}/schedule`, {
     method: "POST",
     body: JSON.stringify({
       startDate: payload.startDate,
@@ -199,6 +228,20 @@ export function scheduleAuditPlan(planId: string, payload: ScheduleAuditPayload)
       auditEndDate: payload.endDate,
       finalizedAuditor: payload.finalAuditor
     })
+  });
+}
+
+export function getScheduledAudits() {
+  return apiRequest<ScheduledAudit[]>("/api/scheduled-audits");
+}
+
+export function updateScheduledAudit(
+  scheduledAuditId: string,
+  payload: UpdateScheduledAuditPayload
+) {
+  return apiRequest<ScheduledAudit>(`/api/scheduled-audits/${scheduledAuditId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
   });
 }
 
