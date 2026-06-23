@@ -18,6 +18,42 @@ export type LoginResponse = {
   user: AuthUser;
 };
 
+export type DashboardStats = {
+  assessmentYear: number | string;
+  numberOfPrakalpas: number;
+  numberOfPrakalpasWithAuditScope: number;
+  iqaCoverage: number;
+  numberOfAuditsPlanned: number;
+  avgAuditsPerPrakalpa: number;
+  auditsScheduled: number;
+  auditsCompleted: number;
+  totalReports: number;
+  totalNCsReported: number;
+  totalOFIReported: number;
+  ncsInOpenStatus: number;
+  ncsClosed: number;
+  ncClosedPercentage: number;
+  overdueNCs: number;
+  overdueNCsPercentage: number;
+  closureRate: number;
+};
+
+export function getToken() {
+  return localStorage.getItem("pratibimba_token");
+}
+
+export function authHeaders(): Record<string, string> {
+  const token = getToken();
+
+  if (!token) {
+    return {};
+  }
+
+  return {
+    Authorization: `Bearer ${token}`
+  };
+}
+
 async function apiRequest<T>(
   path: string,
   options: RequestInit = {}
@@ -26,7 +62,8 @@ async function apiRequest<T>(
     ...options,
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers || {})
+      ...authHeaders(),
+      ...(options.headers as Record<string, string> | undefined)
     }
   });
 
@@ -46,26 +83,16 @@ export function loginUser(payload: LoginPayload) {
   });
 }
 
+export function getDashboardStats() {
+  return apiRequest<DashboardStats>("/api/dashboard");
+}
+
 export function saveAuth(auth: LoginResponse) {
   localStorage.setItem("pratibimba_token", auth.token);
   localStorage.setItem("pratibimba_user", JSON.stringify(auth.user));
 }
 
-export function getToken() {
-  return localStorage.getItem("pratibimba_token");
-}
-
 export function logoutUser() {
   localStorage.removeItem("pratibimba_token");
   localStorage.removeItem("pratibimba_user");
-}
-
-export function authHeaders() {
-  const token = getToken();
-
-  return token
-    ? {
-        Authorization: `Bearer ${token}`
-      }
-    : {};
 }
