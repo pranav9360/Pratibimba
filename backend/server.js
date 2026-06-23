@@ -17,6 +17,7 @@ app.get("/", (req, res) => {
 });
 
 // API routes
+app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/prakalpas", require("./routes/prakalpaRoutes"));
 app.use("/api/audit-plans", require("./routes/auditPlanRoutes"));
 app.use("/api/scheduled-audits", require("./routes/scheduledAuditRoutes"));
