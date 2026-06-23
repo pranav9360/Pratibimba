@@ -1,17 +1,37 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { loginUser, saveAuth } from "../lib/api";
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+    setErrorMessage("");
+
+    const formData = new FormData(e.currentTarget);
+
+    const email = String(formData.get("identifier") || "").trim();
+    const password = String(formData.get("password") || "");
+
+    try {
+      const auth = await loginUser({
+        email,
+        password
+      });
+
+      saveAuth(auth);
       window.location.href = "/dashboard";
-    }, 1500);
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Login failed. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -40,17 +60,17 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
           <label htmlFor="identifier" className="font-label-md text-on-surface-variant block">
-            Email or Mobile Number
+            Email
           </label>
           <div className="relative group">
             <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] group-focus-within:text-primary transition-colors">
               person
             </span>
             <input
-              type="text"
+              type="email"
               id="identifier"
               name="identifier"
-              placeholder="name@company.com"
+              placeholder="chief@example.com"
               required
               className="w-full pl-11 pr-4 py-3 rounded-lg border border-gray-200 bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-body-md text-on-surface"
             />
@@ -74,7 +94,7 @@ export default function LoginPage() {
               type={showPassword ? "text" : "password"}
               id="password"
               name="password"
-              placeholder="••••••••"
+              placeholder="test123"
               required
               className="w-full pl-11 pr-11 py-3 rounded-lg border border-gray-200 bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-body-md text-on-surface"
             />
@@ -89,6 +109,12 @@ export default function LoginPage() {
             </button>
           </div>
         </div>
+
+        {errorMessage && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <input

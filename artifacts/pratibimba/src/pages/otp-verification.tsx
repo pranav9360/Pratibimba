@@ -1,114 +1,141 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 
 export default function OTPVerificationPage() {
-  const [otp, setOtp] = useState<string[]>(["", "", "", "", "", ""]);
-  const [timeLeft, setTimeLeft] = useState(60);
-  const [canResend, setCanResend] = useState(false);
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [otp, setOtp] = useState("");
+  const [secondsLeft, setSecondsLeft] = useState(60);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    if (timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-      return () => clearTimeout(timer);
-    } else {
-      setCanResend(true);
-    }
-  }, [timeLeft]);
+    const timer = window.setInterval(() => {
+      setSecondsLeft((currentValue) => {
+        if (currentValue <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
 
-  const handleChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
-    if (value && index < 5) {
-      inputRefs.current[index + 1]?.focus();
-    }
-  };
+        return currentValue - 1;
+      });
+    }, 1000);
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !otp[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-  };
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
 
-  const handleResend = () => {
-    setTimeLeft(60);
-    setCanResend(false);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleVerifyOtp = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const code = otp.join("");
-    if (code.length === 6) {
-      window.location.href = "/reset-password";
+    setErrorMessage("");
+
+    if (otp.trim().length < 4) {
+      setErrorMessage("Please enter a valid OTP.");
+      return;
     }
+
+    setIsLoading(true);
+
+    window.setTimeout(() => {
+      setIsLoading(false);
+      window.location.href = "/reset-password";
+    }, 1000);
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  const handleResendOtp = () => {
+    setSecondsLeft(60);
+    setErrorMessage("");
   };
 
   return (
-    <div className="w-full max-w-[480px]">
-      <div className="bg-surface-container-lowest rounded-xl p-8 md:p-12 border border-outline-variant/20 shadow-soft">
-        <div className="flex flex-col items-center mb-8 text-center">
-          <div className="w-16 h-16 bg-primary-fixed rounded-full flex items-center justify-center mb-6">
-            <span className="material-symbols-outlined text-primary text-[32px]">shield_person</span>
-          </div>
-          <h1 className="font-headline-md text-on-surface mb-2">Verification Required</h1>
-          <p className="font-body-md text-on-surface-variant px-4">
-            For your security, we&apos;ve sent a 6-digit code to{" "}
-            <span className="font-semibold text-on-surface">ad***@rashtrotthana.org</span>
+    <div className="w-full max-w-[440px] bg-white rounded-xl shadow-soft p-8 md:p-12 z-10 border border-outline-variant/10">
+      <div className="flex flex-col items-center text-center mb-8">
+        <div className="mb-8">
+          <img
+            src="https://lh3.googleusercontent.com/aida-public/AB6AXuDqYey4Z1UBFHG_Vs11mI5PFBpECQuPE8un9ee59nkG7fd7K7YpMZJ5HN0Cu5FnAtzXhtTiXSoWD7tP0kzqDnC0eClxQnYVTee2ylu7X4c47863YQa11kST0kKqULrUurfpNR-1ZceLSMlnMU9plS-51k1X0yplY0b3QxuyRtlXziMZWV_5QOZa3oRTbpZJJt1i96Sjt5g1dIXmSryNQEjLGzfqxEhP5NEC88Cv4lmP4GATvYJHNcLgbBewzVRUSb1-AbyARQNYSeJU"
+            alt="Rashtrotthana Group Logo"
+            width={64}
+            height={64}
+            className="rounded-lg mb-2 w-16 h-16 object-cover"
+          />
+          <p className="font-label-md text-secondary uppercase tracking-widest font-bold">
+            Rashtrotthana Group
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
-          <div className="flex justify-between gap-2 md:gap-3">
-            {otp.map((digit, index) => (
-              <input
-                key={index}
-                ref={(el) => { inputRefs.current[index] = el; }}
-                type="text"
-                inputMode="numeric"
-                maxLength={1}
-                value={digit}
-                onChange={(e) => handleChange(index, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(index, e)}
-                className="w-full aspect-square text-center font-headline-md font-bold bg-surface-container-low border border-outline-variant/50 rounded-lg transition-all focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
-              />
-            ))}
-          </div>
+        <h1 className="font-display-lg text-on-surface font-bold tracking-tight mb-2">
+          OTP Verification
+        </h1>
 
-          <div className="text-center">
-            {!canResend ? (
-              <p className="font-label-md text-on-surface-variant mb-1">
-                Resend code in{" "}
-                <span className="font-data-mono text-on-surface-variant font-medium">{formatTime(timeLeft)}</span>
-              </p>
-            ) : (
-              <button type="button" onClick={handleResend} className="text-secondary font-semibold font-label-md hover:underline">
-                Didn&apos;t receive the code? Resend
-              </button>
-            )}
-          </div>
+        <p className="font-body-md text-on-surface-variant opacity-70">
+          Enter the OTP sent to your registered email or mobile number.
+        </p>
+      </div>
 
-          <button
-            type="submit"
-            className="w-full bg-primary text-on-primary rounded-lg font-headline-sm hover:bg-primary-container transition-all active:scale-[0.98] shadow-sm py-3.5 shadow-md"
+      <form onSubmit={handleVerifyOtp} className="space-y-6">
+        <div className="space-y-2">
+          <label
+            htmlFor="otp"
+            className="font-label-md text-on-surface-variant block"
           >
-            Verify
-          </button>
-        </form>
+            Verification Code
+          </label>
 
-        <div className="mt-8 pt-6 border-t border-outline-variant/10 flex items-center justify-center gap-2 opacity-60">
-          <span className="material-symbols-outlined text-[16px] text-on-surface-variant">lock</span>
-          <span className="font-label-md text-[11px] uppercase tracking-wider text-on-surface-variant">
-            Secure AES-256 Encrypted Session
-          </span>
+          <div className="relative group">
+            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] group-focus-within:text-primary transition-colors">
+              pin
+            </span>
+
+            <input
+              type="text"
+              id="otp"
+              name="otp"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              placeholder="Enter OTP"
+              required
+              className="w-full pl-11 pr-4 py-3 rounded-lg border border-gray-200 bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none transition-all font-body-md text-on-surface tracking-widest"
+            />
+          </div>
         </div>
+
+        {errorMessage && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {errorMessage}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full text-on-primary font-headline-sm rounded-lg transition-all shadow-lg transform active:scale-[0.98] bg-[#ea580c] hover:bg-[#d44d0b] py-4 shadow-orange-500/20 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {isLoading ? "Verifying..." : "Verify OTP"}
+        </button>
+      </form>
+
+      <div className="mt-6 text-center">
+        {secondsLeft > 0 ? (
+          <p className="font-body-md text-on-surface-variant opacity-70">
+            Resend OTP in {secondsLeft}s
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={handleResendOtp}
+            className="font-label-md text-primary hover:underline transition-all"
+          >
+            Resend OTP
+          </button>
+        )}
+      </div>
+
+      <div className="mt-8 pt-6 border-t border-outline-variant/30 text-center">
+        <Link
+          href="/login"
+          className="font-label-md text-primary hover:underline transition-all"
+        >
+          Back to Login
+        </Link>
       </div>
     </div>
   );
