@@ -167,6 +167,18 @@ export type UpdateReportPayload = {
   dueDate?: string;
 };
 
+export type CreateReportPayload = {
+  scheduledAuditId: string;
+  internalAuditDate: string;
+  timeVisited: string;
+  auditArea?: string;
+  auditFindings: string;
+  classification: "OFI" | "NC";
+  dueDate?: string;
+  proofUrl?: string;
+  checklistUrl?: string;
+};
+
 export function getToken() {
   return localStorage.getItem("pratibimba_token");
 }
@@ -288,6 +300,13 @@ export function getReports() {
 
 export function getOpenReports() {
   return apiRequest<Report[]>("/api/reports/open/list");
+}
+
+export function createReport(payload: CreateReportPayload) {
+  return apiRequest<Report>("/api/reports", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export function updateReport(reportId: string, payload: UpdateReportPayload) {
