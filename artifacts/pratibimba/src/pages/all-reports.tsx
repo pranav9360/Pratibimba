@@ -1,15 +1,14 @@
 import { useState, useMemo } from "react";
-import { useApp, PRAKALPAS, AUDITORS, AUDIT_AREAS, AUDIT_COORDINATORS, type Report, type ScheduledAudit } from "../context/app-context";
+import { useApp, DOMAINS, AUDIT_AREAS, AUDIT_COORDINATORS, type Report } from "../context/app-context";
 
 function downloadCSV(reports: Report[]) {
-  const headers = ["Report ID (IAR)", "IQA Ref", "Prakalpa", "Location", "Prakalpa Pramukh", "Internal Audit Date", "Audit Area", "Audit Findings", "Classification", "Audit Coordinator", "Status", "Corrective Action", "Date Closed", "Due Date"];
+  const headers = ["Report ID (IAR)", "IQA Ref", "Domain", "Location", "Sublocation", "Prakalpa Pramukh", "Audit Date", "Auditor", "Observations", "Classification", "Coordinator", "Status", "Date Closed", "Due Date"];
   const rows = reports.map((r) => [
-    r.iarNumber, r.iqaNumber, r.prakalpa, r.location || "", r.prakalphaPramukh || "",
-    r.visitDate, r.auditArea || "", `"${(r.findings || "").replace(/"/g, '""')}"`,
+    r.iarNumber, r.iqaNumber, r.domain, r.location || "", r.sublocation || "",
+    r.prakalphaPramukh || "", r.visitDate, r.auditor,
+    `"${(r.observations || []).map((o, i) => `${i + 1}. ${o.finding}`).join(" | ").replace(/"/g, '""')}"`,
     r.severity === "non_conformance" ? "NC" : "OFI",
-    r.auditCoordinator || "", r.status,
-    `"${(r.correctiveAction || r.actionTaken || "").replace(/"/g, '""')}"`,
-    r.dateClosed || "", r.dueDate || "",
+    r.auditCoordinator || "", r.status, r.dateClosed || "", r.dueDate || "",
   ].join(","));
   const csv = [headers.join(","), ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
@@ -18,338 +17,222 @@ function downloadCSV(reports: Report[]) {
   URL.revokeObjectURL(url);
 }
 
-interface AddReportModalProps {
-  scheduledAudits: ScheduledAudit[];
+interface DetailModalProps {
+  report: Report;
   onClose: () => void;
-  onSave: (data: Omit<Report, "id" | "iarNumber" | "iqrNumber" | "createdDate" | "status">) => void;
+  canEdit: boolean;
+  onAddCA: (obsId: string, action: string) => void;
+  onCloseObs: (obsId: string) => void;
+  onCloseReport: () => void;
+  canAutoClose: boolean;
 }
 
-function AddReportModal({ scheduledAudits, onClose, onSave }: AddReportModalProps) {
-  const [form, setForm] = useState({
-    iqaNumber: scheduledAudits[0]?.iqaNumber || "",
-    location: "",
-    visitDate: new Date().toISOString().split("T")[0],
-    visitTime: "10:00 AM",
-    auditArea: AUDIT_AREAS[0],
-    findings: "",
-    severity: "open_for_improvement" as "open_for_improvement" | "non_conformance",
-    classificationStatus: "OFI",
-    dueDate: "",
-    correctiveAction: "",
-  });
+function DetailModal({ report, onClose, canEdit, onAddCA, onCloseObs, onCloseReport, canAutoClose }: DetailModalProps) {
+  const { getDaysOpen, isRedFlagged } = useApp();
+  const [editingObs, setEditingObs] = useState<string | null>(null);
+  const [caText, setCaText] = useState<Record<string, string>>({});
+  const days = getDaysOpen(report);
+  const flagged = isRedFlagged(report);
 
-  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
-
-  const selectedAudit = scheduledAudits.find((a) => a.iqaNumber === form.iqaNumber);
-  const locations = selectedAudit?.location ? [selectedAudit.location] : [];
-
-  const handleSave = () => {
-    if (!form.iqaNumber || !form.findings.trim()) return;
-    onSave({
-      iqaNumber: form.iqaNumber,
-      prakalpa: selectedAudit?.prakalpa || "",
-      location: form.location || selectedAudit?.location,
-      auditor: selectedAudit?.finalAuditor || "",
-      auditCoordinator: selectedAudit?.auditCoordinator,
-      prakalphaPramukh: selectedAudit?.prakalphaPramukh,
-      auditArea: form.auditArea,
-      visitDate: form.visitDate,
-      visitTime: form.visitTime,
-      severity: form.severity,
-      findings: form.findings,
-      classificationStatus: form.classificationStatus,
-      correctiveAction: form.correctiveAction,
-      dueDate: form.dueDate,
-      proofFiles: [],
-      hasChecklist: false,
-    });
+  const handleCASubmit = (obsId: string) => {
+    const text = caText[obsId]?.trim();
+    if (!text) return;
+    onAddCA(obsId, text);
+    setEditingObs(null);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-floating w-full max-w-xl z-10 max-h-[92vh] flex flex-col">
-        <div className="p-6 border-b border-outline-variant/10 shrink-0">
-          <h3 className="font-headline-sm">Add New Report</h3>
-          <p className="font-label-md text-on-surface-variant/60 mt-0.5">Report ID (IAR) will be auto-generated</p>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          <div>
-            <label className="font-label-md text-on-surface-variant block mb-1">Audit ID (IQA Number) <span className="text-error">*</span></label>
-            <select value={form.iqaNumber} onChange={(e) => { set("iqaNumber", e.target.value); set("location", ""); }} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-              {scheduledAudits.map((a) => (
-                <option key={a.id} value={a.iqaNumber}>{a.iqaNumber} — {a.prakalpa}</option>
-              ))}
-            </select>
-            {selectedAudit && (
-              <p className="text-[11px] text-on-surface-variant/60 mt-1">
-                {selectedAudit.prakalpa}{selectedAudit.location ? ` · ${selectedAudit.location}` : ""} · Coordinator: {selectedAudit.auditCoordinator}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="font-label-md text-on-surface-variant block mb-1">Location</label>
-            <select value={form.location} onChange={(e) => set("location", e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-              <option value="">— Select —</option>
-              {locations.map((l) => <option key={l} value={l}>{l}</option>)}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="font-label-md text-on-surface-variant block mb-1">Internal Audit Date <span className="text-error">*</span></label>
-              <input type="date" value={form.visitDate} onChange={(e) => set("visitDate", e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-            </div>
-            <div>
-              <label className="font-label-md text-on-surface-variant block mb-1">Due Date</label>
-              <input type="date" value={form.dueDate} onChange={(e) => set("dueDate", e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-            </div>
-          </div>
-
-          <div>
-            <label className="font-label-md text-on-surface-variant block mb-1">Audit Area <span className="text-error">*</span></label>
-            <select value={form.auditArea} onChange={(e) => set("auditArea", e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-              {AUDIT_AREAS.map((a) => <option key={a}>{a}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label className="font-label-md text-on-surface-variant block mb-2">Classification <span className="text-error">*</span></label>
-            <div className="flex gap-3">
-              {([["open_for_improvement", "OFI", "Open for Improvement"], ["non_conformance", "NC", "Non-Conformance"]] as const).map(([val, code, label]) => (
-                <button key={val} type="button" onClick={() => { set("severity", val); set("classificationStatus", code); }}
-                  className={`flex-1 py-2.5 rounded-lg font-label-md font-bold border-2 transition-all ${form.severity === val ? (val === "non_conformance" ? "bg-error/10 border-error text-error" : "bg-primary/10 border-primary text-primary") : "border-outline-variant text-on-surface-variant hover:bg-surface-container-low"}`}>
-                  {code} — {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="font-label-md text-on-surface-variant block mb-1">Audit Findings <span className="text-error">*</span></label>
-            <textarea value={form.findings} onChange={(e) => set("findings", e.target.value)} rows={4} placeholder="Describe the audit findings..." className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none" />
-          </div>
-
-          <div>
-            <label className="font-label-md text-on-surface-variant block mb-1">Corrective Action</label>
-            <textarea value={form.correctiveAction} onChange={(e) => set("correctiveAction", e.target.value)} rows={2} placeholder="Describe corrective action if any..." className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none" />
-          </div>
-        </div>
-        <div className="p-6 pt-0 flex gap-3 border-t border-outline-variant/10 mt-2 shrink-0">
-          <button onClick={onClose} className="flex-1 py-3 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low transition-colors">Cancel</button>
-          <button disabled={!form.iqaNumber || !form.findings.trim()} onClick={handleSave} className="flex-1 py-3 bg-primary text-on-primary rounded-lg font-label-md font-bold disabled:opacity-40">Create Report</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface ActionModalProps {
-  report: Report;
-  onClose: () => void;
-  onSave: (action: string) => void;
-}
-
-function ActionModal({ report, onClose, onSave }: ActionModalProps) {
-  const [action, setAction] = useState(report.actionTaken || "");
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-floating w-full max-w-lg z-10">
-        <div className="p-6 border-b border-outline-variant/10">
-          <h3 className="font-headline-sm">Add Action Taken</h3>
-          <p className="font-data-mono text-[11px] text-primary mt-1">{report.iarNumber}</p>
-          <p className="font-body-md text-on-surface-variant mt-0.5">{report.prakalpa}</p>
-        </div>
-        <div className="p-6 space-y-4">
-          <div className="bg-surface-container-lowest rounded-lg p-4 space-y-2">
-            <p className="font-label-md text-on-surface-variant uppercase tracking-wider">Audit Findings</p>
-            <p className="font-body-md text-on-surface">{report.findings}</p>
-          </div>
-          <div>
-            <label className="font-label-md text-on-surface-variant block mb-1">Action Taken</label>
-            <textarea value={action} onChange={(e) => setAction(e.target.value)} rows={4} placeholder="Describe the corrective action taken..." className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none" />
-          </div>
-        </div>
-        <div className="p-6 pt-0 flex gap-3">
-          <button onClick={onClose} className="flex-1 py-3 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low transition-colors">Cancel</button>
-          <button disabled={!action.trim()} onClick={() => onSave(action)} className="flex-1 py-3 bg-primary text-on-primary rounded-lg font-label-md font-bold disabled:opacity-40">Save Action</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-interface DetailModalProps {
-  report: Report;
-  onClose: () => void;
-}
-
-function DetailModal({ report, onClose }: DetailModalProps) {
-  const { getDaysOpen, isRedFlagged } = useApp();
-  const days = getDaysOpen(report);
-  const flagged = isRedFlagged(report);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-floating w-full max-w-2xl z-10 overflow-hidden max-h-[90vh] overflow-y-auto">
-        <div className={`p-6 border-b ${flagged ? "bg-error/5 border-error/20" : "border-outline-variant/10"}`}>
+      <div className="relative bg-white rounded-2xl shadow-floating w-full max-w-3xl z-10 flex flex-col max-h-[92vh]">
+        <div className={`p-6 border-b shrink-0 ${flagged ? "bg-error/5 border-error/20" : "border-outline-variant/10"}`}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-3 mb-1 flex-wrap">
-                <span className="font-data-mono text-[13px] text-primary font-black">{report.iarNumber}</span>
+                <span className="font-data-mono text-[14px] text-primary font-black">{report.iarNumber}</span>
                 <span className="font-data-mono text-[11px] text-on-surface-variant">IQA: {report.iqaNumber}</span>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${report.status === "open" ? "bg-primary/10 text-primary" : "bg-secondary/10 text-secondary"}`}>{report.status}</span>
                 {flagged && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-error/10 text-error">🚨 Red Flagged</span>}
               </div>
+              <p className="font-body-md text-on-surface-variant">{report.domain} — {report.location}{report.sublocation ? `, ${report.sublocation}` : ""}</p>
             </div>
-            <button onClick={onClose} className="p-1 hover:bg-surface-container rounded-full transition-colors">
-              <span className="material-symbols-outlined">close</span>
-            </button>
+            <button onClick={onClose} className="p-1 hover:bg-surface-container rounded-full"><span className="material-symbols-outlined">close</span></button>
           </div>
         </div>
-        <div className="p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {[
-              { label: "Prakalpa", value: report.prakalpa },
-              { label: "Location", value: report.location || "—" },
-              { label: "Prakalpa Pramukh", value: report.prakalphaPramukh || "—" },
               { label: "Auditor", value: report.auditor },
               { label: "Coordinator", value: report.auditCoordinator || "—" },
-              { label: "Audit Area", value: report.auditArea || "—" },
-              { label: "Internal Audit Date", value: new Date(report.visitDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) },
+              { label: "Prakalpa Pramukh", value: report.prakalphaPramukh || "—" },
+              { label: "Audit Date", value: new Date(report.visitDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) },
               { label: "Due Date", value: report.dueDate ? new Date(report.dueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) : "—" },
-              { label: "Date Closed", value: report.dateClosed ? new Date(report.dateClosed).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) : "—" },
               { label: "Days Open", value: report.status === "open" ? `${days} days` : "Closed" },
             ].map((item) => (
               <div key={item.label}>
-                <p className="font-label-md text-on-surface-variant/70">{item.label}</p>
+                <p className="font-label-md text-on-surface-variant/70 text-[11px]">{item.label}</p>
                 <p className="font-body-md font-semibold text-on-surface mt-0.5">{item.value}</p>
               </div>
             ))}
           </div>
+
+          {/* Observations */}
           <div>
-            <p className="font-label-md text-on-surface-variant/70 mb-1">Classification</p>
-            <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full font-label-md font-bold ${report.severity === "non_conformance" ? "bg-error/10 text-error" : "bg-primary/10 text-primary"}`}>
-              <span className="material-symbols-outlined text-[16px]">{report.severity === "non_conformance" ? "error_outline" : "info"}</span>
-              {report.severity === "non_conformance" ? "Non-Conformance (NC)" : "Open for Improvement (OFI)"}
-            </span>
-          </div>
-          <div>
-            <p className="font-label-md text-on-surface-variant/70 mb-2">Audit Findings</p>
-            <div className="bg-surface-container-lowest rounded-lg p-4 font-body-md text-on-surface leading-relaxed">{report.findings}</div>
-          </div>
-          {(report.correctiveAction || report.actionTaken) && (
-            <div>
-              <p className="font-label-md text-on-surface-variant/70 mb-2">Corrective Action</p>
-              <div className="bg-secondary/5 border border-secondary/20 rounded-lg p-4 font-body-md text-on-surface leading-relaxed">{report.correctiveAction || report.actionTaken}</div>
+            <h4 className="font-label-md text-on-surface font-bold uppercase tracking-wider mb-3">
+              Observations ({report.observations?.length || 0})
+            </h4>
+            <div className="space-y-3">
+              {(report.observations || []).map((obs) => (
+                <div key={obs.id} className={`rounded-xl border-2 p-4 ${obs.status === "closed" ? "border-secondary/20 bg-secondary/5" : obs.severity === "non_conformance" ? "border-error/30 bg-error/5" : "border-primary/20 bg-primary/5"}`}>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${obs.severity === "non_conformance" ? "bg-error text-white" : "bg-primary text-on-primary"}`}>{obs.number}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${obs.severity === "non_conformance" ? "bg-error/10 text-error" : "bg-primary/10 text-primary"}`}>
+                        {obs.severity === "non_conformance" ? "NC" : "OFI"}
+                      </span>
+                      <span className="font-label-md text-on-surface-variant/70 text-[11px]">{obs.area}</span>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${obs.status === "closed" ? "bg-secondary/10 text-secondary" : "bg-surface-container text-on-surface-variant"}`}>
+                      {obs.status === "closed" ? "Closed" : "Open"}
+                    </span>
+                  </div>
+                  <p className="font-body-md text-on-surface leading-relaxed">{obs.finding}</p>
+                  {obs.correctiveAction ? (
+                    <div className="mt-3 bg-white/70 rounded-lg p-3">
+                      <p className="font-label-md text-secondary/80 text-[11px] uppercase tracking-wider mb-1">Corrective Action</p>
+                      <p className="font-body-md text-on-surface">{obs.correctiveAction}</p>
+                      {obs.status === "open" && canEdit && (
+                        <button onClick={() => onCloseObs(obs.id)} className="mt-2 px-3 py-1.5 bg-secondary text-on-secondary rounded-lg font-label-md font-bold text-[12px]">
+                          Mark Closed
+                        </button>
+                      )}
+                    </div>
+                  ) : canEdit && report.status === "open" ? (
+                    <div className="mt-3">
+                      {editingObs === obs.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={caText[obs.id] || ""}
+                            onChange={(e) => setCaText((p) => ({ ...p, [obs.id]: e.target.value }))}
+                            rows={3}
+                            placeholder="Describe the corrective action taken..."
+                            className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 outline-none resize-none text-sm"
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={() => setEditingObs(null)} className="px-3 py-1.5 border border-outline-variant rounded-lg font-label-md text-[12px]">Cancel</button>
+                            <button onClick={() => handleCASubmit(obs.id)} disabled={!caText[obs.id]?.trim()} className="px-3 py-1.5 bg-primary text-on-primary rounded-lg font-label-md font-bold text-[12px] disabled:opacity-40">Save</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => { setEditingObs(obs.id); setCaText((p) => ({ ...p, [obs.id]: "" })); }} className="px-3 py-1.5 border-2 border-dashed border-primary/40 text-primary rounded-lg font-label-md text-[12px] hover:bg-primary/5">
+                          + Add Corrective Action
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-[11px] text-on-surface-variant/50 italic">No corrective action yet</p>
+                  )}
+                </div>
+              ))}
             </div>
-          )}
-          {report.proofFiles.length > 0 && (
+          </div>
+
+          {report.proofFiles?.length > 0 && (
             <div>
-              <p className="font-label-md text-on-surface-variant/70 mb-2">Proof / Evidence</p>
+              <p className="font-label-md text-on-surface-variant/70 mb-2 uppercase tracking-wider text-[11px]">Evidence Files</p>
               <div className="flex flex-wrap gap-2">
                 {report.proofFiles.map((f) => (
                   <div key={f} className="flex items-center gap-2 px-3 py-2 bg-secondary/5 border border-secondary/20 rounded-lg">
                     <span className="material-symbols-outlined text-secondary text-[16px]">attach_file</span>
-                    <span className="font-label-md text-secondary">{f}</span>
+                    <span className="font-label-md text-secondary text-[12px]">{f}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
-          {report.iqaReportPdf && (
-            <div className="flex items-center gap-2 text-secondary font-label-md">
-              <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
-              IQA Report: {report.iqaReportPdf}
-            </div>
-          )}
         </div>
+
+        {canEdit && report.status === "open" && (
+          <div className="p-4 border-t border-outline-variant/10 shrink-0">
+            <button
+              onClick={onCloseReport}
+              disabled={!canAutoClose}
+              title={!canAutoClose ? "Add corrective actions to all observations first" : ""}
+              className={`w-full py-3 rounded-lg font-label-md font-bold transition-all ${canAutoClose ? "bg-secondary text-on-secondary hover:brightness-110" : "bg-surface-container-high text-on-surface-variant cursor-not-allowed"}`}
+            >
+              {canAutoClose ? "Close Report" : `Close Report (${(report.observations || []).filter((o) => !o.correctiveAction.trim()).length} observations need corrective action)`}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 export default function AllReportsPage() {
-  const { reports, scheduledAudits, currentUser, getDaysOpen, isRedFlagged, isOverdue, updateReport, addActionTaken, closeReport, createReport } = useApp();
-  const [addReportOpen, setAddReportOpen] = useState(false);
-  const [actionTarget, setActionTarget] = useState<Report | null>(null);
+  const { reports, currentUser, getDaysOpen, isRedFlagged, isOverdue, addObservationCorrectiveAction, closeObservation, closeReport, canAutoClose } = useApp();
   const [detailTarget, setDetailTarget] = useState<Report | null>(null);
   const [filterAuditId, setFilterAuditId] = useState("");
   const [filterReportId, setFilterReportId] = useState("");
-  const [filterPrakalpa, setFilterPrakalpa] = useState("All");
-  const [filterLocation, setFilterLocation] = useState("All");
-  const [filterPramukh, setFilterPramukh] = useState("");
-  const [filterAuditDate, setFilterAuditDate] = useState("");
+  const [filterDomain, setFilterDomain] = useState("All");
   const [filterAuditArea, setFilterAuditArea] = useState("All");
   const [filterClassification, setFilterClassification] = useState("All");
   const [filterCoordinator, setFilterCoordinator] = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
   const [search, setSearch] = useState("");
 
-  const isChief = currentUser.role === "chief_auditor";
   const isAuditor = currentUser.role === "auditor";
   const isManager = currentUser.role === "prakalpa_manager";
+  const isCEO = currentUser.role === "ceo";
+  const canEdit = !isAuditor && !isCEO;
 
-  const allLocations = useMemo(() => {
-    const s = new Set<string>();
-    reports.forEach((r) => { if (r.location) s.add(r.location); });
-    return Array.from(s);
-  }, [reports]);
+  const allLocations = useMemo(() => [...new Set(reports.map((r) => r.location).filter(Boolean))], [reports]);
 
   const filtered = useMemo(() => {
     return reports.filter((r) => {
-      const matchSearch = search === "" || r.iarNumber.toLowerCase().includes(search.toLowerCase()) || r.iqaNumber.toLowerCase().includes(search.toLowerCase()) || r.prakalpa.toLowerCase().includes(search.toLowerCase()) || (r.findings || "").toLowerCase().includes(search.toLowerCase());
-      const matchAuditId = filterAuditId === "" || r.iqaNumber.toLowerCase().includes(filterAuditId.toLowerCase());
-      const matchReportId = filterReportId === "" || r.iarNumber.toLowerCase().includes(filterReportId.toLowerCase());
-      const matchPrakalpa = filterPrakalpa === "All" || r.prakalpa === filterPrakalpa;
-      const matchLocation = filterLocation === "All" || r.location === filterLocation;
-      const matchPramukh = filterPramukh === "" || (r.prakalphaPramukh || "").toLowerCase().includes(filterPramukh.toLowerCase());
-      const matchAuditDate = filterAuditDate === "" || r.visitDate === filterAuditDate;
+      const q = search.toLowerCase();
+      const ms = !q || r.iarNumber.toLowerCase().includes(q) || r.iqaNumber.toLowerCase().includes(q) || r.domain.toLowerCase().includes(q) || (r.findings || "").toLowerCase().includes(q);
+      const matchAuditId = !filterAuditId || r.iqaNumber.toLowerCase().includes(filterAuditId.toLowerCase());
+      const matchReportId = !filterReportId || r.iarNumber.toLowerCase().includes(filterReportId.toLowerCase());
+      const matchDomain = filterDomain === "All" || r.domain === filterDomain;
       const matchArea = filterAuditArea === "All" || r.auditArea === filterAuditArea;
       const matchClass = filterClassification === "All" || (filterClassification === "NC" ? r.severity === "non_conformance" : r.severity === "open_for_improvement");
       const matchCoord = filterCoordinator === "All" || r.auditCoordinator === filterCoordinator;
       const matchStatus = filterStatus === "All" || r.status === filterStatus.toLowerCase();
-      const matchUser = isManager ? r.prakalpa === currentUser.prakalpa : isAuditor ? r.auditor === currentUser.auditorName : true;
-      return matchSearch && matchAuditId && matchReportId && matchPrakalpa && matchLocation && matchPramukh && matchAuditDate && matchArea && matchClass && matchCoord && matchStatus && matchUser;
+      // Manager sees only their domain; auditor sees their own reports
+      const matchUser = isManager ? r.domain === currentUser.domain : isAuditor ? r.auditor === currentUser.auditorName : true;
+      return ms && matchAuditId && matchReportId && matchDomain && matchArea && matchClass && matchCoord && matchStatus && matchUser;
     });
-  }, [reports, search, filterAuditId, filterReportId, filterPrakalpa, filterLocation, filterPramukh, filterAuditDate, filterAuditArea, filterClassification, filterCoordinator, filterStatus, isManager, isAuditor, currentUser]);
+  }, [reports, search, filterAuditId, filterReportId, filterDomain, filterAuditArea, filterClassification, filterCoordinator, filterStatus, isManager, isAuditor, currentUser]);
 
   const clearFilters = () => {
-    setSearch(""); setFilterAuditId(""); setFilterReportId(""); setFilterPrakalpa("All");
-    setFilterLocation("All"); setFilterPramukh(""); setFilterAuditDate(""); setFilterAuditArea("All");
-    setFilterClassification("All"); setFilterCoordinator("All"); setFilterStatus("All");
+    setSearch(""); setFilterAuditId(""); setFilterReportId(""); setFilterDomain("All");
+    setFilterAuditArea("All"); setFilterClassification("All"); setFilterCoordinator("All"); setFilterStatus("All");
   };
+
+  const redCount = filtered.filter(isRedFlagged).length;
+  const overdueCount = filtered.filter(isOverdue).length;
 
   return (
     <div className="p-8 space-y-6">
       <div className="flex flex-wrap justify-between items-start gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">All Reports</h2>
-          <p className="font-body-md text-on-surface-variant mt-0.5">{filtered.length} reports {isManager ? `for ${currentUser.prakalpa}` : ""}</p>
+          <p className="font-body-md text-on-surface-variant mt-0.5">{filtered.length} reports{isManager ? ` — ${currentUser.domain}` : ""}</p>
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => downloadCSV(filtered)} className="flex items-center gap-2 px-4 py-2.5 border border-outline-variant rounded-lg font-label-md font-medium hover:bg-surface-container-low transition-colors">
-            <span className="material-symbols-outlined text-[18px]">download</span>
-            Download
-          </button>
-          {(isChief || isAuditor) && (
-            <button onClick={() => setAddReportOpen(true)} className="flex items-center gap-2 px-5 py-2.5 bg-primary text-on-primary rounded-lg font-label-md font-bold shadow-sm hover:brightness-110 transition-all">
-              <span className="material-symbols-outlined text-[18px]">add</span>
-              Add New Report
-            </button>
-          )}
-        </div>
+        <button onClick={() => downloadCSV(filtered)} className="flex items-center gap-2 px-4 py-2.5 border border-outline-variant rounded-lg font-label-md font-medium hover:bg-surface-container-low">
+          <span className="material-symbols-outlined text-[18px]">download</span>
+          Download
+        </button>
       </div>
 
-      {reports.filter(isRedFlagged).length > 0 && (
+      {redCount > 0 && (
         <div className="bg-error/5 border border-error/30 rounded-xl p-4 flex items-center gap-4">
           <span className="material-symbols-outlined text-error text-[24px]">flag</span>
           <div>
-            <p className="font-label-md font-bold text-error">{reports.filter(isRedFlagged).length} Non-Conformance reports open for more than 30 days</p>
-            <p className="font-label-md text-error/70">These require immediate attention.</p>
+            <p className="font-label-md font-bold text-error">{redCount} NC report{redCount > 1 ? "s" : ""} open for more than 30 days — immediate attention required</p>
+            {overdueCount > 0 && <p className="font-label-md text-error/70">{overdueCount} report{overdueCount > 1 ? "s" : ""} past due date</p>}
           </div>
         </div>
       )}
@@ -361,58 +244,51 @@ export default function AllReportsPage() {
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[18px]">search</span>
             <input type="text" placeholder="Search reports..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-outline-variant/40 rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-surface-container-lowest" />
           </div>
-          <input type="text" placeholder="Audit ID" value={filterAuditId} onChange={(e) => setFilterAuditId(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none w-36" />
+          <input type="text" placeholder="Audit ID" value={filterAuditId} onChange={(e) => setFilterAuditId(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none w-32" />
           <input type="text" placeholder="Report ID (IAR)" value={filterReportId} onChange={(e) => setFilterReportId(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none w-36" />
           {!isManager && (
-            <select value={filterPrakalpa} onChange={(e) => setFilterPrakalpa(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
-              <option value="All">All Prakalpa</option>
-              {PRAKALPAS.map((p) => <option key={p}>{p}</option>)}
+            <select value={filterDomain} onChange={(e) => setFilterDomain(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
+              <option value="All">All Domains</option>
+              {DOMAINS.map((d) => <option key={d}>{d}</option>)}
             </select>
           )}
-          <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
-            <option value="All">All Locations</option>
-            {allLocations.map((l) => <option key={l}>{l}</option>)}
-          </select>
-        </div>
-        <div className="flex flex-wrap gap-3 items-center">
-          <input type="text" placeholder="Prakalpa Pramukh" value={filterPramukh} onChange={(e) => setFilterPramukh(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none w-44" />
-          <input type="date" value={filterAuditDate} onChange={(e) => setFilterAuditDate(e.target.value)} title="Internal Audit Date" className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none" />
           <select value={filterAuditArea} onChange={(e) => setFilterAuditArea(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
-            <option value="All">All Audit Areas</option>
+            <option value="All">All Areas</option>
             {AUDIT_AREAS.map((a) => <option key={a}>{a}</option>)}
           </select>
           <select value={filterClassification} onChange={(e) => setFilterClassification(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
-            <option value="All">All Classification</option>
-            <option value="NC">NC — Non-Conformance</option>
-            <option value="OFI">OFI — Open for Improvement</option>
+            <option value="All">All Types</option>
+            <option value="NC">NC</option>
+            <option value="OFI">OFI</option>
+          </select>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
+            <option value="All">All Status</option>
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
           </select>
           <select value={filterCoordinator} onChange={(e) => setFilterCoordinator(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
             <option value="All">All Coordinators</option>
             {AUDIT_COORDINATORS.map((c) => <option key={c}>{c}</option>)}
           </select>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
-            <option value="All">All Status</option>
-            <option value="Open">Open</option>
-            <option value="Closed">Closed</option>
-          </select>
-          <button onClick={clearFilters} className="font-label-md text-on-surface-variant/60 hover:text-primary transition-colors">Clear</button>
+          {(search || filterAuditId || filterReportId || filterDomain !== "All" || filterAuditArea !== "All" || filterClassification !== "All" || filterCoordinator !== "All" || filterStatus !== "All") && (
+            <button onClick={clearFilters} className="font-label-md text-on-surface-variant/60 hover:text-primary">Clear</button>
+          )}
         </div>
       </div>
 
-      {/* Table */}
       {filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-outline-variant/10 shadow-soft p-16 flex flex-col items-center justify-center gap-4">
-          <span className="material-symbols-outlined text-[48px] text-on-surface-variant/20">fact_check</span>
+          <span className="material-symbols-outlined text-[48px] text-on-surface-variant/20">description</span>
           <p className="font-headline-sm text-on-surface-variant/40">No reports found</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-surface-container-lowest border-b border-outline-variant/20 sticky top-0">
+              <thead className="bg-surface-container-lowest border-b border-outline-variant/20">
                 <tr>
-                  {["Report ID", "Audit ID", "Prakalpa", "Location", "Pramukh", "Audit Date", "Audit Area", "Classification", "Coordinator", "Status", "Due Date", "Corrective Action", "Date Closed", "Actions"].map((h) => (
-                    <th key={h} className="px-3 py-4 font-label-md text-on-surface-variant uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  {["Report ID", "IQA Ref", "Domain", "Location", "Auditor", "Audit Date", "Obs.", "NC", "OFI", "Status", "Days Open", ""].map((h) => (
+                    <th key={h} className="px-4 py-3 font-label-md text-on-surface-variant uppercase tracking-wider whitespace-nowrap text-[11px]">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -421,60 +297,51 @@ export default function AllReportsPage() {
                   const days = getDaysOpen(report);
                   const flagged = isRedFlagged(report);
                   const overdue = isOverdue(report);
+                  const ncObs = (report.observations || []).filter((o) => o.severity === "non_conformance").length;
+                  const ofiObs = (report.observations || []).filter((o) => o.severity === "open_for_improvement").length;
+                  const openObs = (report.observations || []).filter((o) => o.status === "open").length;
                   return (
-                    <tr
-                      key={report.id}
-                      onClick={() => setDetailTarget(report)}
-                      className={`transition-colors cursor-pointer ${flagged ? "bg-error/5 hover:bg-error/10" : idx % 2 === 1 ? "bg-surface-container-lowest/50 hover:bg-surface-container-low" : "hover:bg-surface-container-low"}`}
-                    >
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-1.5">
+                    <tr key={report.id} className={`hover:bg-surface-container-low transition-colors cursor-pointer ${flagged ? "bg-error/5" : idx % 2 === 1 ? "bg-surface-container-lowest/50" : ""}`} onClick={() => setDetailTarget(report)}>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
                           {flagged && <span className="material-symbols-outlined text-error text-[14px]">flag</span>}
+                          {overdue && !flagged && <span className="material-symbols-outlined text-error/60 text-[14px]">schedule</span>}
                           <span className="font-data-mono text-[12px] text-primary font-bold">{report.iarNumber}</span>
                         </div>
                       </td>
-                      <td className="px-3 py-3 font-data-mono text-[11px] text-on-surface-variant whitespace-nowrap">{report.iqaNumber}</td>
-                      <td className="px-3 py-3 font-body-md font-medium text-on-surface whitespace-nowrap">{report.prakalpa}</td>
-                      <td className="px-3 py-3 font-body-md text-on-surface-variant whitespace-nowrap">{report.location || "—"}</td>
-                      <td className="px-3 py-3 font-body-md text-on-surface-variant whitespace-nowrap">{report.prakalphaPramukh || "—"}</td>
-                      <td className="px-3 py-3 font-data-mono text-[11px] whitespace-nowrap">{new Date(report.visitDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td>
-                      <td className="px-3 py-3 font-body-md text-on-surface-variant whitespace-nowrap">{report.auditArea || "—"}</td>
-                      <td className="px-3 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${report.severity === "non_conformance" ? "bg-error/10 text-error" : "bg-primary/10 text-primary"}`}>
-                          {report.severity === "non_conformance" ? "NC" : "OFI"}
+                      <td className="px-4 py-3 font-data-mono text-[11px] text-on-surface-variant">{report.iqaNumber}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-[10px] font-bold whitespace-nowrap">{report.domain}</span>
+                      </td>
+                      <td className="px-4 py-3 font-body-md text-on-surface-variant text-[12px] whitespace-nowrap">{report.location || "—"}</td>
+                      <td className="px-4 py-3 font-body-md text-on-surface-variant text-[12px] whitespace-nowrap">{report.auditor}</td>
+                      <td className="px-4 py-3 font-data-mono text-[11px] whitespace-nowrap">{new Date(report.visitDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`font-data-mono font-bold text-[13px] ${openObs > 0 ? "text-primary" : "text-on-surface-variant/30"}`}>{report.observations?.length || 0}</span>
+                        {openObs > 0 && <span className="font-label-md text-[10px] text-on-surface-variant/60 block">{openObs} open</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center font-data-mono font-bold text-[13px]">
+                        {ncObs > 0 ? <span className="text-error">{ncObs}</span> : <span className="text-on-surface-variant/30">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center font-data-mono font-bold text-[13px]">
+                        {ofiObs > 0 ? <span className="text-primary">{ofiObs}</span> : <span className="text-on-surface-variant/30">—</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${report.status === "open" ? (flagged ? "bg-error/10 text-error" : "bg-primary/10 text-primary") : "bg-secondary/10 text-secondary"}`}>
+                          {report.status}
                         </span>
                       </td>
-                      <td className="px-3 py-3 font-body-md text-on-surface-variant whitespace-nowrap">{report.auditCoordinator || "—"}</td>
-                      <td className="px-3 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold uppercase whitespace-nowrap ${report.status === "open" ? "bg-primary/10 text-primary" : "bg-secondary/10 text-secondary"}`}>{report.status}</span>
+                      <td className="px-4 py-3">
+                        {report.status === "open" ? (
+                          <span className={`font-data-mono text-[12px] ${days > 30 ? "text-error font-bold" : days > 14 ? "text-error/60" : "text-on-surface-variant"}`}>{days}d</span>
+                        ) : (
+                          <span className="text-secondary text-[12px]">—</span>
+                        )}
                       </td>
-                      <td className="px-3 py-3 font-data-mono text-[11px] whitespace-nowrap">
-                        {report.dueDate ? (
-                          <span className={overdue ? "text-error font-bold" : "text-on-surface-variant"}>
-                            {new Date(report.dueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
-                            {overdue && " ⚠"}
-                          </span>
-                        ) : "—"}
-                      </td>
-                      <td className="px-3 py-3 max-w-[160px]">
-                        <p className="font-label-md text-on-surface-variant line-clamp-1 text-[11px]">{report.correctiveAction || report.actionTaken || "—"}</p>
-                      </td>
-                      <td className="px-3 py-3 font-data-mono text-[11px] whitespace-nowrap text-on-surface-variant">
-                        {report.dateClosed ? new Date(report.dateClosed).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—"}
-                      </td>
-                      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-1">
-                          {isManager && report.status === "open" && (
-                            <button onClick={() => setActionTarget(report)} title="Add Action" className="p-1.5 rounded-lg hover:bg-primary/10 text-primary transition-colors">
-                              <span className="material-symbols-outlined text-[18px]">add_task</span>
-                            </button>
-                          )}
-                          {(isChief || (isAuditor && report.auditor === currentUser.auditorName)) && report.status === "open" && (
-                            <button onClick={() => closeReport(report.id)} title="Close" className="p-1.5 rounded-lg hover:bg-secondary/10 text-secondary transition-colors">
-                              <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                            </button>
-                          )}
-                        </div>
+                      <td className="px-4 py-3">
+                        <button className="p-1.5 rounded-lg hover:bg-primary/10 text-primary" onClick={(e) => { e.stopPropagation(); setDetailTarget(report); }}>
+                          <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+                        </button>
                       </td>
                     </tr>
                   );
@@ -482,32 +349,39 @@ export default function AllReportsPage() {
               </tbody>
             </table>
           </div>
-          <div className="p-4 border-t border-outline-variant/10 flex justify-between items-center font-label-md text-on-surface-variant flex-wrap gap-2">
-            <span>Showing {filtered.length} of {reports.length} reports</span>
-            <div className="flex gap-3">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary/40" />Open: {reports.filter(r => r.status === "open").length}</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-secondary/40" />Closed: {reports.filter(r => r.status === "closed").length}</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-error/60" />Flagged: {reports.filter(isRedFlagged).length}</span>
-            </div>
+          <div className="p-4 border-t border-outline-variant/10 flex gap-6 font-label-md text-on-surface-variant">
+            <span>Showing {filtered.length} of {reports.length}</span>
+            <span className="text-error">{filtered.filter(isRedFlagged).length} red flagged</span>
+            <span>{filtered.filter((r) => r.status === "closed").length} closed</span>
           </div>
         </div>
       )}
 
-      {addReportOpen && (
-        <AddReportModal
-          scheduledAudits={scheduledAudits}
-          onClose={() => setAddReportOpen(false)}
-          onSave={(data) => { createReport(data); setAddReportOpen(false); }}
+      {detailTarget && (
+        <DetailModal
+          report={detailTarget}
+          onClose={() => setDetailTarget(null)}
+          canEdit={canEdit}
+          canAutoClose={canAutoClose(detailTarget)}
+          onAddCA={(obsId, action) => {
+            addObservationCorrectiveAction(detailTarget.id, obsId, action);
+            setDetailTarget((prev) => prev ? { ...prev, observations: prev.observations.map((o) => o.id === obsId ? { ...o, correctiveAction: action } : o) } : null);
+          }}
+          onCloseObs={(obsId) => {
+            closeObservation(detailTarget.id, obsId);
+            setDetailTarget((prev) => {
+              if (!prev) return null;
+              const observations = prev.observations.map((o) => o.id === obsId ? { ...o, status: "closed" as const, dateClosed: new Date().toISOString().split("T")[0] } : o);
+              const allClosed = observations.every((o) => o.status === "closed");
+              return { ...prev, observations, status: allClosed ? "closed" as const : prev.status };
+            });
+          }}
+          onCloseReport={() => {
+            closeReport(detailTarget.id);
+            setDetailTarget(null);
+          }}
         />
       )}
-      {actionTarget && (
-        <ActionModal
-          report={actionTarget}
-          onClose={() => setActionTarget(null)}
-          onSave={(action) => { addActionTaken(actionTarget.id, action); setActionTarget(null); }}
-        />
-      )}
-      {detailTarget && <DetailModal report={detailTarget} onClose={() => setDetailTarget(null)} />}
     </div>
   );
 }

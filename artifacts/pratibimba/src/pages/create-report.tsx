@@ -35,6 +35,9 @@ export default function CreateReportPage() {
       const report = createReport({
         iqaNumber: audit.iqaNumber,
         prakalpa: audit.prakalpa,
+        domain: audit.domain,
+        location: audit.location,
+        sublocation: audit.sublocation,
         auditor: currentUser.auditorName || audit.finalAuditor,
         visitDate: new Date().toISOString().split("T")[0],
         visitTime: form.visitTime,
@@ -42,6 +45,7 @@ export default function CreateReportPage() {
         findings: form.findings,
         proofFiles: files,
         hasChecklist: form.hasChecklist,
+        observations: [],
       });
       setSubmitting(false);
       setSuccess(report.iqrNumber);

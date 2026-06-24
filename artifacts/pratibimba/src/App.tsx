@@ -11,11 +11,13 @@ import ResetPasswordPage from "./pages/reset-password";
 
 import DashboardPage from "./pages/dashboard";
 import AuditPlanPage from "./pages/audit-plan";
+import AuditCalendarPage from "./pages/audit-calendar";
 import ScheduledAuditsPage from "./pages/scheduled-audits";
 import AllReportsPage from "./pages/all-reports";
 import OpenReportsPage from "./pages/open-reports";
 import CreateReportPage from "./pages/create-report";
 import IQASummaryPage from "./pages/iqa-summary";
+import RoleAccessPage from "./pages/role-access";
 
 function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -51,7 +53,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[#f0f4ff]">
       <SideNav />
-      <main className="ml-[260px] min-h-screen flex flex-col">
+      <main className="ml-[240px] min-h-screen flex flex-col">
         <TopNav />
         <div className="flex-1">{children}</div>
       </main>
@@ -72,24 +74,23 @@ function NotFound() {
 function Router() {
   return (
     <Switch>
-      <Route path="/">
-        <Redirect to="/login" />
-      </Route>
+      <Route path="/"><Redirect to="/login" /></Route>
 
-      {/* Auth */}
       <Route path="/login"><AuthLayout><LoginPage /></AuthLayout></Route>
       <Route path="/forgot-password"><AuthLayout><ForgotPasswordPage /></AuthLayout></Route>
       <Route path="/otp-verification"><AuthLayout><OTPVerificationPage /></AuthLayout></Route>
       <Route path="/reset-password"><AuthLayout><ResetPasswordPage /></AuthLayout></Route>
 
-      {/* Main App */}
       <Route path="/dashboard"><DashboardLayout><DashboardPage /></DashboardLayout></Route>
       <Route path="/audit-plan"><DashboardLayout><AuditPlanPage /></DashboardLayout></Route>
+      <Route path="/audit-calendar"><DashboardLayout><AuditCalendarPage /></DashboardLayout></Route>
       <Route path="/scheduled-audits"><DashboardLayout><ScheduledAuditsPage /></DashboardLayout></Route>
       <Route path="/all-reports"><DashboardLayout><AllReportsPage /></DashboardLayout></Route>
       <Route path="/open-reports"><DashboardLayout><OpenReportsPage /></DashboardLayout></Route>
       <Route path="/create-report/:id"><DashboardLayout><CreateReportPage /></DashboardLayout></Route>
       <Route path="/iqa-summary"><DashboardLayout><IQASummaryPage /></DashboardLayout></Route>
+      <Route path="/role-access"><DashboardLayout><RoleAccessPage /></DashboardLayout></Route>
+      <Route path="/checklist"><DashboardLayout><div className="p-8"><h2 className="font-headline-md">Checklist — Coming Soon</h2></div></DashboardLayout></Route>
 
       <Route component={NotFound} />
     </Switch>

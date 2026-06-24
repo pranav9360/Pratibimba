@@ -5,18 +5,37 @@ import { useApp, DEMO_USERS } from "../context/app-context";
 const breadcrumbMap: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/audit-plan": "Audit Plan",
-  "/audit-plan/new": "New Audit Plan",
+  "/audit-calendar": "Audit Calendar",
   "/scheduled-audits": "Scheduled Audits",
   "/all-reports": "All Reports",
+  "/open-reports": "Open Reports",
   "/iqa-summary": "IQA Summary",
+  "/role-access": "Role Access",
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  lead_auditor: "Lead Auditor",
+  auditor: "Auditor",
+  prakalpa_manager: "Manager",
+  ceo: "CEO",
+};
+
+const ROLE_BADGE: Record<string, string> = {
+  lead_auditor: "bg-primary/10 text-primary",
+  auditor: "bg-secondary/10 text-secondary",
+  prakalpa_manager: "bg-tertiary/10 text-tertiary",
+  ceo: "bg-error/10 text-error",
 };
 
 export function TopNav() {
   const [pathname] = useLocation();
-  const { currentUser, setCurrentUser } = useApp();
+  const { currentUser, setCurrentUser, notifications, markNotificationRead, markAllNotificationsRead } = useApp();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
 
-  const getBreadcrumbs = () => {
+  const unreadCount = notifications.filter((n) => !n.read).length;
+
+  const breadcrumbs = (() => {
     if (!pathname) return [];
     const segments = pathname.split("/").filter(Boolean);
     const crumbs: { label: string; href: string }[] = [{ label: "Home", href: "/" }];
@@ -27,30 +46,17 @@ export function TopNav() {
       crumbs.push({ label, href: currentPath });
     }
     return crumbs;
-  };
+  })();
 
-  const breadcrumbs = getBreadcrumbs();
-
-  const roleLabel = {
-    chief_auditor: "Chief Auditor",
-    auditor: "Auditor",
-    prakalpa_manager: "Prakalpa Manager",
-  }[currentUser.role];
-
-  const roleBadgeColor = {
-    chief_auditor: "bg-primary/10 text-primary",
-    auditor: "bg-secondary/10 text-secondary",
-    prakalpa_manager: "bg-tertiary/10 text-tertiary",
-  }[currentUser.role];
+  const roleLabel = ROLE_LABELS[currentUser.role] ?? currentUser.role;
+  const roleBadge = ROLE_BADGE[currentUser.role] ?? "bg-surface-container text-on-surface-variant";
 
   return (
     <header className="sticky top-0 z-40 w-full h-16 bg-surface border-b border-outline-variant/20 flex justify-between items-center px-8">
       <nav className="flex items-center font-label-md text-on-surface-variant">
         {breadcrumbs.map((crumb, idx) => (
           <span key={crumb.href} className="flex items-center">
-            {idx > 0 && (
-              <span className="material-symbols-outlined text-sm mx-1.5 text-on-surface-variant/40">chevron_right</span>
-            )}
+            {idx > 0 && <span className="material-symbols-outlined text-sm mx-1.5 text-on-surface-variant/40">chevron_right</span>}
             {idx === breadcrumbs.length - 1 ? (
               <span className="text-primary font-bold">{crumb.label}</span>
             ) : (
@@ -60,16 +66,71 @@ export function TopNav() {
         ))}
       </nav>
 
-      <div className="flex items-center gap-4">
-        {/* Role indicator */}
-        <span className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${roleBadgeColor}`}>
+      <div className="flex items-center gap-3">
+        <span className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${roleBadge}`}>
           {roleLabel}
         </span>
 
-        {/* User switcher (demo) */}
+        {/* Notification Bell */}
         <div className="relative">
           <button
-            onClick={() => setShowUserMenu((s) => !s)}
+            onClick={() => { setShowNotifications((s) => !s); setShowUserMenu(false); }}
+            className="relative p-2 rounded-lg hover:bg-surface-container-low transition-colors"
+          >
+            <span className="material-symbols-outlined text-on-surface-variant text-[22px]">notifications</span>
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 w-4 h-4 bg-error text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {showNotifications && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+              <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-xl shadow-floating border border-outline-variant/20 z-50 overflow-hidden">
+                <div className="px-4 py-3 border-b border-outline-variant/10 bg-surface-container-lowest flex justify-between items-center">
+                  <p className="font-label-md text-on-surface font-bold">Notifications</p>
+                  {unreadCount > 0 && (
+                    <button onClick={markAllNotificationsRead} className="text-[11px] text-primary hover:underline font-label-md">
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                {notifications.length === 0 ? (
+                  <div className="p-6 text-center text-on-surface-variant/50 font-body-md">No notifications</div>
+                ) : (
+                  <div className="max-h-80 overflow-y-auto divide-y divide-outline-variant/10">
+                    {notifications.map((n) => (
+                      <button
+                        key={n.id}
+                        onClick={() => markNotificationRead(n.id)}
+                        className={`w-full text-left px-4 py-3 hover:bg-surface-container-low transition-colors ${!n.read ? "bg-primary/5" : ""}`}
+                      >
+                        <div className="flex gap-3 items-start">
+                          <span className={`material-symbols-outlined text-[18px] mt-0.5 shrink-0 ${n.type === "mail" ? "text-secondary" : n.type === "warning" ? "text-error" : "text-primary"}`}>
+                            {n.type === "mail" ? "mail" : n.type === "warning" ? "warning" : "info"}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-label-md ${!n.read ? "font-bold text-on-surface" : "text-on-surface-variant"}`}>{n.title}</p>
+                            <p className="font-label-md text-on-surface-variant/70 text-[11px] mt-0.5 leading-snug">{n.message}</p>
+                            <p className="font-data-mono text-[10px] text-on-surface-variant/50 mt-1">{new Date(n.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</p>
+                          </div>
+                          {!n.read && <span className="w-2 h-2 bg-primary rounded-full mt-1.5 shrink-0" />}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* User Switcher */}
+        <div className="relative">
+          <button
+            onClick={() => { setShowUserMenu((s) => !s); setShowNotifications(false); }}
             className="flex items-center gap-2 hover:bg-surface-container-low px-3 py-1.5 rounded-lg transition-all"
           >
             <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-on-secondary font-bold text-[11px]">
@@ -85,22 +146,15 @@ export function TopNav() {
           {showUserMenu && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-              <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-floating border border-outline-variant/20 z-50 overflow-hidden">
+              <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-floating border border-outline-variant/20 z-50 overflow-hidden">
                 <div className="px-4 py-3 border-b border-outline-variant/10 bg-surface-container-lowest">
                   <p className="font-label-md text-on-surface-variant uppercase tracking-wider">Switch Demo User</p>
                 </div>
                 {DEMO_USERS.map((user) => {
-                  const label = {
-                    chief_auditor: "Chief Auditor",
-                    auditor: "Auditor",
-                    prakalpa_manager: "Prakalpa Manager",
-                  }[user.role];
-                  const badge = {
-                    chief_auditor: "bg-primary/10 text-primary",
-                    auditor: "bg-secondary/10 text-secondary",
-                    prakalpa_manager: "bg-tertiary/10 text-tertiary",
-                  }[user.role];
+                  const label = ROLE_LABELS[user.role] ?? user.role;
+                  const badge = ROLE_BADGE[user.role] ?? "bg-surface-container text-on-surface-variant";
                   const isActive = currentUser.name === user.name && currentUser.role === user.role;
+                  const sub = user.domain || (user.role === "lead_auditor" ? "Lead Auditor" : "");
                   return (
                     <button
                       key={`${user.role}-${user.name}`}
@@ -112,7 +166,7 @@ export function TopNav() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-label-md font-bold text-on-surface">{user.name}</p>
-                        {user.prakalpa && <p className="text-[10px] text-on-surface-variant/70">{user.prakalpa}</p>}
+                        {sub && <p className="text-[10px] text-on-surface-variant/70">{sub}</p>}
                       </div>
                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${badge}`}>{label}</span>
                       {isActive && <span className="material-symbols-outlined text-primary text-[16px]">check</span>}

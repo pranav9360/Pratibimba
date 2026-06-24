@@ -11,9 +11,9 @@ export default function OTPVerificationPage() {
     if (timeLeft > 0) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
-    } else {
-      setCanResend(true);
     }
+    setCanResend(true);
+    return undefined;
   }, [timeLeft]);
 
   const handleChange = (index: number, value: string) => {
