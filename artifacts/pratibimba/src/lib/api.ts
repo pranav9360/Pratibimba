@@ -92,6 +92,30 @@ export type ScheduledAudit = {
   updatedAt?: string;
 };
 
+export type Report = {
+  _id: string;
+  reportId: string;
+  auditId?: string;
+  scheduledAuditId?: string | ScheduledAudit | null;
+  prakalpaId?: string | Prakalpa | null;
+  locationId?: string | Location | null;
+  internalAuditDate?: string;
+  timeVisited?: string;
+  auditArea?: string;
+  auditFindings?: string;
+  classification?: "OFI" | "NC";
+  status?: "open" | "closed";
+  correctiveAction?: string;
+  actionTakenByManager?: string;
+  dateClosed?: string;
+  dueDate?: string;
+  proofUrl?: string;
+  checklistUrl?: string;
+  iqaReportPdfUrl?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type CreatePrakalpaPayload = {
   name: string;
   prakalpaPramukh?: string;
@@ -128,6 +152,19 @@ export type UpdateScheduledAuditPayload = {
   finalizedAuditor?: string;
   auditPurpose?: string;
   status?: "scheduled" | "in_progress" | "completed";
+};
+
+export type UpdateReportPayload = {
+  internalAuditDate?: string;
+  timeVisited?: string;
+  auditArea?: string;
+  auditFindings?: string;
+  classification?: "OFI" | "NC";
+  status?: "open" | "closed";
+  correctiveAction?: string;
+  actionTakenByManager?: string;
+  dateClosed?: string;
+  dueDate?: string;
 };
 
 export function getToken() {
@@ -240,6 +277,21 @@ export function updateScheduledAudit(
   payload: UpdateScheduledAuditPayload
 ) {
   return apiRequest<ScheduledAudit>(`/api/scheduled-audits/${scheduledAuditId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getReports() {
+  return apiRequest<Report[]>("/api/reports");
+}
+
+export function getOpenReports() {
+  return apiRequest<Report[]>("/api/reports/open/list");
+}
+
+export function updateReport(reportId: string, payload: UpdateReportPayload) {
+  return apiRequest<Report>(`/api/reports/${reportId}`, {
     method: "PUT",
     body: JSON.stringify(payload)
   });
