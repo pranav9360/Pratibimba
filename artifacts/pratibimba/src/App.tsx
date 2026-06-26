@@ -18,6 +18,7 @@ import OpenReportsPage from "./pages/open-reports";
 import CreateReportPage from "./pages/create-report";
 import IQASummaryPage from "./pages/iqa-summary";
 import RoleAccessPage from "./pages/role-access";
+import UserManagementPage from "./pages/user-management";
 
 function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -90,6 +91,7 @@ function Router() {
       <Route path="/create-report/:id"><DashboardLayout><CreateReportPage /></DashboardLayout></Route>
       <Route path="/iqa-summary"><DashboardLayout><IQASummaryPage /></DashboardLayout></Route>
       <Route path="/role-access"><DashboardLayout><RoleAccessPage /></DashboardLayout></Route>
+      <Route path="/user-management"><DashboardLayout><UserManagementPage /></DashboardLayout></Route>
       <Route path="/checklist"><DashboardLayout><div className="p-8"><h2 className="font-headline-md">Checklist — Coming Soon</h2></div></DashboardLayout></Route>
 
       <Route component={NotFound} />

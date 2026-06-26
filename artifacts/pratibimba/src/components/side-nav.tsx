@@ -10,22 +10,24 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: "dashboard", roles: ["lead_auditor", "auditor", "ceo"] },
-  { label: "Audit Plan", href: "/audit-plan", icon: "event_note", roles: ["lead_auditor", "auditor"] },
-  { label: "Audit Calendar", href: "/audit-calendar", icon: "calendar_month", roles: ["lead_auditor", "auditor", "ceo"] },
-  { label: "Scheduled Audits", href: "/scheduled-audits", icon: "pending_actions", roles: ["lead_auditor", "auditor"] },
-  { label: "All Reports", href: "/all-reports", icon: "fact_check", roles: ["lead_auditor", "auditor", "prakalpa_manager", "ceo"] },
-  { label: "Open Reports", href: "/open-reports", icon: "inbox", roles: ["lead_auditor", "auditor", "prakalpa_manager", "ceo"] },
-  { label: "Checklist", href: "/checklist", icon: "checklist", roles: ["lead_auditor", "auditor"] },
-  { label: "IQA Summary", href: "/iqa-summary", icon: "summarize", roles: ["lead_auditor", "auditor", "ceo"] },
-  { label: "Role Access", href: "/role-access", icon: "admin_panel_settings", roles: ["lead_auditor"] },
+  { label: "Dashboard",       href: "/dashboard",       icon: "dashboard",            roles: ["lead_auditor", "audit_coordinator", "auditor", "prakalpa_manager"] },
+  { label: "Audit Plan",      href: "/audit-plan",      icon: "event_note",           roles: ["lead_auditor"] },
+  { label: "Audit Calendar",  href: "/audit-calendar",  icon: "calendar_month",       roles: ["lead_auditor", "audit_coordinator", "auditor"] },
+  { label: "Scheduled Audits",href: "/scheduled-audits",icon: "pending_actions",      roles: ["lead_auditor", "audit_coordinator", "auditor"] },
+  { label: "All Reports",     href: "/all-reports",     icon: "fact_check",           roles: ["lead_auditor", "audit_coordinator", "prakalpa_manager", "admin"] },
+  { label: "Open Reports",    href: "/open-reports",    icon: "inbox",                roles: ["lead_auditor", "audit_coordinator", "prakalpa_manager", "auditor"] },
+  { label: "Checklist",       href: "/checklist",       icon: "checklist",            roles: ["lead_auditor", "audit_coordinator", "auditor"] },
+  { label: "IQA Summary",     href: "/iqa-summary",     icon: "summarize",            roles: ["lead_auditor", "audit_coordinator", "admin"] },
+  { label: "User Management", href: "/user-management", icon: "manage_accounts",      roles: ["admin"] },
+  { label: "Role Access",     href: "/role-access",     icon: "admin_panel_settings", roles: ["lead_auditor", "admin"] },
 ];
 
-const ROLE_LABELS: Record<string, string> = {
-  lead_auditor: "Lead Auditor",
-  auditor: "Auditor",
-  prakalpa_manager: "Manager",
-  ceo: "CEO",
+export const ROLE_LABELS: Record<string, string> = {
+  admin:             "Admin",
+  lead_auditor:      "Lead Auditor",
+  audit_coordinator: "Audit Coordinator",
+  auditor:           "Auditor",
+  prakalpa_manager:  "Manager",
 };
 
 export function SideNav() {
@@ -35,6 +37,8 @@ export function SideNav() {
   const visible = navItems.filter((item) => item.roles.includes(currentUser.role));
   const roleLabel = ROLE_LABELS[currentUser.role] ?? currentUser.role;
 
+  const initials = currentUser.name.split(" ").map((n) => n[0]).join("").slice(0, 2);
+
   return (
     <aside className="fixed left-0 top-0 h-full w-[240px] bg-secondary shadow-md flex flex-col py-6 z-50">
       <div className="px-5 mb-6">
@@ -42,7 +46,7 @@ export function SideNav() {
         <p className="font-label-md text-on-secondary/60 uppercase tracking-widest mt-0.5 text-[10px]">IQA Management</p>
         <div className="mt-4 flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
           <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-on-primary font-bold text-[10px] shrink-0">
-            {currentUser.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+            {initials}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-on-secondary font-label-md font-bold truncate text-[12px]">{currentUser.name}</p>
@@ -90,6 +94,18 @@ export function SideNav() {
             <p className="text-on-secondary/60 text-[10px] uppercase tracking-wider">Your Domain</p>
             <p className="text-on-secondary font-label-md font-bold text-[12px]">{currentUser.domain}</p>
           </div>
+        </div>
+      )}
+
+      {currentUser.role === "admin" && (
+        <div className="px-3 mt-auto pt-4">
+          <Link
+            href="/user-management"
+            className="w-full py-2.5 bg-primary text-on-primary font-bold rounded-lg flex items-center justify-center gap-2 hover:brightness-110 transition-all shadow-lg text-[13px]"
+          >
+            <span className="material-symbols-outlined text-[17px]">person_add</span>
+            Add User
+          </Link>
         </div>
       )}
     </aside>

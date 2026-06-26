@@ -69,7 +69,7 @@ export function getSublocations(domain: string, location: string): string[] {
   return SUBLOCATIONS[domain]?.[location] ?? [];
 }
 
-// Backward-compat alias
+// Backward-compat aliases
 export const PRAKALPAS = DOMAINS;
 export const PRAKALPA_LOCATIONS: Record<string, string[]> = LOCATIONS;
 
@@ -100,46 +100,29 @@ export const AUDIT_AREAS = [
   "Infrastructure & Facilities",
 ];
 
-export const AUDIT_COORDINATORS = [
-  "Ananya Iyer",
-  "Priya Nair",
-  "Suresh Kumar",
-  "Deepa Menon",
-  "Kiran Bhat",
-];
-
-export const INITIAL_AUDITORS = [
-  "Dr. Sarah Jenkins",
-  "Vikram Singh",
-  "Anita Rao",
-  "Rohan Mehra",
-  "Marcus Thorne",
-  "Priya Nair",
-];
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type Role = "lead_auditor" | "auditor" | "prakalpa_manager" | "ceo";
+export type Role = "admin" | "lead_auditor" | "audit_coordinator" | "auditor" | "prakalpa_manager";
 
-export interface LeadAuditorProfile {
+// Platform user managed by admin
+export interface AppUser {
   id: string;
   name: string;
   email: string;
-  domains: string[];
+  role: Role;
+  phone?: string;
+  domain?: string; // for prakalpa_manager
+  active: boolean;
+  createdDate: string;
 }
 
-export const LEAD_AUDITOR_PROFILES: LeadAuditorProfile[] = [
-  { id: "la-1", name: "Ananya Iyer", email: "ananya.iyer@rashtrotthana.org", domains: ["Yoga Kendra", "Blood Bank", "Training Centre"] },
-  { id: "la-2", name: "Priya Nair", email: "priya.nair@rashtrotthana.org", domains: ["School", "Community Centre"] },
-  { id: "la-3", name: "Suresh Kumar", email: "suresh.kumar@rashtrotthana.org", domains: ["Hospital", "Dispensary"] },
-];
-
+// Who is currently logged in (for demo switching)
 export interface CurrentUser {
+  id: string;
   name: string;
+  email: string;
   role: Role;
-  auditorName?: string;
   domain?: string;
-  leadAuditorId?: string;
 }
 
 export interface Observation {
@@ -161,14 +144,16 @@ export interface AuditPlan {
   location: string;
   sublocation?: string;
   auditPlannedDate: string;
-  auditCoordinator: string;
+  auditCoordinator: string;        // name of audit_coordinator
+  auditCoordinatorId?: string;     // id of AppUser with audit_coordinator role
   auditAreas: string[];
   prakalphaPramukh: string;
-  auditors: string[];
+  auditors: string[];              // names of auditors
+  auditorIds?: string[];           // ids of AppUsers with auditor role
   purpose?: string;
   createdDate: string;
   status: "pending" | "scheduled";
-  prakalpa?: string; // derived label
+  prakalpa?: string;
 }
 
 export interface ScheduledAudit {
@@ -239,16 +224,59 @@ export interface RolePermission {
   canCloseReport: boolean;
   canViewAllReports: boolean;
   canManageRoles: boolean;
+  canManageUsers: boolean;
   canViewDashboard: boolean;
   canAddAuditor: boolean;
 }
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<Role, RolePermission> = {
-  lead_auditor: { role: "lead_auditor", canCreateAuditPlan: true, canScheduleAudit: true, canEditReport: true, canCloseReport: true, canViewAllReports: true, canManageRoles: true, canViewDashboard: true, canAddAuditor: true },
-  auditor: { role: "auditor", canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: false, canCloseReport: true, canViewAllReports: false, canManageRoles: false, canViewDashboard: true, canAddAuditor: false },
-  prakalpa_manager: { role: "prakalpa_manager", canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: true, canCloseReport: false, canViewAllReports: true, canManageRoles: false, canViewDashboard: false, canAddAuditor: false },
-  ceo: { role: "ceo", canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: false, canCloseReport: false, canViewAllReports: true, canManageRoles: false, canViewDashboard: true, canAddAuditor: false },
+  admin:             { role: "admin",             canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: false,  canCloseReport: false, canViewAllReports: true,  canManageRoles: true,  canManageUsers: true,  canViewDashboard: true,  canAddAuditor: true  },
+  lead_auditor:      { role: "lead_auditor",      canCreateAuditPlan: true,  canScheduleAudit: true,  canEditReport: true,   canCloseReport: true,  canViewAllReports: true,  canManageRoles: true,  canManageUsers: false, canViewDashboard: true,  canAddAuditor: false },
+  audit_coordinator: { role: "audit_coordinator", canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: true,   canCloseReport: true,  canViewAllReports: true,  canManageRoles: false, canManageUsers: false, canViewDashboard: true,  canAddAuditor: false },
+  auditor:           { role: "auditor",           canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: false,  canCloseReport: false, canViewAllReports: false, canManageRoles: false, canManageUsers: false, canViewDashboard: true,  canAddAuditor: false },
+  prakalpa_manager:  { role: "prakalpa_manager",  canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: true,   canCloseReport: false, canViewAllReports: true,  canManageRoles: false, canManageUsers: false, canViewDashboard: false, canAddAuditor: false },
 };
+
+// ─── Seed Users ──────────────────────────────────────────────────────────────
+
+function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split("T")[0]; }
+function daysFuture(n: number) { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().split("T")[0]; }
+
+export const SEED_USERS: AppUser[] = [
+  { id: "u-admin",  name: "Admin User",          email: "admin@rashtrotthana.org",        role: "admin",             active: true, createdDate: daysAgo(90) },
+  { id: "u-la-1",  name: "Ananya Iyer",          email: "ananya.iyer@rashtrotthana.org",  role: "lead_auditor",      active: true, createdDate: daysAgo(80) },
+  { id: "u-la-2",  name: "Priya Nair",           email: "priya.nair@rashtrotthana.org",   role: "lead_auditor",      active: true, createdDate: daysAgo(80) },
+  { id: "u-ac-1",  name: "Deepa Menon",          email: "deepa.menon@rashtrotthana.org",  role: "audit_coordinator", active: true, createdDate: daysAgo(60), phone: "9845012345" },
+  { id: "u-ac-2",  name: "Kiran Bhat",           email: "kiran.bhat@rashtrotthana.org",   role: "audit_coordinator", active: true, createdDate: daysAgo(55), phone: "9876543210" },
+  { id: "u-ac-3",  name: "Suresh Kumar",         email: "suresh.kumar@rashtrotthana.org", role: "audit_coordinator", active: true, createdDate: daysAgo(50), phone: "9900112233" },
+  { id: "u-aud-1", name: "Dr. Sarah Jenkins",    email: "sarah.jenkins@rashtrotthana.org",role: "auditor",           active: true, createdDate: daysAgo(70) },
+  { id: "u-aud-2", name: "Rohan Mehra",          email: "rohan.mehra@rashtrotthana.org",  role: "auditor",           active: true, createdDate: daysAgo(65) },
+  { id: "u-aud-3", name: "Vikram Singh",         email: "vikram.singh@rashtrotthana.org", role: "auditor",           active: true, createdDate: daysAgo(60) },
+  { id: "u-aud-4", name: "Anita Rao",            email: "anita.rao@rashtrotthana.org",    role: "auditor",           active: true, createdDate: daysAgo(58) },
+  { id: "u-aud-5", name: "Marcus Thorne",        email: "marcus.thorne@rashtrotthana.org",role: "auditor",           active: true, createdDate: daysAgo(50) },
+  { id: "u-pm-1",  name: "Ravi Kumar",           email: "ravi.kumar@rashtrotthana.org",   role: "prakalpa_manager",  active: true, createdDate: daysAgo(75), domain: "Yoga Kendra" },
+  { id: "u-pm-2",  name: "Meena Sharma",         email: "meena.sharma@rashtrotthana.org", role: "prakalpa_manager",  active: true, createdDate: daysAgo(70), domain: "Blood Bank" },
+];
+
+export const DEMO_USERS: CurrentUser[] = SEED_USERS.map((u) => ({
+  id: u.id, name: u.name, email: u.email, role: u.role, domain: u.domain,
+}));
+
+// Backward-compat export used by audit-plan and other pages
+export const INITIAL_AUDITORS = SEED_USERS.filter((u) => u.role === "auditor").map((u) => u.name);
+export const AUDIT_COORDINATORS = SEED_USERS.filter((u) => u.role === "audit_coordinator").map((u) => u.name);
+
+export interface LeadAuditorProfile {
+  id: string;
+  name: string;
+  email: string;
+  domains: string[];
+}
+
+export const LEAD_AUDITOR_PROFILES: LeadAuditorProfile[] = [
+  { id: "u-la-1", name: "Ananya Iyer",  email: "ananya.iyer@rashtrotthana.org",  domains: ["Yoga Kendra", "Blood Bank", "Training Centre"] },
+  { id: "u-la-2", name: "Priya Nair",   email: "priya.nair@rashtrotthana.org",   domains: ["School", "Community Centre"] },
+];
 
 // ─── ID generators ────────────────────────────────────────────────────────────
 let iqaCounter = 1007;
@@ -256,27 +284,26 @@ let iarCounter = 1005;
 function genIQA() { return `IQAN26${iqaCounter++}`; }
 function genIAR() { return `IAR${iarCounter++}`; }
 function genIQR() { return `IQR2026${Math.floor(1000000 + Math.random() * 8999999)}`; }
-function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split("T")[0]; }
-function daysFuture(n: number) { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().split("T")[0]; }
+function genUID() { return `u-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`; }
 
 // ─── Seed Data ────────────────────────────────────────────────────────────────
 const seedPlans: AuditPlan[] = [
-  { id: "plan-1", iqaNumber: "IQAN261001", domain: "Yoga Kendra", location: "Bengaluru", sublocation: "Jayanagar", auditPlannedDate: daysFuture(30), auditCoordinator: "Ananya Iyer", auditAreas: ["Finance & Accounts", "Safety & Compliance"], prakalphaPramukh: "Suresh Babu K", auditors: ["Dr. Sarah Jenkins"], purpose: "Annual safety and compliance inspection.", createdDate: daysAgo(5), status: "pending", prakalpa: "Yoga Kendra — Bengaluru" },
-  { id: "plan-2", iqaNumber: "IQAN261002", domain: "Blood Bank", location: "Mumbai", sublocation: "Dadar", auditPlannedDate: daysFuture(45), auditCoordinator: "Priya Nair", auditAreas: ["Finance & Accounts", "Documentation & Records"], prakalphaPramukh: "Dr. Rajesh Nair", auditors: ["Vikram Singh", "Anita Rao"], purpose: "Quarterly financial records audit.", createdDate: daysAgo(3), status: "pending", prakalpa: "Blood Bank — Mumbai" },
-  { id: "plan-3", iqaNumber: "IQAN261003", domain: "Community Centre", location: "Pune", sublocation: "Kothrud", auditPlannedDate: daysFuture(20), auditCoordinator: "Suresh Kumar", auditAreas: ["HR & Administration", "Programme Activities"], prakalphaPramukh: "Meera Joshi", auditors: ["Anita Rao"], createdDate: daysAgo(1), status: "pending", prakalpa: "Community Centre — Pune" },
+  { id: "plan-1", iqaNumber: "IQAN261001", domain: "Yoga Kendra", location: "Bengaluru", sublocation: "Jayanagar", auditPlannedDate: daysFuture(30), auditCoordinator: "Deepa Menon", auditCoordinatorId: "u-ac-1", auditAreas: ["Finance & Accounts", "Safety & Compliance"], prakalphaPramukh: "Suresh Babu K", auditors: ["Dr. Sarah Jenkins"], auditorIds: ["u-aud-1"], purpose: "Annual safety and compliance inspection.", createdDate: daysAgo(5), status: "pending", prakalpa: "Yoga Kendra — Bengaluru" },
+  { id: "plan-2", iqaNumber: "IQAN261002", domain: "Blood Bank", location: "Mumbai", sublocation: "Dadar", auditPlannedDate: daysFuture(45), auditCoordinator: "Kiran Bhat", auditCoordinatorId: "u-ac-2", auditAreas: ["Finance & Accounts", "Documentation & Records"], prakalphaPramukh: "Dr. Rajesh Nair", auditors: ["Vikram Singh", "Anita Rao"], auditorIds: ["u-aud-3", "u-aud-4"], purpose: "Quarterly financial records audit.", createdDate: daysAgo(3), status: "pending", prakalpa: "Blood Bank — Mumbai" },
+  { id: "plan-3", iqaNumber: "IQAN261003", domain: "Community Centre", location: "Pune", sublocation: "Kothrud", auditPlannedDate: daysFuture(20), auditCoordinator: "Suresh Kumar", auditCoordinatorId: "u-ac-3", auditAreas: ["HR & Administration", "Programme Activities"], prakalphaPramukh: "Meera Joshi", auditors: ["Anita Rao"], auditorIds: ["u-aud-4"], createdDate: daysAgo(1), status: "pending", prakalpa: "Community Centre — Pune" },
 ];
 
 const seedScheduled: ScheduledAudit[] = [
-  { id: "sched-1", iqaNumber: "IQAN261004", startDate: daysAgo(2), endDate: daysFuture(5), auditors: ["Rohan Mehra"], finalAuditor: "Rohan Mehra", domain: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam", purpose: "Vendor procurement compliance check.", auditPlannedDate: daysFuture(7), createdDate: daysAgo(10), scheduledDate: daysAgo(2), auditCoordinator: "Ananya Iyer", prakalphaPramukh: "Ravi Kumar", auditAreas: ["Procurement", "Finance & Accounts"], mailSent: true, prakalpa: "Yoga Kendra — Hyderabad" },
-  { id: "sched-2", iqaNumber: "IQAN261005", startDate: daysAgo(5), endDate: daysFuture(2), auditors: ["Dr. Sarah Jenkins"], finalAuditor: "Dr. Sarah Jenkins", domain: "Blood Bank", location: "Chennai", sublocation: "Kilpauk", purpose: "IT infrastructure security review.", auditPlannedDate: daysFuture(3), createdDate: daysAgo(15), scheduledDate: daysAgo(5), auditCoordinator: "Deepa Menon", prakalphaPramukh: "Lakshmi Devi", auditAreas: ["IT & Infrastructure", "Safety & Compliance"], mailSent: true, prakalpa: "Blood Bank — Chennai" },
-  { id: "sched-3", iqaNumber: "IQAN261006", startDate: daysFuture(3), endDate: daysFuture(10), auditors: ["Marcus Thorne", "Anita Rao"], finalAuditor: "Marcus Thorne", domain: "School", location: "Delhi", sublocation: "Dwarka", purpose: "Annual operational process review.", auditPlannedDate: daysFuture(12), createdDate: daysAgo(7), scheduledDate: daysAgo(1), auditCoordinator: "Kiran Bhat", prakalphaPramukh: "Anil Sharma", auditAreas: ["Operations", "Quality Management"], mailSent: false, prakalpa: "School — Delhi" },
+  { id: "sched-1", iqaNumber: "IQAN261004", startDate: daysAgo(2), endDate: daysFuture(5), auditors: ["Rohan Mehra"], finalAuditor: "Rohan Mehra", domain: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam", purpose: "Vendor procurement compliance check.", auditPlannedDate: daysFuture(7), createdDate: daysAgo(10), scheduledDate: daysAgo(2), auditCoordinator: "Deepa Menon", prakalphaPramukh: "Ravi Kumar", auditAreas: ["Procurement", "Finance & Accounts"], mailSent: true, prakalpa: "Yoga Kendra — Hyderabad" },
+  { id: "sched-2", iqaNumber: "IQAN261005", startDate: daysAgo(5), endDate: daysFuture(2), auditors: ["Dr. Sarah Jenkins"], finalAuditor: "Dr. Sarah Jenkins", domain: "Blood Bank", location: "Chennai", sublocation: "Kilpauk", purpose: "IT infrastructure security review.", auditPlannedDate: daysFuture(3), createdDate: daysAgo(15), scheduledDate: daysAgo(5), auditCoordinator: "Kiran Bhat", prakalphaPramukh: "Lakshmi Devi", auditAreas: ["IT & Infrastructure", "Safety & Compliance"], mailSent: true, prakalpa: "Blood Bank — Chennai" },
+  { id: "sched-3", iqaNumber: "IQAN261006", startDate: daysFuture(3), endDate: daysFuture(10), auditors: ["Marcus Thorne", "Anita Rao"], finalAuditor: "Marcus Thorne", domain: "School", location: "Delhi", sublocation: "Dwarka", purpose: "Annual operational process review.", auditPlannedDate: daysFuture(12), createdDate: daysAgo(7), scheduledDate: daysAgo(1), auditCoordinator: "Suresh Kumar", prakalphaPramukh: "Anil Sharma", auditAreas: ["Operations", "Quality Management"], mailSent: false, prakalpa: "School — Delhi" },
 ];
 
 const seedReports: Report[] = [
   {
     id: "rep-1", iarNumber: "IAR1001", iqrNumber: "IQR20261837492", iqaNumber: "IQAN261004",
     domain: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam", prakalpa: "Yoga Kendra — Hyderabad",
-    auditor: "Rohan Mehra", auditCoordinator: "Ananya Iyer", prakalphaPramukh: "Ravi Kumar", auditArea: "Finance & Accounts",
+    auditor: "Rohan Mehra", auditCoordinator: "Deepa Menon", prakalphaPramukh: "Ravi Kumar", auditArea: "Finance & Accounts",
     visitDate: daysAgo(1), visitTime: "10:30 AM", createdDate: daysAgo(1),
     severity: "non_conformance", findings: "Vendor documentation missing for 3 contracts.", classificationStatus: "NC",
     correctiveAction: "", dueDate: daysFuture(30), proofFiles: ["vendor_contracts_scan.pdf", "petty_cash_report.xlsx"], hasChecklist: true, status: "open",
@@ -288,7 +315,7 @@ const seedReports: Report[] = [
   {
     id: "rep-2", iarNumber: "IAR1002", iqrNumber: "IQR20268204736", iqaNumber: "IQAN261005",
     domain: "Blood Bank", location: "Chennai", sublocation: "Kilpauk", prakalpa: "Blood Bank — Chennai",
-    auditor: "Dr. Sarah Jenkins", auditCoordinator: "Deepa Menon", prakalphaPramukh: "Lakshmi Devi", auditArea: "IT & Infrastructure",
+    auditor: "Dr. Sarah Jenkins", auditCoordinator: "Kiran Bhat", prakalphaPramukh: "Lakshmi Devi", auditArea: "IT & Infrastructure",
     visitDate: daysAgo(3), visitTime: "02:15 PM", createdDate: daysAgo(3),
     severity: "open_for_improvement", findings: "IT asset register partially updated.", classificationStatus: "OFI",
     correctiveAction: "Implementing biometric access system.", dueDate: daysFuture(15), proofFiles: ["server_room_photos.jpg"], hasChecklist: false, status: "open",
@@ -300,7 +327,7 @@ const seedReports: Report[] = [
   {
     id: "rep-3", iarNumber: "IAR1003", iqrNumber: "IQR20269374820", iqaNumber: "IQAN261004",
     domain: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam", prakalpa: "Yoga Kendra — Hyderabad",
-    auditor: "Rohan Mehra", auditCoordinator: "Ananya Iyer", prakalphaPramukh: "Ravi Kumar", auditArea: "Safety & Compliance",
+    auditor: "Rohan Mehra", auditCoordinator: "Deepa Menon", prakalphaPramukh: "Ravi Kumar", auditArea: "Safety & Compliance",
     visitDate: daysAgo(35), visitTime: "11:00 AM", createdDate: daysAgo(35),
     severity: "non_conformance", findings: "Safety equipment not maintained as per OSHA standards.", classificationStatus: "NC",
     correctiveAction: "", dueDate: daysAgo(5), proofFiles: ["safety_inspection_photos.zip"], hasChecklist: true, status: "open",
@@ -312,7 +339,7 @@ const seedReports: Report[] = [
   {
     id: "rep-4", iarNumber: "IAR1004", iqrNumber: "IQR20262938471", iqaNumber: "IQAN261005",
     domain: "Blood Bank", location: "Chennai", sublocation: "Kilpauk", prakalpa: "Blood Bank — Chennai",
-    auditor: "Dr. Sarah Jenkins", auditCoordinator: "Deepa Menon", prakalphaPramukh: "Lakshmi Devi", auditArea: "HR & Administration",
+    auditor: "Dr. Sarah Jenkins", auditCoordinator: "Kiran Bhat", prakalphaPramukh: "Lakshmi Devi", auditArea: "HR & Administration",
     visitDate: daysAgo(60), visitTime: "09:45 AM", createdDate: daysAgo(60),
     severity: "open_for_improvement", findings: "Minor gaps in employee training documentation.", classificationStatus: "OFI",
     correctiveAction: "Training records system implemented.", dueDate: daysAgo(30), dateClosed: daysAgo(20),
@@ -333,8 +360,21 @@ const seedNotifications: Notification[] = [
 interface AppContextType {
   currentUser: CurrentUser;
   setCurrentUser: (u: CurrentUser) => void;
+
+  // User management (admin)
+  users: AppUser[];
+  addUser: (data: Omit<AppUser, "id" | "createdDate">) => AppUser;
+  updateUser: (id: string, data: Partial<AppUser>) => void;
+  deleteUser: (id: string) => void;
+
+  // Derived lists (from users)
+  auditorUsers: AppUser[];
+  coordinatorUsers: AppUser[];
+
+  // Legacy string lists (backward compat)
   auditors: string[];
   addAuditor: (name: string) => void;
+
   leadAuditorProfiles: LeadAuditorProfile[];
   updateLeadAuditorProfile: (id: string, data: Partial<LeadAuditorProfile>) => void;
   rolePermissions: Record<Role, RolePermission>;
@@ -369,19 +409,9 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
-export const DEMO_USERS: CurrentUser[] = [
-  { name: "Ananya Iyer", role: "lead_auditor", leadAuditorId: "la-1" },
-  { name: "Priya Nair", role: "lead_auditor", leadAuditorId: "la-2" },
-  { name: "Dr. Sarah Jenkins", role: "auditor", auditorName: "Dr. Sarah Jenkins" },
-  { name: "Rohan Mehra", role: "auditor", auditorName: "Rohan Mehra" },
-  { name: "Ravi Kumar", role: "prakalpa_manager", domain: "Yoga Kendra" },
-  { name: "Meena Sharma", role: "prakalpa_manager", domain: "Blood Bank" },
-  { name: "Ramesh Gupta", role: "ceo" },
-];
-
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<CurrentUser>(DEMO_USERS[0]);
-  const [auditors, setAuditors] = useState<string[]>(INITIAL_AUDITORS);
+  const [currentUser, setCurrentUser] = useState<CurrentUser>(DEMO_USERS[1]); // Ananya Iyer (lead_auditor) as default
+  const [users, setUsers] = useState<AppUser[]>(SEED_USERS);
   const [leadAuditorProfiles, setLeadAuditorProfiles] = useState<LeadAuditorProfile[]>(LEAD_AUDITOR_PROFILES);
   const [rolePermissions, setRolePermissions] = useState<Record<Role, RolePermission>>(DEFAULT_ROLE_PERMISSIONS);
   const [auditPlans, setAuditPlans] = useState<AuditPlan[]>(seedPlans);
@@ -389,8 +419,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [reports, setReports] = useState<Report[]>(seedReports);
   const [notifications, setNotifications] = useState<Notification[]>(seedNotifications);
 
+  // Derived lists
+  const auditorUsers = users.filter((u) => u.role === "auditor" && u.active);
+  const coordinatorUsers = users.filter((u) => u.role === "audit_coordinator" && u.active);
+  const auditors = auditorUsers.map((u) => u.name);
+
   const addAuditor = useCallback((name: string) => {
-    setAuditors((prev) => prev.includes(name) ? prev : [...prev, name]);
+    setUsers((prev) => {
+      if (prev.some((u) => u.name === name)) return prev;
+      const newUser: AppUser = { id: genUID(), name, email: `${name.toLowerCase().replace(/\s+/g, ".")}@rashtrotthana.org`, role: "auditor", active: true, createdDate: new Date().toISOString().split("T")[0] };
+      return [...prev, newUser];
+    });
+  }, []);
+
+  const addUser = useCallback((data: Omit<AppUser, "id" | "createdDate">): AppUser => {
+    const user: AppUser = { ...data, id: genUID(), createdDate: new Date().toISOString().split("T")[0] };
+    setUsers((prev) => [...prev, user]);
+    return user;
+  }, []);
+
+  const updateUser = useCallback((id: string, data: Partial<AppUser>) => {
+    setUsers((prev) => prev.map((u) => u.id === id ? { ...u, ...data } : u));
+  }, []);
+
+  const deleteUser = useCallback((id: string) => {
+    setUsers((prev) => prev.filter((u) => u.id !== id));
   }, []);
 
   const updateLeadAuditorProfile = useCallback((id: string, data: Partial<LeadAuditorProfile>) => {
@@ -434,7 +487,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setScheduledAudits((s) => [scheduled, ...s]);
       pushNotification({
         title: "Audit Scheduled — Mail Sent",
-        message: `${plan.iqaNumber} (${plan.domain} — ${plan.location}${plan.sublocation ? `, ${plan.sublocation}` : ""}) scheduled. Mail sent to all stakeholders.`,
+        message: `${plan.iqaNumber} (${plan.domain} — ${plan.location}${plan.sublocation ? `, ${plan.sublocation}` : ""}) scheduled. Mail sent to ${plan.auditCoordinator} and ${plan.auditors.join(", ")}.`,
         type: "mail",
       });
       return prev.filter((p) => p.id !== planId);
@@ -507,7 +560,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      currentUser, setCurrentUser, auditors, addAuditor, leadAuditorProfiles, updateLeadAuditorProfile,
+      currentUser, setCurrentUser,
+      users, addUser, updateUser, deleteUser, auditorUsers, coordinatorUsers,
+      auditors, addAuditor,
+      leadAuditorProfiles, updateLeadAuditorProfile,
       rolePermissions, updateRolePermission,
       auditPlans, scheduledAudits, reports, notifications,
       createAuditPlan, updateAuditPlan, deleteAuditPlan, scheduleAudit, updateScheduledAudit,

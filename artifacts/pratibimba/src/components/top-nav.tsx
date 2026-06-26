@@ -3,29 +3,34 @@ import { useState } from "react";
 import { useApp, DEMO_USERS } from "../context/app-context";
 
 const breadcrumbMap: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/audit-plan": "Audit Plan",
-  "/audit-calendar": "Audit Calendar",
-  "/scheduled-audits": "Scheduled Audits",
-  "/all-reports": "All Reports",
-  "/open-reports": "Open Reports",
-  "/iqa-summary": "IQA Summary",
-  "/role-access": "Role Access",
+  "/dashboard":       "Dashboard",
+  "/audit-plan":      "Audit Plan",
+  "/audit-calendar":  "Audit Calendar",
+  "/scheduled-audits":"Scheduled Audits",
+  "/all-reports":     "All Reports",
+  "/open-reports":    "Open Reports",
+  "/iqa-summary":     "IQA Summary",
+  "/role-access":     "Role Access",
+  "/user-management": "User Management",
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  lead_auditor: "Lead Auditor",
-  auditor: "Auditor",
-  prakalpa_manager: "Manager",
-  ceo: "CEO",
+export const ROLE_LABELS: Record<string, string> = {
+  admin:             "Admin",
+  lead_auditor:      "Lead Auditor",
+  audit_coordinator: "Audit Coordinator",
+  auditor:           "Auditor",
+  prakalpa_manager:  "Manager",
 };
 
 const ROLE_BADGE: Record<string, string> = {
-  lead_auditor: "bg-primary/10 text-primary",
-  auditor: "bg-secondary/10 text-secondary",
-  prakalpa_manager: "bg-tertiary/10 text-tertiary",
-  ceo: "bg-error/10 text-error",
+  admin:             "bg-error/10 text-error",
+  lead_auditor:      "bg-primary/10 text-primary",
+  audit_coordinator: "bg-tertiary/10 text-tertiary",
+  auditor:           "bg-secondary/10 text-secondary",
+  prakalpa_manager:  "bg-surface-container text-on-surface-variant",
 };
+
+const ROLE_GROUP_ORDER: string[] = ["admin", "lead_auditor", "audit_coordinator", "auditor", "prakalpa_manager"];
 
 export function TopNav() {
   const [pathname] = useLocation();
@@ -50,6 +55,11 @@ export function TopNav() {
 
   const roleLabel = ROLE_LABELS[currentUser.role] ?? currentUser.role;
   const roleBadge = ROLE_BADGE[currentUser.role] ?? "bg-surface-container text-on-surface-variant";
+
+  // Group demo users by role for display
+  const sortedDemoUsers = [...DEMO_USERS].sort(
+    (a, b) => ROLE_GROUP_ORDER.indexOf(a.role) - ROLE_GROUP_ORDER.indexOf(b.role)
+  );
 
   return (
     <header className="sticky top-0 z-40 w-full h-16 bg-surface border-b border-outline-variant/20 flex justify-between items-center px-8">
@@ -146,18 +156,18 @@ export function TopNav() {
           {showUserMenu && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-              <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-floating border border-outline-variant/20 z-50 overflow-hidden">
-                <div className="px-4 py-3 border-b border-outline-variant/10 bg-surface-container-lowest">
-                  <p className="font-label-md text-on-surface-variant uppercase tracking-wider">Switch Demo User</p>
+              <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-floating border border-outline-variant/20 z-50 overflow-hidden max-h-[80vh] overflow-y-auto">
+                <div className="px-4 py-3 border-b border-outline-variant/10 bg-surface-container-lowest sticky top-0">
+                  <p className="font-label-md text-on-surface-variant uppercase tracking-wider text-[11px]">Switch Demo User</p>
                 </div>
-                {DEMO_USERS.map((user) => {
+                {sortedDemoUsers.map((user) => {
                   const label = ROLE_LABELS[user.role] ?? user.role;
                   const badge = ROLE_BADGE[user.role] ?? "bg-surface-container text-on-surface-variant";
-                  const isActive = currentUser.name === user.name && currentUser.role === user.role;
-                  const sub = user.domain || (user.role === "lead_auditor" ? "Lead Auditor" : "");
+                  const isActive = currentUser.id === user.id;
+                  const sub = user.domain ?? "";
                   return (
                     <button
-                      key={`${user.role}-${user.name}`}
+                      key={user.id}
                       onClick={() => { setCurrentUser(user); setShowUserMenu(false); }}
                       className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-container-low transition-colors text-left ${isActive ? "bg-surface-container" : ""}`}
                     >
@@ -165,10 +175,11 @@ export function TopNav() {
                         {user.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-label-md font-bold text-on-surface">{user.name}</p>
+                        <p className="font-label-md font-bold text-on-surface text-[12px]">{user.name}</p>
                         {sub && <p className="text-[10px] text-on-surface-variant/70">{sub}</p>}
+                        <p className="text-[10px] text-on-surface-variant/50 truncate">{user.email}</p>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${badge}`}>{label}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase shrink-0 ${badge}`}>{label}</span>
                       {isActive && <span className="material-symbols-outlined text-primary text-[16px]">check</span>}
                     </button>
                   );
