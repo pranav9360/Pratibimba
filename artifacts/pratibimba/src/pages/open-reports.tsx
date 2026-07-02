@@ -171,8 +171,7 @@ export default function OpenReportsPage() {
   const isLead = currentUser.role === "lead_auditor";
   const isAuditor = currentUser.role === "auditor";
   const isManager = currentUser.role === "prakalpa_manager";
-  const isCEO = currentUser.role === "ceo";
-  const canEdit = !isAuditor && !isCEO;
+  const canEdit = currentUser.role !== "auditor" && currentUser.role !== "admin";
 
   const openReports = useMemo(() => reports.filter((r) => r.status === "open"), [reports]);
 
@@ -186,7 +185,7 @@ export default function OpenReportsPage() {
       const matchClass = filterClassification === "All" || (filterClassification === "NC" ? r.severity === "non_conformance" : r.severity === "open_for_improvement");
       const matchCoord = filterCoordinator === "All" || r.auditCoordinator === filterCoordinator;
       const matchStatus = filterStatus === "All" || (filterStatus === "Overdue" ? isOverdue(r) : filterStatus === "Flagged" ? isRedFlagged(r) : true);
-      const matchUser = isManager ? r.domain === currentUser.domain : isAuditor ? r.auditor === currentUser.auditorName : true;
+      const matchUser = isManager ? r.domain === currentUser.domain : isAuditor ? r.auditor === currentUser.name : true;
       return ms && matchReportId && matchDomain && matchArea && matchClass && matchCoord && matchStatus && matchUser;
     });
   }, [openReports, search, filterReportId, filterDomain, filterAuditArea, filterClassification, filterCoordinator, filterStatus, isOverdue, isRedFlagged, isManager, isAuditor, currentUser]);

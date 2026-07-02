@@ -29,7 +29,7 @@ export default function ScheduledAuditsPage() {
     const status = getStatus(s);
     const q = search.toLowerCase();
     const ms = !q || s.iqaNumber.toLowerCase().includes(q) || s.domain.toLowerCase().includes(q) || s.location.toLowerCase().includes(q) || (s.prakalphaPramukh || "").toLowerCase().includes(q);
-    const matchUser = !isAuditor || (s.auditors || []).includes(currentUser.auditorName || "");
+    const matchUser = !isAuditor || (s.auditors || []).includes(currentUser.name || "");
     return ms && (filterDomain === "All" || s.domain === filterDomain) && (filterLocation === "All" || s.location === filterLocation) && (filterAuditor === "All" || (s.auditors || []).includes(filterAuditor)) && (filterStatus === "All" || status === filterStatus.toLowerCase()) && (filterCoordinator === "All" || s.auditCoordinator === filterCoordinator) && matchUser;
   }), [scheduledAudits, search, filterDomain, filterLocation, filterAuditor, filterStatus, filterCoordinator, isAuditor, currentUser]);
 

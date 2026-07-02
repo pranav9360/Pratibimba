@@ -38,7 +38,7 @@ export default function CreateReportPage() {
         domain: audit.domain,
         location: audit.location,
         sublocation: audit.sublocation,
-        auditor: currentUser.auditorName || audit.finalAuditor,
+        auditor: currentUser.name || audit.finalAuditor,
         visitDate: new Date().toISOString().split("T")[0],
         visitTime: form.visitTime,
         severity: form.severity as "open_for_improvement" | "non_conformance",
@@ -128,7 +128,7 @@ export default function CreateReportPage() {
             </div>
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Auditor *</label>
-              <input type="text" readOnly value={currentUser.auditorName || audit.finalAuditor} className="w-full border border-outline-variant/40 rounded-lg p-3 font-body-md bg-surface-container-low text-on-surface-variant cursor-not-allowed" />
+              <input type="text" readOnly value={currentUser.name || audit.finalAuditor} className="w-full border border-outline-variant/40 rounded-lg p-3 font-body-md bg-surface-container-low text-on-surface-variant cursor-not-allowed" />
               <p className="font-label-md text-on-surface-variant/50 mt-1 text-[10px]">Auto-filled</p>
             </div>
           </div>

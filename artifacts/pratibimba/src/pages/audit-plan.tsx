@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import { useApp, DOMAINS, LOCATIONS, getSublocations, DOMAIN_PRAMUKH_DETAILS, AUDIT_AREAS, AUDIT_COORDINATORS, type AuditPlan } from "../context/app-context";
+import { useApp, DOMAINS, LOCATIONS, getSublocations, DOMAIN_PRAMUKH_DETAILS, AUDIT_AREAS, type AuditPlan } from "../context/app-context";
 
 function downloadCSV(plans: AuditPlan[]) {
   const headers = ["Audit ID", "Domain", "Location", "Sublocation", "Audit Planned Date", "Audit Coordinator", "Audit Areas", "Prakalpa Pramukh", "Auditors", "Purpose", "Status", "Created Date"];
@@ -79,9 +79,10 @@ interface EditModalProps {
   onClose: () => void;
   onSave: (data: Omit<AuditPlan, "id" | "iqaNumber" | "createdDate">) => void;
   auditors: string[];
+  coordinators: string[];
   onAddAuditor: (name: string) => void;
 }
-function EditModal({ plan, onClose, onSave, auditors, onAddAuditor }: EditModalProps) {
+function EditModal({ plan, onClose, onSave, auditors, coordinators, onAddAuditor }: EditModalProps) {
   const [selectedAreas, setSelectedAreas] = useState<string[]>(plan?.auditAreas || []);
   const [selectedAuditors, setSelectedAuditors] = useState<string[]>(plan?.auditors || []);
   const [newAuditorName, setNewAuditorName] = useState("");
@@ -91,7 +92,7 @@ function EditModal({ plan, onClose, onSave, auditors, onAddAuditor }: EditModalP
     location: plan?.location || "",
     sublocation: plan?.sublocation || "",
     auditPlannedDate: plan?.auditPlannedDate || "",
-    auditCoordinator: plan?.auditCoordinator || AUDIT_COORDINATORS[0],
+    auditCoordinator: plan?.auditCoordinator || coordinators[0] || "",
     prakalphaPramukh: plan?.prakalphaPramukh || DOMAIN_PRAMUKH_DETAILS[plan?.domain || DOMAINS[0]]?.pramukh || "",
     purpose: plan?.purpose || "",
     status: plan?.status || "pending" as const,
@@ -178,7 +179,8 @@ function EditModal({ plan, onClose, onSave, auditors, onAddAuditor }: EditModalP
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Audit Coordinator <span className="text-error">*</span></label>
               <select value={form.auditCoordinator} onChange={(e) => set("auditCoordinator", e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                {AUDIT_COORDINATORS.map((c) => <option key={c}>{c}</option>)}
+                <option value="">— Select Coordinator —</option>
+                {coordinators.map((c) => <option key={c}>{c}</option>)}
               </select>
             </div>
           </div>
@@ -245,7 +247,8 @@ function EditModal({ plan, onClose, onSave, auditors, onAddAuditor }: EditModalP
 }
 
 export default function AuditPlanPage() {
-  const { auditPlans, currentUser, auditors, addAuditor, createAuditPlan, updateAuditPlan, deleteAuditPlan, scheduleAudit } = useApp();
+  const { auditPlans, currentUser, auditors, coordinatorUsers, addAuditor, createAuditPlan, updateAuditPlan, deleteAuditPlan, scheduleAudit } = useApp();
+  const coordinatorNames = coordinatorUsers.map((u) => u.name);
   const [scheduleTarget, setScheduleTarget] = useState<AuditPlan | null>(null);
   const [editTarget, setEditTarget] = useState<AuditPlan | null | "new">(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -306,7 +309,7 @@ export default function AuditPlanPage() {
         </select>
         <select value={filterCoordinator} onChange={(e) => setFilterCoordinator(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
           <option value="All">All Coordinators</option>
-          {AUDIT_COORDINATORS.map((c) => <option key={c}>{c}</option>)}
+          {coordinatorNames.map((c) => <option key={c}>{c}</option>)}
         </select>
         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
           <option value="All">All Status</option>
@@ -388,6 +391,7 @@ export default function AuditPlanPage() {
           onClose={() => setEditTarget(null)}
           onSave={(data) => { if (editTarget === "new") createAuditPlan(data); else updateAuditPlan((editTarget as AuditPlan).id, data); setEditTarget(null); }}
           auditors={auditors}
+          coordinators={coordinatorNames}
           onAddAuditor={addAuditor}
         />
       )}

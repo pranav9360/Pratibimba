@@ -184,8 +184,7 @@ export default function AllReportsPage() {
 
   const isAuditor = currentUser.role === "auditor";
   const isManager = currentUser.role === "prakalpa_manager";
-  const isCEO = currentUser.role === "ceo";
-  const canEdit = !isAuditor && !isCEO;
+  const canEdit = currentUser.role !== "auditor" && currentUser.role !== "admin";
 
   const allLocations = useMemo(() => [...new Set(reports.map((r) => r.location).filter(Boolean))], [reports]);
 
@@ -201,7 +200,7 @@ export default function AllReportsPage() {
       const matchCoord = filterCoordinator === "All" || r.auditCoordinator === filterCoordinator;
       const matchStatus = filterStatus === "All" || r.status === filterStatus.toLowerCase();
       // Manager sees only their domain; auditor sees their own reports
-      const matchUser = isManager ? r.domain === currentUser.domain : isAuditor ? r.auditor === currentUser.auditorName : true;
+      const matchUser = isManager ? r.domain === currentUser.domain : isAuditor ? r.auditor === currentUser.name : true;
       return ms && matchAuditId && matchReportId && matchDomain && matchArea && matchClass && matchCoord && matchStatus && matchUser;
     });
   }, [reports, search, filterAuditId, filterReportId, filterDomain, filterAuditArea, filterClassification, filterCoordinator, filterStatus, isManager, isAuditor, currentUser]);

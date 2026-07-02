@@ -2,40 +2,41 @@ import { useState } from "react";
 import { useApp, LEAD_AUDITOR_PROFILES, DOMAINS, type Role, type RolePermission } from "../context/app-context";
 
 const ROLE_META: Record<Role, { label: string; color: string; icon: string; description: string }> = {
-  lead_auditor: { label: "Lead Auditor", color: "text-primary", icon: "manage_accounts", description: "Oversees audit planning, scheduling, and report review across assigned domains." },
-  auditor: { label: "Auditor", color: "text-secondary", icon: "person_search", description: "Conducts audits and files audit reports. Read-only access on all reports." },
-  prakalpa_manager: { label: "Manager", color: "text-tertiary", icon: "supervised_user_circle", description: "Domain unit manager with access to their domain's reports and corrective actions." },
-  ceo: { label: "CEO", color: "text-error", icon: "account_balance", description: "Executive read-only view across all audits, reports, and summaries." },
+  admin:             { label: "Admin",             color: "text-error",              icon: "shield_person",         description: "Full platform administration — manages users, roles, and access." },
+  lead_auditor:      { label: "Lead Auditor",      color: "text-primary",            icon: "manage_accounts",       description: "Oversees audit planning, assigns coordinators and auditors to plans." },
+  audit_coordinator: { label: "Audit Coordinator", color: "text-tertiary",           icon: "group_work",            description: "Leads field audit teams. Takes a team of auditors to the audit site." },
+  auditor:           { label: "Auditor",           color: "text-secondary",          icon: "person_search",         description: "Part of the field audit team. Files audit reports and findings." },
+  prakalpa_manager:  { label: "Prakalpa Manager",  color: "text-on-surface-variant", icon: "supervised_user_circle",description: "Domain unit manager with access to their domain's reports and corrective actions." },
 };
 
 const PERMISSION_LABELS: Record<keyof Omit<RolePermission, "role">, string> = {
   canCreateAuditPlan: "Create Audit Plans",
-  canScheduleAudit: "Schedule Audits",
-  canEditReport: "Edit Reports",
-  canCloseReport: "Close Reports",
-  canViewAllReports: "View All Reports",
-  canManageRoles: "Manage Role Permissions",
-  canViewDashboard: "View Dashboard",
-  canAddAuditor: "Add New Auditors",
+  canScheduleAudit:   "Schedule Audits",
+  canEditReport:      "Edit Reports",
+  canCloseReport:     "Close Reports",
+  canViewAllReports:  "View All Reports",
+  canManageRoles:     "Manage Role Permissions",
+  canManageUsers:     "Manage Users",
+  canViewDashboard:   "View Dashboard",
+  canAddAuditor:      "Add New Auditors",
 };
 
 export default function RoleAccessPage() {
   const { currentUser, rolePermissions, updateRolePermission, leadAuditorProfiles, updateLeadAuditorProfile } = useApp();
-  const isLead = currentUser.role === "lead_auditor";
-  const [editingRole, setEditingRole] = useState<Role | null>(null);
+  const canAccess = currentUser.role === "lead_auditor" || currentUser.role === "admin";
   const [editingLA, setEditingLA] = useState<string | null>(null);
   const [laEditDomains, setLaEditDomains] = useState<string[]>([]);
 
   const allPermissions = Object.keys(PERMISSION_LABELS) as Array<keyof Omit<RolePermission, "role">>;
-  const roles: Role[] = ["lead_auditor", "auditor", "prakalpa_manager", "ceo"];
+  const roles: Role[] = ["admin", "lead_auditor", "audit_coordinator", "auditor", "prakalpa_manager"];
 
-  if (!isLead) {
+  if (!canAccess) {
     return (
       <div className="p-8">
         <div className="max-w-lg mx-auto mt-16 bg-white rounded-2xl shadow-soft border border-outline-variant/10 p-10 text-center space-y-4">
           <span className="material-symbols-outlined text-[48px] text-on-surface-variant/20">lock</span>
           <h2 className="font-headline-md text-on-surface">Access Restricted</h2>
-          <p className="font-body-md text-on-surface-variant">Only Lead Auditors can manage role permissions.</p>
+          <p className="font-body-md text-on-surface-variant">Only Lead Auditors and Admins can manage role permissions.</p>
         </div>
       </div>
     );
@@ -65,7 +66,33 @@ export default function RoleAccessPage() {
         <p className="font-body-md text-on-surface-variant mt-0.5">Configure what each role can do within the system.</p>
       </div>
 
-      {/* Role Permission Matrix */}
+      {/* Role Overview Cards */}
+      <section>
+        <h3 className="font-headline-sm text-on-surface mb-4">Role Overview</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          {roles.map((role) => {
+            const meta = ROLE_META[role];
+            const perms = rolePermissions[role];
+            const enabledCount = allPermissions.filter((p) => perms[p]).length;
+            return (
+              <div key={role} className="bg-white rounded-xl shadow-soft border border-outline-variant/10 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-surface-container flex items-center justify-center shrink-0">
+                    <span className={`material-symbols-outlined text-[19px] ${meta.color}`}>{meta.icon}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className={`font-label-md font-bold text-[12px] ${meta.color}`}>{meta.label}</p>
+                    <p className="font-label-md text-on-surface-variant/60 text-[10px]">{enabledCount}/{allPermissions.length} permissions</p>
+                  </div>
+                </div>
+                <p className="font-body-md text-on-surface-variant/70 text-[11px] leading-relaxed">{meta.description}</p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Permission Matrix */}
       <section>
         <h3 className="font-headline-sm text-on-surface mb-4">Permission Matrix</h3>
         <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
@@ -73,14 +100,14 @@ export default function RoleAccessPage() {
             <table className="w-full text-left">
               <thead className="bg-surface-container-lowest border-b border-outline-variant/20">
                 <tr>
-                  <th className="px-5 py-3 font-label-md text-on-surface-variant uppercase tracking-wider w-56">Permission</th>
+                  <th className="px-5 py-3 font-label-md text-on-surface-variant uppercase tracking-wider w-52 text-[11px]">Permission</th>
                   {roles.map((role) => {
                     const meta = ROLE_META[role];
                     return (
-                      <th key={role} className="px-4 py-3 text-center">
+                      <th key={role} className="px-3 py-3 text-center">
                         <div className="flex flex-col items-center gap-1">
-                          <span className={`material-symbols-outlined text-[20px] ${meta.color}`}>{meta.icon}</span>
-                          <span className={`font-label-md text-[11px] font-bold uppercase tracking-wider ${meta.color}`}>{meta.label}</span>
+                          <span className={`material-symbols-outlined text-[18px] ${meta.color}`}>{meta.icon}</span>
+                          <span className={`font-label-md text-[10px] font-bold uppercase tracking-wider ${meta.color} whitespace-nowrap`}>{meta.label}</span>
                         </div>
                       </th>
                     );
@@ -90,14 +117,14 @@ export default function RoleAccessPage() {
               <tbody className="divide-y divide-outline-variant/10">
                 {allPermissions.map((perm, idx) => (
                   <tr key={perm} className={idx % 2 === 1 ? "bg-surface-container-lowest/40" : ""}>
-                    <td className="px-5 py-3 font-label-md text-on-surface">{PERMISSION_LABELS[perm]}</td>
+                    <td className="px-5 py-3 font-label-md text-on-surface text-[12px]">{PERMISSION_LABELS[perm]}</td>
                     {roles.map((role) => {
                       const value = rolePermissions[role][perm];
                       return (
-                        <td key={role} className="px-4 py-3 text-center">
+                        <td key={role} className="px-3 py-3 text-center">
                           <button
                             onClick={() => updateRolePermission(role, { [perm]: !value })}
-                            className={`w-9 h-5 rounded-full transition-all duration-200 relative flex items-center ${value ? "bg-primary justify-end" : "bg-surface-container-high justify-start"}`}
+                            className={`w-9 h-5 rounded-full transition-all duration-200 relative flex items-center mx-auto ${value ? "bg-primary justify-end" : "bg-surface-container-high justify-start"}`}
                             title={`${value ? "Disable" : "Enable"} ${PERMISSION_LABELS[perm]} for ${ROLE_META[role].label}`}
                           >
                             <span className={`w-4 h-4 rounded-full shadow-sm mx-0.5 transition-all ${value ? "bg-on-primary" : "bg-on-surface-variant/40"}`} />
@@ -110,42 +137,6 @@ export default function RoleAccessPage() {
               </tbody>
             </table>
           </div>
-        </div>
-      </section>
-
-      {/* Role Cards */}
-      <section>
-        <h3 className="font-headline-sm text-on-surface mb-4">Role Overview</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {roles.map((role) => {
-            const meta = ROLE_META[role];
-            const perms = rolePermissions[role];
-            const enabledCount = allPermissions.filter((p) => perms[p]).length;
-            return (
-              <div key={role} className="bg-white rounded-xl shadow-soft border border-outline-variant/10 p-5 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center`}>
-                    <span className={`material-symbols-outlined text-[20px] ${meta.color}`}>{meta.icon}</span>
-                  </div>
-                  <div>
-                    <p className={`font-label-md font-bold ${meta.color}`}>{meta.label}</p>
-                    <p className="font-label-md text-on-surface-variant/60 text-[11px]">{enabledCount}/{allPermissions.length} permissions</p>
-                  </div>
-                </div>
-                <p className="font-body-md text-on-surface-variant/70 text-[12px] leading-relaxed">{meta.description}</p>
-                <div className="space-y-1.5">
-                  {allPermissions.map((perm) => (
-                    <div key={perm} className={`flex items-center gap-2 text-[11px] font-label-md ${perms[perm] ? "text-on-surface" : "text-on-surface-variant/40"}`}>
-                      <span className={`material-symbols-outlined text-[14px] ${perms[perm] ? "text-secondary" : "text-on-surface-variant/30"}`}>
-                        {perms[perm] ? "check_circle" : "cancel"}
-                      </span>
-                      {PERMISSION_LABELS[perm]}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
         </div>
       </section>
 
