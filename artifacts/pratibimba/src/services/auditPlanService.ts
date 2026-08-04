@@ -1,68 +1,35 @@
-const BASE_URL =
-  "https://bug-free-eureka-r4jrjvp4ppjxfwqp5-5000.app.github.dev/api/v1/audit-plans";
+import api from "./api";
 
-function authHeaders() {
-  const token = localStorage.getItem("token");
+export const getAuditPlans = async () => {
+  const res = await api.get("/audit-plans");
+  return res.data.data;
+};
 
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-}
+export const createAuditPlan = async (payload: any) => {
+  const res = await api.post("/audit-plans", payload);
+  return res.data.data;
+};
 
-async function handleResponse(res: Response) {
-  const data = await res.json();
+export const updateAuditPlan = async (
+  id: string,
+  payload: any
+) => {
+  const res = await api.put(`/audit-plans/${id}`, payload);
+  return res.data.data;
+};
 
-  if (!res.ok) {
-    throw new Error(data.message || "Request failed");
-  }
+export const deleteAuditPlan = async (id: string) => {
+  await api.delete(`/audit-plans/${id}`);
+};
 
-  return data;
-}
+export const scheduleAudit = async (
+  id: string,
+  payload: any
+) => {
+  const res = await api.put(
+    `/audit-plans/${id}/schedule`,
+    payload
+  );
 
-export async function getAuditPlans() {
-  const res = await fetch(BASE_URL, {
-    headers: authHeaders(),
-  });
-
-  return handleResponse(res);
-}
-
-export async function createAuditPlan(data: any) {
-  const res = await fetch(BASE_URL, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify(data),
-  });
-
-  return handleResponse(res);
-}
-
-export async function updateAuditPlan(id: string, data: any) {
-  const res = await fetch(`${BASE_URL}/${id}`, {
-    method: "PUT",
-    headers: authHeaders(),
-    body: JSON.stringify(data),
-  });
-
-  return handleResponse(res);
-}
-
-export async function deleteAuditPlan(id: string) {
-  const res = await fetch(`${BASE_URL}/${id}`, {
-    method: "DELETE",
-    headers: authHeaders(),
-  });
-
-  return handleResponse(res);
-}
-
-export async function scheduleAudit(id: string, data: any) {
-  const res = await fetch(`${BASE_URL}/${id}/schedule`, {
-    method: "PUT",
-    headers: authHeaders(),
-    body: JSON.stringify(data),
-  });
-
-  return handleResponse(res);
-}
+  return res.data.data;
+};

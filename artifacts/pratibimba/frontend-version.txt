@@ -1,0 +1,16 @@
+commit 2a65148f3fc52b00f5c8ccf5a5ee897691ce7af8
+Author:     Replit Agent <agent@replit.com>
+AuthorDate: Thu Jul 2 09:36:19 2026 +0000
+Commit:     Replit Agent <agent@replit.com>
+CommitDate: Thu Jul 2 09:36:19 2026 +0000
+
+    Update user roles and permissions across the application
+    
+    Replace 'auditorName' with 'name' for current user references, update role definitions and permissions, and adjust filtering logic in various pages.
+    
+    Replit-Commit-Author: Agent
+    Replit-Commit-Session-Id: 64f0c132-3811-4dd6-abe3-f385e7f1fafe
+    Replit-Commit-Checkpoint-Type: full_checkpoint
+    Replit-Commit-Event-Id: 14c660bd-6947-46f9-89c4-fff16f5575e0
+    Replit-Commit-Screenshot-Url: https://storage.googleapis.com/screenshot-production-us-central1/f34b6a06-0808-405d-a349-18bbcc322193/64f0c132-3811-4dd6-abe3-f385e7f1fafe/ZGoi5hM
+    Replit-Helium-Checkpoint-Created: true

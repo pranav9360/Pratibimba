@@ -1,5 +1,6 @@
 import AuditPlan from "../models/AuditPlan.js";
 import AppError from "../utils/AppError.js";
+import ScheduledAudit from "../models/ScheduledAudit.js";
 
 export const getAuditPlans = async () => {
   return await AuditPlan.find().sort({ createdAt: -1 });
@@ -7,6 +8,10 @@ export const getAuditPlans = async () => {
 
 export const getAuditPlanById = async (id) => {
   const plan = await AuditPlan.findById(id);
+  console.log("========== SCHEDULE API ==========");
+  console.log("Plan ID:", id);
+  console.log("Body:", scheduleData);
+  console.log("Plan Found:", !!plan);
 
   if (!plan) {
     throw new AppError("Audit Plan not found", 404);
@@ -89,6 +94,8 @@ export const scheduleAuditPlan = async (id, scheduleData) => {
     throw new AppError("Audit Plan not found", 404);
   }
 
+  plan.status = "scheduled";
+
   if (scheduleData.auditPlannedDate) {
     plan.auditPlannedDate = scheduleData.auditPlannedDate;
   }
@@ -101,9 +108,42 @@ export const scheduleAuditPlan = async (id, scheduleData) => {
     plan.auditors = scheduleData.auditors;
   }
 
-  plan.status = "scheduled";
-
   await plan.save();
 
-  return await AuditPlan.findById(plan._id);
-}; 
+  const payload = {
+    auditPlanId: plan._id,
+    iqaNumber: plan.iqaNumber,
+    domain: plan.domain,
+    location: plan.location,
+    sublocation: plan.sublocation,
+    prakalpa: plan.prakalpa,
+    purpose: plan.purpose,
+    auditCoordinator: plan.auditCoordinator,
+    prakalphaPramukh: plan.prakalphaPramukh,
+    auditAreas: plan.auditAreas,
+    auditPlannedDate: plan.auditPlannedDate,
+    startDate: scheduleData.startDate,
+    endDate: scheduleData.endDate,
+    auditors: scheduleData.auditors,
+    finalAuditor: scheduleData.finalAuditor,
+    mailSent: true,
+  };
+
+  const existing = await ScheduledAudit.findOne({
+    auditPlanId: plan._id,
+  });
+
+  let scheduledAudit;
+
+  if (existing) {
+    Object.assign(existing, payload);
+    scheduledAudit = await existing.save();
+  } else {
+    scheduledAudit = await ScheduledAudit.create(payload);
+  }
+
+  return {
+    auditPlan: plan,
+    scheduledAudit,
+  };
+};

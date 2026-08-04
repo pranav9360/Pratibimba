@@ -14,6 +14,7 @@ import domainRoutes from "./routes/domainRoutes.js";
 import locationRoutes from "./routes/locationRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import auditPlanRoutes from "./routes/auditPlanRoutes.js";
+import scheduledAuditRoutes from "./routes/scheduledAudit.routes.js";
 
 import notFound from "./middleware/notFound.js";
 import errorHandler from "./middleware/errorHandler.js";
@@ -116,6 +117,7 @@ app.use("/api/v1/locations", locationRoutes);
 
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/audit-plans", auditPlanRoutes);
+app.use("/api/v1/scheduled-audits", scheduledAuditRoutes);
 // ======================
 // Error Handling
 // ======================

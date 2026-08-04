@@ -1,4 +1,14 @@
-import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  ReactNode,
+  useEffect,
+} from "react";
+
+import * as auditPlanApi from "../services/auditPlanService";
+import * as scheduledAuditApi from "../services/scheduledAudit.service";
 
 // ─── Domain / Location / Sublocation Taxonomy ───────────────────────────────
 
@@ -384,11 +394,25 @@ interface AppContextType {
   scheduledAudits: ScheduledAudit[];
   reports: Report[];
   notifications: Notification[];
+  createAuditPlan: (
+    data: Omit<AuditPlan, "id" | "iqaNumber" | "createdDate">
+  ) => Promise<AuditPlan>;
+  updateAuditPlan: (
+    id: string,
+    data: Partial<AuditPlan>
+  ) => Promise<void>;
 
-  createAuditPlan: (data: Omit<AuditPlan, "id" | "iqaNumber" | "createdDate">) => AuditPlan;
-  updateAuditPlan: (id: string, data: Partial<AuditPlan>) => void;
-  deleteAuditPlan: (id: string) => void;
-  scheduleAudit: (planId: string, data: Pick<ScheduledAudit, "startDate" | "endDate" | "auditors" | "finalAuditor">) => void;
+  deleteAuditPlan: (
+    id: string
+  ) => Promise<void>;
+
+  scheduleAudit: (
+    planId: string,
+    data: Pick<
+      ScheduledAudit,
+      "startDate" | "endDate" | "auditors" | "finalAuditor"
+    >
+  ) => Promise<void>;
   updateScheduledAudit: (id: string, data: Partial<ScheduledAudit>) => void;
 
   createReport: (data: Omit<Report, "id" | "iarNumber" | "iqrNumber" | "createdDate" | "status">) => Report;
@@ -414,10 +438,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<AppUser[]>(SEED_USERS);
   const [leadAuditorProfiles, setLeadAuditorProfiles] = useState<LeadAuditorProfile[]>(LEAD_AUDITOR_PROFILES);
   const [rolePermissions, setRolePermissions] = useState<Record<Role, RolePermission>>(DEFAULT_ROLE_PERMISSIONS);
-  const [auditPlans, setAuditPlans] = useState<AuditPlan[]>(seedPlans);
-  const [scheduledAudits, setScheduledAudits] = useState<ScheduledAudit[]>(seedScheduled);
+  const [auditPlans, setAuditPlans] = useState<AuditPlan[]>([]);
+  const [scheduledAudits, setScheduledAudits] = useState<ScheduledAudit[]>([]);
   const [reports, setReports] = useState<Report[]>(seedReports);
   const [notifications, setNotifications] = useState<Notification[]>(seedNotifications);
+  useEffect(() => {
+  const loadData = async () => {
+    try {
+      const plans = await auditPlanApi.getAuditPlans();
+      setAuditPlans(plans);
+
+      const scheduled = await scheduledAuditApi.getScheduledAudits();
+      setScheduledAudits(scheduled);
+    } catch (err) {
+      console.error("Failed to load backend data", err);
+    }
+  };
+
+  loadData();
+}, []);
 
   // Derived lists
   const auditorUsers = users.filter((u) => u.role === "auditor" && u.active);
@@ -458,41 +497,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotifications((prev) => [{ ...n, id: `notif-${Date.now()}`, read: false, createdAt: new Date().toISOString().split("T")[0] }, ...prev]);
   }, []);
 
-  const createAuditPlan = useCallback((data: Omit<AuditPlan, "id" | "iqaNumber" | "createdDate">): AuditPlan => {
-    const plan: AuditPlan = { id: `plan-${Date.now()}`, iqaNumber: genIQA(), createdDate: new Date().toISOString().split("T")[0], prakalpa: `${data.domain} — ${data.location}${data.sublocation ? `, ${data.sublocation}` : ""}`, ...data };
-    setAuditPlans((prev) => [plan, ...prev]);
-    return plan;
-  }, []);
+  const createAuditPlan = useCallback(
+    async (data: Omit<AuditPlan, "id" | "iqaNumber" | "createdDate">) => {
+      const created = await auditPlanApi.createAuditPlan(data);
 
-  const updateAuditPlan = useCallback((id: string, data: Partial<AuditPlan>) => {
-    setAuditPlans((prev) => prev.map((p) => p.id === id ? { ...p, ...data } : p));
-  }, []);
+      setAuditPlans((prev) => [created, ...prev]);
 
-  const deleteAuditPlan = useCallback((id: string) => {
-    setAuditPlans((prev) => prev.filter((p) => p.id !== id));
-  }, []);
+      return created;
+    },
+    []
+  );
 
-  const scheduleAudit = useCallback((planId: string, data: Pick<ScheduledAudit, "startDate" | "endDate" | "auditors" | "finalAuditor">) => {
-    setAuditPlans((prev) => {
-      const plan = prev.find((p) => p.id === planId);
-      if (!plan) return prev;
-      const scheduled: ScheduledAudit = {
-        id: `sched-${Date.now()}`,
-        iqaNumber: plan.iqaNumber, domain: plan.domain, location: plan.location, sublocation: plan.sublocation,
-        purpose: plan.purpose, auditPlannedDate: plan.auditPlannedDate, createdDate: plan.createdDate,
-        scheduledDate: new Date().toISOString().split("T")[0], auditCoordinator: plan.auditCoordinator,
-        prakalphaPramukh: plan.prakalphaPramukh, auditAreas: plan.auditAreas,
-        mailSent: true, prakalpa: plan.prakalpa, ...data,
-      };
-      setScheduledAudits((s) => [scheduled, ...s]);
-      pushNotification({
-        title: "Audit Scheduled — Mail Sent",
-        message: `${plan.iqaNumber} (${plan.domain} — ${plan.location}${plan.sublocation ? `, ${plan.sublocation}` : ""}) scheduled. Mail sent to ${plan.auditCoordinator} and ${plan.auditors.join(", ")}.`,
-        type: "mail",
-      });
-      return prev.filter((p) => p.id !== planId);
+  const updateAuditPlan = useCallback(
+    async (id: string, data: Partial<AuditPlan>) => {
+      const updated = await auditPlanApi.updateAuditPlan(id, data);
+
+      setAuditPlans((prev) =>
+        prev.map((p) => (p.id === id ? updated : p))
+      );
+    },
+    []
+  );
+
+  const deleteAuditPlan = useCallback(
+    async (id: string) => {
+      await auditPlanApi.deleteAuditPlan(id);
+
+      setAuditPlans((prev) =>
+        prev.filter((p) => p.id !== id)
+      );
+    },
+    []
+  );
+
+  const scheduleAudit = useCallback(
+    async (
+      planId: string,
+      data: Pick<
+        ScheduledAudit,
+        "startDate" | "endDate" | "auditors" | "finalAuditor"
+      >
+    ) => {
+      const result = await auditPlanApi.scheduleAudit(planId, data);
+
+      setAuditPlans((prev) =>
+        prev.filter((p) => p.id !== planId)
+      );
+
+      setScheduledAudits((prev) => [
+        result.scheduledAudit,
+        ...prev,
+      ]);
+
+    pushNotification({
+      title: "Audit Scheduled — Mail Sent",
+      message: `${result.auditPlan.iqaNumber} scheduled successfully.`,
+      type: "mail",
     });
-  }, [pushNotification]);
+  },
+  [pushNotification]
+);
 
   const updateScheduledAudit = useCallback((id: string, data: Partial<ScheduledAudit>) => {
     setScheduledAudits((prev) => prev.map((s) => s.id === id ? { ...s, ...data } : s));

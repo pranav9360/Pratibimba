@@ -15,6 +15,7 @@ import {
 import {
   createAuditPlanValidator,
   updateAuditPlanValidator,
+  scheduleAuditValidator,
 } from "../validators/auditPlanValidator.js";
 
 const router = express.Router();
@@ -58,6 +59,7 @@ router.put(
   "/:id/schedule",
   authenticate,
   authorize("admin", "lead_auditor"),
+  scheduleAuditValidator,
   scheduleAuditPlan
 );
 
