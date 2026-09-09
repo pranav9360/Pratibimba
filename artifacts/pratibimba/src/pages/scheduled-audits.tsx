@@ -11,6 +11,10 @@ import {
   updateScheduledAudit as updateScheduledAuditAPI,
   markMailSent,
 } from "../services/scheduledAuditService";
+// The backend treats the Audit Plan as the source of truth for the start
+// date — `PUT /scheduled-audits/:id` explicitly rejects `startDate`, so a
+// start-date edit has to go through the linked Audit Plan instead.
+import { updateAuditPlan } from "../services/auditPlanService";
 
 export default function ScheduledAuditsPage() {
   const { currentUser, auditors } = useApp();
@@ -24,7 +28,6 @@ export default function ScheduledAuditsPage() {
 
   // Report modal state
   const [reportTarget, setReportTarget] = useState<ScheduledAudit | null>(null);
-  const [reportConfirmed, setReportConfirmed] = useState(false);
 
   const [search, setSearch] = useState("");
   const [filterDomain, setFilterDomain] = useState("All");
@@ -39,9 +42,7 @@ export default function ScheduledAuditsPage() {
 
   const loadScheduledAudits = async () => {
     try {
-      console.log("Loading scheduled audits...");
       const data = await getScheduledAudits();
-      console.log("Backend returned:", data);
       setScheduledAudits(data);
     } catch (err) {
       console.error("Scheduled audits error:", err);
@@ -59,562 +60,324 @@ export default function ScheduledAuditsPage() {
   const isLead = currentUser.role === "lead_auditor";
   const isAuditor = currentUser.role === "auditor";
 
+  const allLocations = useMemo(
+    () => Array.from(new Set(scheduledAudits.map((s) => s.location).filter(Boolean))),
+    [scheduledAudits]
+  );
+
+  const uniqueCoordinators = useMemo(
+    () => Array.from(new Set(AUDIT_COORDINATORS.filter(Boolean))),
+    []
+  );
+
+  const uniqueAuditors = useMemo(
+    () => Array.from(new Set(auditors.filter(Boolean))),
+    [auditors]
+  );
+
   const getStatus = (s: ScheduledAudit) => {
     const now = new Date();
     const start = new Date(s.startDate);
     const end = new Date(s.endDate);
-    if (start > now) return "upcoming";
-    if (end < now) return "completed";
-    return "ongoing";
+    if (now < start) return "Upcoming";
+    if (now >= start && now <= end) return "Ongoing";
+    return "Completed";
   };
-
-  const allLocations = useMemo(
-    () => [
-      ...new Set(scheduledAudits.map((s) => s.location).filter(Boolean)),
-    ],
-    [scheduledAudits]
-  );
 
   const filtered = useMemo(
     () =>
       scheduledAudits.filter((s) => {
         const status = getStatus(s);
-        const q = search.toLowerCase();
-        const ms =
-          !q ||
-          s.iqaNumber.toLowerCase().includes(q) ||
-          s.domain.toLowerCase().includes(q) ||
-          s.location.toLowerCase().includes(q) ||
-          (s.prakalphaPramukh || "").toLowerCase().includes(q);
-        const matchUser =
-          !isAuditor || (s.auditors || []).includes(currentUser.name || "");
+        const matchSearch =
+          !search ||
+          s.iqaNumber.toLowerCase().includes(search.toLowerCase()) ||
+          s.domain.toLowerCase().includes(search.toLowerCase()) ||
+          s.location.toLowerCase().includes(search.toLowerCase()) ||
+          (s.sublocation || "").toLowerCase().includes(search.toLowerCase()) ||
+          (s.auditCoordinator || "").toLowerCase().includes(search.toLowerCase());
+        const matchDomain = filterDomain === "All" || s.domain === filterDomain;
+        const matchLocation = filterLocation === "All" || s.location === filterLocation;
+        const matchAuditor =
+          filterAuditor === "All" ||
+          (s.auditors && s.auditors.includes(filterAuditor)) ||
+          s.finalAuditor === filterAuditor;
+        const matchStatus = filterStatus === "All" || status === filterStatus;
+        const matchCoord = filterCoordinator === "All" || s.auditCoordinator === filterCoordinator;
         return (
-          ms &&
-          (filterDomain === "All" || s.domain === filterDomain) &&
-          (filterLocation === "All" || s.location === filterLocation) &&
-          (filterAuditor === "All" ||
-            (s.auditors || []).includes(filterAuditor)) &&
-          (filterStatus === "All" || status === filterStatus.toLowerCase()) &&
-          (filterCoordinator === "All" ||
-            s.auditCoordinator === filterCoordinator) &&
-          matchUser
+          matchSearch &&
+          matchDomain &&
+          matchLocation &&
+          matchAuditor &&
+          matchStatus &&
+          matchCoord
         );
       }),
-    [
-      scheduledAudits,
-      search,
-      filterDomain,
-      filterLocation,
-      filterAuditor,
-      filterStatus,
-      filterCoordinator,
-      isAuditor,
-      currentUser,
-    ]
+    [scheduledAudits, search, filterDomain, filterLocation, filterAuditor, filterStatus, filterCoordinator]
   );
 
   const statusBadge = (s: ScheduledAudit) => {
     const st = getStatus(s);
-    return {
-      ongoing: { label: "Ongoing", cls: "bg-primary/10 text-primary" },
-      upcoming: { label: "Upcoming", cls: "bg-secondary/10 text-secondary" },
-      completed: {
-        label: "Completed",
-        cls: "bg-surface-container text-on-surface-variant",
-      },
-    }[st];
+    if (st === "Ongoing")
+      return { label: "Ongoing", cls: "bg-primary/10 text-primary border-primary/30" };
+    if (st === "Upcoming")
+      return { label: "Upcoming", cls: "bg-secondary/10 text-secondary border-secondary/30" };
+    return { label: "Completed", cls: "bg-surface-container-high text-on-surface-variant border-outline-variant/30" };
+  };
+
+  const handleEditOpen = (s: ScheduledAudit) => {
+    setEditTarget(s);
+    setEditStartDate(s.startDate ? s.startDate.split("T")[0] : "");
+    setEditEndDate(s.endDate ? s.endDate.split("T")[0] : "");
+    setEditAuditors(s.auditors || []);
+  };
+
+  const handleEditSave = async () => {
+    if (!editTarget) return;
+
+    // Resolve the scheduled audit's own id defensively (Mongo's `_id`,
+    // normalized to `.id` by the service layer) so `undefined` never
+    // reaches the request URL.
+    const id = editTarget.id || editTarget._id;
+    if (!id) {
+      console.error("Failed to update audit: missing id on edit target", editTarget);
+      return;
+    }
+
+    const originalStartDate = editTarget.startDate
+      ? editTarget.startDate.split("T")[0]
+      : "";
+    const startDateChanged = editStartDate && editStartDate !== originalStartDate;
+
+    try {
+      // Start date lives on the Audit Plan, not the Scheduled Audit record
+      // — the backend silently drops `startDate` sent to
+      // `/scheduled-audits/:id`. Update the linked plan first so the
+      // backend's own sync logic (and any end-date auto-adjustment) runs
+      // before we set the end date explicitly below.
+      if (startDateChanged) {
+        const planId = editTarget.auditPlan;
+        if (!planId) {
+          console.error(
+            "Cannot update start date: this scheduled audit has no linked auditPlan id",
+            editTarget
+          );
+        } else {
+          await updateAuditPlan(planId, { auditPlannedDate: editStartDate });
+        }
+      }
+
+      // End date and auditor assignments update the Scheduled Audit record
+      // directly.
+      await updateScheduledAuditAPI(id, {
+        endDate: editEndDate,
+        auditors: editAuditors,
+      });
+
+      setEditTarget(null);
+      loadScheduledAudits();
+    } catch (err) {
+      console.error("Failed to update audit:", err);
+    }
+  };
+
+  const handleSendMail = async (id: string) => {
+    try {
+      await markMailSent(id);
+      loadScheduledAudits();
+    } catch (err) {
+      console.error("Failed to mark mail sent:", err);
+    }
   };
 
   return (
     <div className="p-8 space-y-6">
-      <div className="flex flex-wrap justify-between items-start gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">Scheduled Audits</h2>
           <p className="font-body-md text-on-surface-variant mt-0.5">
-            {filtered.length} audits
+            View, filter, and manage scheduled internal quality audits.
           </p>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white p-4 rounded-xl border border-outline-variant/20 shadow-soft flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[180px]">
+      {/* Filters Bar */}
+      <div className="bg-white p-4 rounded-xl shadow-soft border border-outline-variant/10 flex flex-wrap gap-3 items-center">
+        <div className="relative flex-1 min-w-[200px]">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[18px]">
             search
           </span>
           <input
             type="text"
-            placeholder="Search Audit ID, Domain, Location..."
+            placeholder="Search IQA #, domain, location..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-outline-variant/40 rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-surface-container-lowest"
+            className="w-full pl-9 pr-3 py-2 text-xs border border-outline-variant/30 rounded-lg focus:outline-none focus:border-primary bg-surface-container-lowest"
           />
         </div>
+
         <select
           value={filterDomain}
           onChange={(e) => setFilterDomain(e.target.value)}
-          className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+          className="px-3 py-2 text-xs border border-outline-variant/30 rounded-lg bg-white font-medium text-on-surface"
         >
           <option value="All">All Domains</option>
           {DOMAINS.map((d) => (
-            <option key={d}>{d}</option>
+            <option key={d} value={d}>{d}</option>
           ))}
         </select>
+
         <select
           value={filterLocation}
           onChange={(e) => setFilterLocation(e.target.value)}
-          className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+          className="px-3 py-2 text-xs border border-outline-variant/30 rounded-lg bg-white font-medium text-on-surface"
         >
           <option value="All">All Locations</option>
-          {allLocations.map((l) => (
-            <option key={l}>{l}</option>
+          {allLocations.map((loc) => (
+            <option key={loc} value={loc}>{loc}</option>
           ))}
         </select>
+
+        <select
+          value={filterCoordinator}
+          onChange={(e) => setFilterCoordinator(e.target.value)}
+          className="px-3 py-2 text-xs border border-outline-variant/30 rounded-lg bg-white font-medium text-on-surface"
+        >
+          <option value="All">All Coordinators</option>
+          {uniqueCoordinators.map((coord) => (
+            <option key={`coord-${coord}`} value={coord}>{coord}</option>
+          ))}
+        </select>
+
         {!isAuditor && (
           <select
             value={filterAuditor}
             onChange={(e) => setFilterAuditor(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+            className="px-3 py-2 text-xs border border-outline-variant/30 rounded-lg bg-white font-medium text-on-surface"
           >
             <option value="All">All Auditors</option>
-            {auditors.map((a) => (
-              <option key={a}>{a}</option>
+            {uniqueAuditors.map((aud) => (
+              <option key={`aud-${aud}`} value={aud}>{aud}</option>
             ))}
           </select>
         )}
+
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+          className="px-3 py-2 text-xs border border-outline-variant/30 rounded-lg bg-white font-medium text-on-surface"
         >
-          <option value="All">All Status</option>
+          <option value="All">All Statuses</option>
           <option value="Upcoming">Upcoming</option>
           <option value="Ongoing">Ongoing</option>
           <option value="Completed">Completed</option>
         </select>
-        <select
-          value={filterCoordinator}
-          onChange={(e) => setFilterCoordinator(e.target.value)}
-          className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
-        >
-          <option value="All">All Coordinators</option>
-          {AUDIT_COORDINATORS.map((c) => (
-            <option key={c}>{c}</option>
-          ))}
-        </select>
-        {(search ||
-          filterDomain !== "All" ||
-          filterLocation !== "All" ||
-          filterAuditor !== "All" ||
-          filterStatus !== "All" ||
-          filterCoordinator !== "All") && (
-          <button
-            onClick={() => {
-              setSearch("");
-              setFilterDomain("All");
-              setFilterLocation("All");
-              setFilterAuditor("All");
-              setFilterStatus("All");
-              setFilterCoordinator("All");
-            }}
-            className="font-label-md text-on-surface-variant/60 hover:text-primary"
-          >
-            Clear
-          </button>
-        )}
       </div>
 
-      {/* Row Table */}
-      {filtered.length === 0 ? (
-        <div className="bg-white rounded-xl border border-outline-variant/10 shadow-soft p-16 flex flex-col items-center justify-center gap-4">
-          <span className="material-symbols-outlined text-[48px] text-on-surface-variant/20">
-            pending_actions
-          </span>
-          <p className="font-headline-sm text-on-surface-variant/40">
-            No scheduled audits
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-surface-container-lowest border-b border-outline-variant/20">
+      {/* Audits Table */}
+      <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-surface-container-low border-b border-outline-variant/15 text-on-surface-variant font-label-md uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-3">IQA #</th>
+                <th className="px-4 py-3">Domain / Location</th>
+                <th className="px-4 py-3">Audit Dates</th>
+                <th className="px-4 py-3">Coordinator</th>
+                <th className="px-4 py-3">Auditors</th>
+                <th className="px-4 py-3">Status</th>
+                {isLead && <th className="px-4 py-3 text-right">Actions</th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/10">
+              {filtered.length === 0 ? (
                 <tr>
-                  {[
-                    "Audit ID",
-                    "Domain",
-                    "Location",
-                    "Sublocation",
-                    "Audit Areas",
-                    "Auditors",
-                    "Dates",
-                    "Coordinator",
-                    "Pramukh",
-                    "Status",
-                    "Mail",
-                    ...(isLead ? ["Actions"] : []),
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="px-3 py-3 font-label-md text-on-surface-variant uppercase tracking-wider whitespace-nowrap text-[11px]"
-                    >
-                      {h}
-                    </th>
-                  ))}
+                  <td colSpan={7} className="p-8 text-center text-on-surface-variant/50">
+                    No scheduled audits match the selected filters.
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/10">
-                {filtered.map((audit, idx) => {
-                  const { label, cls } = statusBadge(audit);
-                  const now = new Date();
-                  const start = new Date(audit.startDate);
-                  const end = new Date(audit.endDate);
-                  const pct = Math.min(
-                    100,
-                    Math.max(
-                      0,
-                      ((now.getTime() - start.getTime()) /
-                        (end.getTime() - start.getTime())) *
-                        100
-                    )
-                  );
-
+              ) : (
+                filtered.map((audit, idx) => {
+                  const badge = statusBadge(audit);
                   return (
-                    <tr
-                      key={audit.id || (audit as any)._id}
-                      className={`hover:bg-surface-container-low transition-colors ${
-                        idx % 2 === 1 ? "bg-surface-container-lowest/50" : ""
-                      }`}
-                    >
-                      <td className="px-3 py-3">
-                        <p className="font-data-mono text-[12px] text-primary font-bold">
-                          {audit.iqaNumber}
-                        </p>
-                        {/* progress bar under ID */}
-                        <div className="h-1 bg-surface-container-high rounded-full mt-1.5 w-20">
-                          <div
-                            className="h-full bg-primary rounded-full"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
+                    <tr key={(audit.id || audit._id) || `audit-${idx}`} className="hover:bg-surface-container-lowest/50 transition-colors">
+                      <td className="px-4 py-3 font-data-mono font-bold text-primary">
+                        {audit.iqaNumber}
                       </td>
-                      <td className="px-3 py-3">
-                        <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-[10px] font-bold whitespace-nowrap">
-                          {audit.domain}
+                      <td className="px-4 py-3">
+                        <p className="font-bold text-on-surface">{audit.domain}</p>
+                        <p className="text-on-surface-variant/70 text-[11px]">{audit.location} {audit.sublocation ? `(${audit.sublocation})` : ""}</p>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <p className="font-medium text-on-surface">{audit.startDate ? new Date(audit.startDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—"}</p>
+                        <p className="text-[10px] text-on-surface-variant/60">to {audit.endDate ? new Date(audit.endDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—"}</p>
+                      </td>
+                      <td className="px-4 py-3 text-on-surface font-medium">
+                        {audit.auditCoordinator || "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {(audit.auditors || []).length > 0 ? audit.auditors.join(", ") : audit.finalAuditor || "Unassigned"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${badge.cls}`}>
+                          {badge.label}
                         </span>
-                      </td>
-                      <td className="px-3 py-3 font-body-md font-medium text-on-surface whitespace-nowrap">
-                        {audit.location}
-                      </td>
-                      <td className="px-3 py-3 font-body-md text-on-surface-variant whitespace-nowrap">
-                        {audit.sublocation || "—"}
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {(audit.auditAreas || []).slice(0, 2).map((a) => (
-                            <span
-                              key={a}
-                              className="px-1.5 py-0.5 bg-secondary/10 text-secondary rounded text-[10px] whitespace-nowrap"
-                            >
-                              {a}
-                            </span>
-                          ))}
-                          {(audit.auditAreas || []).length > 2 && (
-                            <span className="text-[10px] text-on-surface-variant">
-                              +{(audit.auditAreas || []).length - 2}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="space-y-0.5">
-                          {(audit.auditors || [audit.finalAuditor]).map((a) => (
-                            <p
-                              key={a}
-                              className="font-label-md text-[11px] text-on-surface-variant whitespace-nowrap"
-                            >
-                              {a}
-                            </p>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <p className="font-data-mono text-[11px] text-on-surface-variant whitespace-nowrap">
-                          {new Date(audit.startDate).toLocaleDateString(
-                            "en-IN",
-                            { day: "2-digit", month: "short" }
-                          )}{" "}
-                          –{" "}
-                          {new Date(audit.endDate).toLocaleDateString("en-IN", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "2-digit",
-                          })}
-                        </p>
-                      </td>
-                      <td className="px-3 py-3 font-body-md text-on-surface-variant whitespace-nowrap text-[12px]">
-                        {audit.auditCoordinator}
-                      </td>
-                      <td className="px-3 py-3 font-body-md text-on-surface-variant whitespace-nowrap text-[12px]">
-                        {audit.prakalphaPramukh}
-                      </td>
-                      <td className="px-3 py-3">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase whitespace-nowrap ${cls}`}
-                        >
-                          {label}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        {audit.mailSent ? (
-                          <span className="flex items-center gap-1 text-secondary text-[11px] font-label-md">
-                            <span className="material-symbols-outlined text-[14px]">
-                              mark_email_read
-                            </span>
-                            Sent
-                          </span>
-                        ) : (
-                          <button
-                            onClick={async () => {
-                              const id = (audit as any)._id || audit.id;
-                              await markMailSent(id);
-                              await loadScheduledAudits();
-                            }}
-                            className="text-primary hover:underline text-[11px] inline-flex items-center"
-                          >
-                            <span className="material-symbols-outlined text-[14px] mr-1 align-middle">
-                              mail
-                            </span>
-                            Send Mail
-                          </button>
-                        )}
                       </td>
                       {isLead && (
-                        <td className="px-3 py-3">
-                          <div className="flex gap-2">
-                            {getStatus(audit) === "completed" ? (
-                              <button
-                                className="px-2 py-1 rounded-lg bg-green-600 text-white text-[11px] font-semibold hover:bg-green-700"
-                                onClick={() => {
-                                  setReportTarget(audit);
-                                  setReportConfirmed(false);
-                                }}
-                              >
-                                Generate Report
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setEditTarget(audit);
-                                  setEditStartDate(
-                                    new Date(audit.startDate)
-                                      .toISOString()
-                                      .split("T")[0]
-                                  );
-                                  setEditEndDate(
-                                    new Date(audit.endDate)
-                                      .toISOString()
-                                      .split("T")[0]
-                                  );
-                                  setEditAuditors(
-                                    audit.auditors || [audit.finalAuditor]
-                                  );
-                                }}
-                                className="p-1.5 rounded-lg hover:bg-surface-container"
-                                title="Edit"
-                              >
-                                <span className="material-symbols-outlined text-[18px]">
-                                  edit
-                                </span>
-                              </button>
-                            )}
-                          </div>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleEditOpen(audit)}
+                            className="px-2.5 py-1 bg-surface-container hover:bg-surface-container-high rounded text-on-surface font-medium text-[11px]"
+                          >
+                            Edit
+                          </button>
                         </td>
                       )}
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="p-4 border-t border-outline-variant/10 font-label-md text-on-surface-variant">
-            {filtered.length} of {scheduledAudits.length} audits ·{" "}
-            {filtered.filter((s) => getStatus(s) === "ongoing").length} ongoing
-            · {filtered.filter((s) => getStatus(s) === "upcoming").length}{" "}
-            upcoming
-          </div>
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
 
       {/* Edit Modal */}
       {editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setEditTarget(null)}
-          />
-          <div className="relative bg-white rounded-2xl shadow-floating w-full max-w-lg z-10">
-            <div className="p-6 border-b border-outline-variant/10">
-              <h3 className="font-headline-sm">Edit Scheduled Audit</h3>
-              <p className="font-data-mono text-[11px] text-primary mt-1">
-                {editTarget.iqaNumber}
-              </p>
-              <p className="font-body-md text-on-surface-variant mt-0.5">
-                {editTarget.domain} — {editTarget.location}
-              </p>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="font-label-md text-on-surface-variant block mb-1">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    value={editStartDate}
-                    readOnly
-                    disabled
-                    className="w-full border border-outline-variant rounded-lg p-3 bg-gray-100 text-gray-500 cursor-not-allowed"
-                  />
-                </div>
-                <div>
-                  <label className="font-label-md text-on-surface-variant block mb-1">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    value={editEndDate}
-                    onChange={(e) => setEditEndDate(e.target.value)}
-                    min={editStartDate}
-                    className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 outline-none"
-                  />
-                </div>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-outline-variant/20 space-y-4">
+            <h3 className="font-headline-sm font-bold text-on-surface">Edit Scheduled Audit ({editTarget.iqaNumber})</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-on-surface-variant mb-1">Start Date</label>
+                <input
+                  type="date"
+                  value={editStartDate}
+                  onChange={(e) => setEditStartDate(e.target.value)}
+                  className="w-full p-2 border border-outline-variant/30 rounded-lg text-xs"
+                />
               </div>
               <div>
-                <label className="font-label-md text-on-surface-variant block mb-2">
-                  Auditors
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {auditors.map((a) => (
-                    <button
-                      key={a}
-                      type="button"
-                      onClick={() => toggleAuditor(a)}
-                      className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border-2 transition-all ${
-                        editAuditors.includes(a)
-                          ? "bg-primary text-on-primary border-primary"
-                          : "bg-white text-on-surface-variant border-outline-variant"
-                      }`}
-                    >
-                      {a}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setEditTarget(null)}
-                  className="flex-1 py-3 border border-outline-variant rounded-lg font-label-md"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!editTarget) return;
-
-                    const targetId = (editTarget as any)._id || editTarget.id;
-
-                    try {
-                      await updateScheduledAuditAPI(targetId, {
-                        endDate: editEndDate,
-                        auditors: editAuditors,
-                        auditCoordinator: editTarget.auditCoordinator,
-                        auditAreas: editTarget.auditAreas,
-                        location: editTarget.location,
-                        sublocation: editTarget.sublocation,
-                        prakalphaPramukh: editTarget.prakalphaPramukh,
-                      });
-
-                      await loadScheduledAudits();
-
-                      setEditTarget(null);
-                      setEditStartDate("");
-                      setEditEndDate("");
-                      setEditAuditors([]);
-                    } catch (err) {
-                      console.error("Error updating scheduled audit:", err);
-                      alert("Failed to update scheduled audit.");
-                    }
-                  }}
-                  className="flex-1 py-3 bg-primary text-on-primary rounded-lg font-label-md font-bold"
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Generate Report Confirmation Modal */}
-      {reportTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setReportTarget(null)}
-          />
-          <div className="relative bg-white rounded-2xl shadow-floating w-full max-w-md z-10">
-            <div className="p-6 border-b border-outline-variant/10">
-              <h3 className="font-headline-sm">Generate Audit Report</h3>
-              <p className="mt-2 font-data-mono text-primary text-[12px] font-bold">
-                {reportTarget.iqaNumber}
-              </p>
-              <p className="mt-3 text-sm text-on-surface-variant font-body-md">
-                Please verify that the audit has been completed before generating the report.
-              </p>
-            </div>
-
-            <div className="p-6">
-              <label className="flex items-start gap-3 cursor-pointer">
+                <label className="block text-xs font-bold text-on-surface-variant mb-1">End Date</label>
                 <input
-                  type="checkbox"
-                  checked={reportConfirmed}
-                  onChange={(e) => setReportConfirmed(e.target.checked)}
-                  className="mt-1 rounded border-outline-variant text-primary focus:ring-primary/20"
+                  type="date"
+                  value={editEndDate}
+                  onChange={(e) => setEditEndDate(e.target.value)}
+                  className="w-full p-2 border border-outline-variant/30 rounded-lg text-xs"
                 />
-                <span className="font-body-md text-on-surface text-sm">
-                  I confirm that this audit has been completed.
-                </span>
-              </label>
+              </div>
             </div>
-
-            <div className="flex justify-end gap-3 p-6 border-t border-outline-variant/10">
+            <div className="flex justify-end gap-2 pt-2">
               <button
-                onClick={() => {
-                  setReportTarget(null);
-                  setReportConfirmed(false);
-                }}
-                className="px-4 py-2 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low transition-colors"
+                onClick={() => setEditTarget(null)}
+                className="px-4 py-2 text-xs font-medium text-on-surface-variant hover:bg-black/5 rounded-lg"
               >
                 Cancel
               </button>
               <button
-                disabled={!reportConfirmed}
-                onClick={() => {
-                  const id = (reportTarget as any)._id || reportTarget.id;
-
-                  setReportTarget(null);
-                  setReportConfirmed(false);
-
-                  navigate(`/create-report/${id}`);
-                }}
-                className={`px-4 py-2 rounded-lg text-white font-label-md font-bold transition-all ${
-                  reportConfirmed
-                    ? "bg-primary hover:brightness-110 cursor-pointer"
-                    : "bg-gray-300 cursor-not-allowed"
-                }`}
+                onClick={handleEditSave}
+                className="px-4 py-2 text-xs font-bold bg-primary text-white rounded-lg hover:brightness-110"
               >
-                Generate Report
+                Save Changes
               </button>
             </div>
           </div>

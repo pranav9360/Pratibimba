@@ -73,8 +73,8 @@ function ScheduleModal({ plan, onClose, onSchedule, auditors }: ScheduleModalPro
           <div>
             <label className="font-label-md text-on-surface-variant block mb-2">Auditors</label>
             <div className="flex flex-wrap gap-2">
-              {auditors.map((a) => (
-                <button key={a} type="button" onClick={() => toggleAuditor(a)}
+              {auditors.map((a, idx) => (
+                <button key={`${a}-${idx}`} type="button" onClick={() => toggleAuditor(a)}
                   className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border-2 transition-all ${selectedAuditors.includes(a) ? "bg-primary text-on-primary border-primary" : "bg-white text-on-surface-variant border-outline-variant hover:border-primary/50"}`}>
                   {a}
                 </button>
@@ -84,7 +84,7 @@ function ScheduleModal({ plan, onClose, onSchedule, auditors }: ScheduleModalPro
           <div>
             <label className="font-label-md text-on-surface-variant block mb-1">Lead / Final Auditor</label>
             <select value={finalAuditor} onChange={(e) => setFinalAuditor(e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-              {(selectedAuditors.length > 0 ? selectedAuditors : auditors).map((a) => <option key={a}>{a}</option>)}
+              {(selectedAuditors.length > 0 ? selectedAuditors : auditors).map((a, idx) => <option key={`${a}-${idx}`}>{a}</option>)}
             </select>
           </div>
         </div>
@@ -197,13 +197,13 @@ function EditModal({ plan, onClose, onSave, auditors, coordinators, onAddAuditor
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Audit Planned Date <span className="text-error">*</span></label>
-              <input type="date" value={form.auditPlannedDate} onChange={(e) => set("auditPlannedDate", e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+              <input type="date" value={(form.auditPlannedDate || "").split("T")[0]} onChange={(e) => set("auditPlannedDate", e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
             </div>
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Audit Coordinator <span className="text-error">*</span></label>
               <select value={form.auditCoordinator} onChange={(e) => set("auditCoordinator", e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
                 <option value="">— Select Coordinator —</option>
-                {coordinators.map((c) => <option key={c}>{c}</option>)}
+                {coordinators.map((c, idx) => <option key={`${c}-${idx}`}>{c}</option>)}
               </select>
             </div>
           </div>
@@ -238,8 +238,8 @@ function EditModal({ plan, onClose, onSave, auditors, coordinators, onAddAuditor
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-              {auditors.map((a) => (
-                <button key={a} type="button" onClick={() => toggleAuditor(a)}
+              {auditors.map((a, idx) => (
+                <button key={`${a}-${idx}`} type="button" onClick={() => toggleAuditor(a)}
                   className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border-2 transition-all ${selectedAuditors.includes(a) ? "bg-secondary text-on-secondary border-secondary" : "bg-white text-on-surface-variant border-outline-variant hover:border-secondary/50"}`}>
                   {a}
                 </button>
@@ -353,7 +353,7 @@ export default function AuditPlanPage() {
         </select>
         <select value={filterCoordinator} onChange={(e) => setFilterCoordinator(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
           <option value="All">All Coordinators</option>
-          {coordinatorNames.map((c) => <option key={c}>{c}</option>)}
+          {coordinatorNames.map((c, idx) => <option key={`${c}-${idx}`}>{c}</option>)}
         </select>
         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
           <option value="All">All Status</option>
@@ -385,7 +385,7 @@ export default function AuditPlanPage() {
               </thead>
               <tbody className="divide-y divide-outline-variant/10">
                 {filtered.map((plan, idx) => (
-                  <tr key={plan.id} className={`hover:bg-surface-container-low transition-colors ${idx % 2 === 1 ? "bg-surface-container-lowest/50" : ""}`}>
+                  <tr key={plan.id || plan._id || `plan-${idx}`} className={`hover:bg-surface-container-low transition-colors ${idx % 2 === 1 ? "bg-surface-container-lowest/50" : ""}`}>
                     <td className="px-4 py-3 font-data-mono text-[12px] text-primary font-bold whitespace-nowrap">{plan.iqaNumber}</td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-[11px] font-bold">{plan.domain}</span>
@@ -394,7 +394,7 @@ export default function AuditPlanPage() {
                     <td className="px-4 py-3 font-body-md text-on-surface-variant">{plan.sublocation || "—"}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {(plan.auditAreas || []).slice(0, 2).map((a) => <span key={a} className="px-1.5 py-0.5 bg-secondary/10 text-secondary rounded text-[10px] font-medium whitespace-nowrap">{a}</span>)}
+                        {(plan.auditAreas || []).slice(0, 2).map((a) => <span key={`${a}-${idx}`} className="px-1.5 py-0.5 bg-secondary/10 text-secondary rounded text-[10px] font-medium whitespace-nowrap">{a}</span>)}
                         {(plan.auditAreas || []).length > 2 && <span className="px-1.5 py-0.5 bg-surface-container text-on-surface-variant rounded text-[10px]">+{(plan.auditAreas || []).length - 2}</span>}
                       </div>
                     </td>
@@ -403,7 +403,7 @@ export default function AuditPlanPage() {
                     <td className="px-4 py-3 font-body-md text-on-surface-variant whitespace-nowrap">{plan.prakalphaPramukh}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {(plan.auditors || []).slice(0, 2).map((a) => <span key={a} className="px-1.5 py-0.5 bg-surface-container rounded text-[10px] whitespace-nowrap">{a}</span>)}
+                        {(plan.auditors || []).slice(0, 2).map((a) => <span key={`${a}-${idx}`} className="px-1.5 py-0.5 bg-surface-container rounded text-[10px] whitespace-nowrap">{a}</span>)}
                         {(plan.auditors || []).length > 2 && <span className="text-[10px] text-on-surface-variant">+{(plan.auditors || []).length - 2}</span>}
                       </div>
                     </td>
@@ -415,7 +415,7 @@ export default function AuditPlanPage() {
                         <div className="flex items-center gap-1">
                           <button onClick={() => setScheduleTarget(plan)} title="Schedule" className="p-1.5 rounded-lg hover:bg-primary/10 text-primary"><span className="material-symbols-outlined text-[18px]">event</span></button>
                           <button onClick={() => setEditTarget(plan)} title="Edit" className="p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant"><span className="material-symbols-outlined text-[18px]">edit</span></button>
-                          <button onClick={() => setDeleteConfirm(plan.id)} title="Delete" className="p-1.5 rounded-lg hover:bg-error/10 text-error"><span className="material-symbols-outlined text-[18px]">delete</span></button>
+                          <button onClick={() => setDeleteConfirm(plan.id || plan._id || "")} title="Delete" className="p-1.5 rounded-lg hover:bg-error/10 text-error"><span className="material-symbols-outlined text-[18px]">delete</span></button>
                         </div>
                       </td>
                     )}
@@ -434,7 +434,8 @@ export default function AuditPlanPage() {
           onClose={() => setScheduleTarget(null)}
           onSchedule={async (data) => {
             try {
-              await scheduleAudit(scheduleTarget.id, data);
+              const id = scheduleTarget.id || scheduleTarget._id || "";
+              await scheduleAudit(id, data);
 
               await loadAuditPlans();
 
@@ -455,10 +456,8 @@ export default function AuditPlanPage() {
               if (editTarget === "new") {
                 await createAuditPlan(data);
               } else {
-                await updateAuditPlan(
-                  (editTarget as AuditPlan).id,
-                  data
-                );
+                const target = editTarget as AuditPlan;
+                await updateAuditPlan(target.id || target._id || "", data);
               }
 
               await loadAuditPlans();

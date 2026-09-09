@@ -1,0 +1,274 @@
+--- a/artifacts/pratibimba/src/context/app-context.tsx
++++ b/artifacts/pratibimba/src/context/app-context.tsx
+@@ -145,6 +145,7 @@
+ 
+ export interface AuditPlan {
+   id: string;
++  _id?: string;
+   iqaNumber: string;
+   domain: string;
+   location: string;
+@@ -164,6 +165,11 @@
+ 
+ export interface ScheduledAudit {
+   id: string;
++  _id?: string;
++  // Linked Audit Plan's id. The backend treats the Audit Plan as the
++  // source of truth for the start date — updates to `startDate` must be
++  // sent to `/audit-plans/:auditPlan`, not `/scheduled-audits/:id`.
++  auditPlan?: string;
+   iqaNumber: string;
+   startDate: string;
+   endDate: string;
+--- a/artifacts/pratibimba/src/pages/scheduled-audits.tsx
++++ b/artifacts/pratibimba/src/pages/scheduled-audits.tsx
+@@ -11,6 +11,10 @@
+   updateScheduledAudit as updateScheduledAuditAPI,
+   markMailSent,
+ } from "../services/scheduledAuditService";
++// The backend treats the Audit Plan as the source of truth for the start
++// date — `PUT /scheduled-audits/:id` explicitly rejects `startDate`, so a
++// start-date edit has to go through the linked Audit Plan instead.
++import { updateAuditPlan } from "../services/auditPlanService";
+ 
+ export default function ScheduledAuditsPage() {
+   const { currentUser, auditors } = useApp();
+@@ -129,12 +133,46 @@
+ 
+   const handleEditSave = async () => {
+     if (!editTarget) return;
++
++    // Resolve the scheduled audit's own id defensively (Mongo's `_id`,
++    // normalized to `.id` by the service layer) so `undefined` never
++    // reaches the request URL.
++    const id = editTarget.id || editTarget._id;
++    if (!id) {
++      console.error("Failed to update audit: missing id on edit target", editTarget);
++      return;
++    }
++
++    const originalStartDate = editTarget.startDate
++      ? editTarget.startDate.split("T")[0]
++      : "";
++    const startDateChanged = editStartDate && editStartDate !== originalStartDate;
++
+     try {
+-      await updateScheduledAuditAPI(editTarget.id, {
+-        startDate: editStartDate,
++      // Start date lives on the Audit Plan, not the Scheduled Audit record
++      // — the backend silently drops `startDate` sent to
++      // `/scheduled-audits/:id`. Update the linked plan first so the
++      // backend's own sync logic (and any end-date auto-adjustment) runs
++      // before we set the end date explicitly below.
++      if (startDateChanged) {
++        const planId = editTarget.auditPlan;
++        if (!planId) {
++          console.error(
++            "Cannot update start date: this scheduled audit has no linked auditPlan id",
++            editTarget
++          );
++        } else {
++          await updateAuditPlan(planId, { auditPlannedDate: editStartDate });
++        }
++      }
++
++      // End date and auditor assignments update the Scheduled Audit record
++      // directly.
++      await updateScheduledAuditAPI(id, {
+         endDate: editEndDate,
+         auditors: editAuditors,
+       });
++
+       setEditTarget(null);
+       loadScheduledAudits();
+     } catch (err) {
+--- a/artifacts/pratibimba/src/pages/audit-plan.tsx
++++ b/artifacts/pratibimba/src/pages/audit-plan.tsx
+@@ -385,7 +385,7 @@
+               </thead>
+               <tbody className="divide-y divide-outline-variant/10">
+                 {filtered.map((plan, idx) => (
+-                  <tr key={plan.id} className={`hover:bg-surface-container-low transition-colors ${idx % 2 === 1 ? "bg-surface-container-lowest/50" : ""}`}>
++                  <tr key={plan.id || plan._id || `plan-${idx}`} className={`hover:bg-surface-container-low transition-colors ${idx % 2 === 1 ? "bg-surface-container-lowest/50" : ""}`}>
+                     <td className="px-4 py-3 font-data-mono text-[12px] text-primary font-bold whitespace-nowrap">{plan.iqaNumber}</td>
+                     <td className="px-4 py-3">
+                       <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-[11px] font-bold">{plan.domain}</span>
+@@ -415,7 +415,7 @@
+                         <div className="flex items-center gap-1">
+                           <button onClick={() => setScheduleTarget(plan)} title="Schedule" className="p-1.5 rounded-lg hover:bg-primary/10 text-primary"><span className="material-symbols-outlined text-[18px]">event</span></button>
+                           <button onClick={() => setEditTarget(plan)} title="Edit" className="p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant"><span className="material-symbols-outlined text-[18px]">edit</span></button>
+-                          <button onClick={() => setDeleteConfirm(plan.id)} title="Delete" className="p-1.5 rounded-lg hover:bg-error/10 text-error"><span className="material-symbols-outlined text-[18px]">delete</span></button>
++                          <button onClick={() => setDeleteConfirm(plan.id || plan._id || "")} title="Delete" className="p-1.5 rounded-lg hover:bg-error/10 text-error"><span className="material-symbols-outlined text-[18px]">delete</span></button>
+                         </div>
+                       </td>
+                     )}
+@@ -434,7 +434,8 @@
+           onClose={() => setScheduleTarget(null)}
+           onSchedule={async (data) => {
+             try {
+-              await scheduleAudit(scheduleTarget.id, data);
++              const id = scheduleTarget.id || scheduleTarget._id || "";
++              await scheduleAudit(id, data);
+ 
+               await loadAuditPlans();
+ 
+@@ -455,10 +456,8 @@
+               if (editTarget === "new") {
+                 await createAuditPlan(data);
+               } else {
+-                await updateAuditPlan(
+-                  (editTarget as AuditPlan).id,
+-                  data
+-                );
++                const target = editTarget as AuditPlan;
++                await updateAuditPlan(target.id || target._id || "", data);
+               }
+ 
+               await loadAuditPlans();
+--- a/artifacts/pratibimba/src/pages/iqa-summary.tsx
++++ b/artifacts/pratibimba/src/pages/iqa-summary.tsx
+@@ -1,4 +1,4 @@
+-import { useState, useMemo, useEffect } from "react";
++import { useState, useMemo, useEffect, Fragment } from "react";
+ import { DOMAINS, AUDIT_COORDINATORS } from "../context/app-context";
+ import { getReports } from "../services/reportService";
+ import { getAuditPlans } from "../services/auditPlanService";
+@@ -459,7 +459,7 @@
+                       : "—";
+ 
+                   return (
+-                    <div key={report.iqaNumber || idx} className="contents">
++                    <Fragment key={report.iqaNumber || idx}>
+                       <tr
+                         onClick={() =>
+                           setExpandedId(isExpanded ? null : report.iqaNumber)
+@@ -867,7 +867,7 @@
+                           </td>
+                         </tr>
+                       )}
+-                    </div>
++                    </Fragment>
+                   );
+                 })
+               )}
+--- a/artifacts/pratibimba/src/services/auditPlanService.ts
++++ b/artifacts/pratibimba/src/services/auditPlanService.ts
+@@ -22,12 +22,29 @@
+   return data;
+ }
+ 
++// AuditPlan's Mongoose schema already exposes a virtual `id` (and
++// `toJSON: { virtuals: true }`), so `.id` should normally be present.
++// This is a defensive fallback only, so a future schema change can never
++// let `undefined` leak into a request URL downstream.
++function withId<T extends Record<string, any>>(doc: T): T {
++  if (!doc) return doc;
++  return { ...doc, id: doc.id || doc._id };
++}
++
++function normalizePlansResponse(response: any) {
++  if (response && Array.isArray(response.data)) {
++    return { ...response, data: response.data.map(withId) };
++  }
++  return response;
++}
++
+ export async function getAuditPlans() {
+   const res = await fetch(BASE_URL, {
+     headers: authHeaders(),
+   });
+ 
+-  return handleResponse(res);
++  const response = await handleResponse(res);
++  return normalizePlansResponse(response);
+ }
+ 
+ export async function createAuditPlan(data: any) {
+@@ -38,18 +55,24 @@
+   });
+ 
+   const response = await handleResponse(res);
+-  return response.data;
++  return withId(response.data);
+ }
+ 
+ export async function updateAuditPlan(id: string, data: any) {
+-  const res = await fetch(`${BASE_URL}/${id}`, {
++  const resolvedId = id || (data && (data.id || data._id));
++
++  if (!resolvedId) {
++    throw new Error("updateAuditPlan: missing audit plan id");
++  }
++
++  const res = await fetch(`${BASE_URL}/${resolvedId}`, {
+     method: "PUT",
+     headers: authHeaders(),
+     body: JSON.stringify(data),
+   });
+ 
+   const response = await handleResponse(res);
+-  return response.data;
++  return withId(response.data);
+ }
+ 
+ export async function deleteAuditPlan(id: string) {
+@@ -63,6 +86,9 @@
+ }
+ 
+ export async function scheduleAudit(id: string, data: any) {
++  if (!id) {
++    throw new Error("scheduleAudit: missing audit plan id");
++  }
+   const res = await fetch(`${BASE_URL}/${id}/schedule`, {
+     method: "PUT",
+     headers: authHeaders(),
+@@ -70,5 +96,5 @@
+   });
+ 
+   const response = await handleResponse(res);
+-  return response.data;
++  return withId(response.data);
+ }
+--- a/artifacts/pratibimba/src/services/scheduledAuditService.ts
++++ b/artifacts/pratibimba/src/services/scheduledAuditService.ts
+@@ -1,18 +1,28 @@
+ import api from "./api";
+ 
++// The ScheduledAudit Mongoose schema (unlike AuditPlan) does not enable
++// `toJSON: { virtuals: true }`, so the API response only carries `_id`,
++// not `.id`. Normalize once here so `.id` is always populated and
++// `undefined` never leaks into a request URL downstream.
++function withId<T extends Record<string, any>>(doc: T): T {
++  if (!doc) return doc;
++  return { ...doc, id: doc.id || doc._id };
++}
++
+ export const getScheduledAudits = async () => {
+   const res = await api.get("/scheduled-audits");
+-  return res.data.data;
++  const data = res.data.data;
++  return Array.isArray(data) ? data.map(withId) : data;
+ };
+ 
+ export const getScheduledAuditById = async (id: string) => {
+   const res = await api.get(`/scheduled-audits/${id}`);
+-  return res.data.data;
++  return withId(res.data.data);
+ };
+ 
+ export const createScheduledAudit = async (payload: any) => {
+   const res = await api.post("/scheduled-audits", payload);
+-  return res.data.data;
++  return withId(res.data.data);
+ };
+ 
+ export const updateScheduledAudit = async (
+@@ -24,7 +34,7 @@
+     payload
+   );
+ 
+-  return res.data.data;
++  return withId(res.data.data);
+ };
+ 
+ export const deleteScheduledAudit = async (

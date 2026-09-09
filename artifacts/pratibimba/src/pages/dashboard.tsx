@@ -1,8 +1,21 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { useApp, DOMAINS } from "../context/app-context";
 
 export default function DashboardPage() {
-  const { auditPlans, scheduledAudits, reports, getDaysOpen, isRedFlagged, isOverdue } = useApp();
+  const { auditPlans, scheduledAudits, reports, getDaysOpen, isRedFlagged, isOverdue, refreshLiveData } = useApp();
+  const [lastRefreshed, setLastRefreshed] = useState<string>(new Date().toLocaleTimeString());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    if (typeof refreshLiveData === "function") {
+      await refreshLiveData();
+    }
+    setLastRefreshed(new Date().toLocaleTimeString());
+    // Force a complete browser page re-render/reload
+    window.location.reload();
+  };
 
   const currentYear = new Date().getFullYear();
   const assessmentYear = `${currentYear - 1}-${String(currentYear).slice(2)}`;
@@ -56,8 +69,20 @@ export default function DashboardPage() {
           <h2 className="font-headline-md text-on-surface">IQA Dashboard</h2>
           <p className="font-body-md text-on-surface-variant mt-0.5">Assessment Year: <strong>{assessmentYear}</strong> · Overview of audit plans, schedules, and compliance status.</p>
         </div>
-        <div className="font-data-mono text-[11px] text-on-surface-variant/60 bg-surface-container-low px-3 py-2 rounded-lg">
-          {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-outline-variant/20 rounded-lg hover:bg-surface-variant/30 text-on-surface font-medium text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+            title="Refresh Page and Re-fetch Data"
+          >
+            <span className={`material-symbols-outlined text-sm text-primary ${isRefreshing ? "animate-spin" : ""}`}>refresh</span>
+            <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
+            <span className="text-[10px] text-on-surface-variant/60">({lastRefreshed})</span>
+          </button>
+          <div className="font-data-mono text-[11px] text-on-surface-variant/60 bg-surface-container-low px-3 py-2 rounded-lg">
+            {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}
+          </div>
         </div>
       </div>
 
@@ -203,8 +228,8 @@ export default function DashboardPage() {
             <Link href="/all-reports" className="font-label-md text-primary hover:underline">View All</Link>
           </div>
           <div className="space-y-3">
-            {reports.slice(0, 4).map((report) => (
-              <div key={report.id} className={`flex items-start gap-3 p-3 rounded-lg border ${isRedFlagged(report) ? "border-error/40 bg-error/5" : "border-outline-variant/20"}`}>
+            {reports.slice(0, 4).map((report, idx) => (
+              <div key={report.id || `rep-${idx}`} className={`flex items-start gap-3 p-3 rounded-lg border ${isRedFlagged(report) ? "border-error/40 bg-error/5" : "border-outline-variant/20"}`}>
                 <span className={`material-symbols-outlined text-[16px] mt-0.5 ${report.severity === "non_conformance" ? "text-error" : "text-primary"}`}>
                   {report.severity === "non_conformance" ? "error_outline" : "info"}
                 </span>
@@ -235,8 +260,8 @@ export default function DashboardPage() {
             <div className="p-8 text-center text-on-surface-variant/50 font-body-md">No audit plans pending</div>
           ) : (
             <div className="divide-y divide-outline-variant/10">
-              {auditPlans.slice(0, 3).map((plan) => (
-                <div key={plan.id} className="p-4 flex items-center gap-4">
+              {auditPlans.slice(0, 3).map((plan, idx) => (
+                <div key={plan.id || `plan-${idx}`} className="p-4 flex items-center gap-4">
                   <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
                     <span className="material-symbols-outlined text-secondary text-[16px]">event_note</span>
                   </div>
@@ -264,7 +289,7 @@ export default function DashboardPage() {
             <div className="p-8 text-center text-on-surface-variant/50 font-body-md">No scheduled audits</div>
           ) : (
             <div className="divide-y divide-outline-variant/10">
-              {scheduledAudits.slice(0, 3).map((audit) => {
+              {scheduledAudits.slice(0, 3).map((audit, idx) => {
                 const now = new Date();
                 const isOngoing = new Date(audit.startDate) <= now && new Date(audit.endDate) >= now;
                 const isUpcoming = new Date(audit.startDate) > now;
@@ -272,7 +297,7 @@ export default function DashboardPage() {
                 const ncCount = auditReports.filter((r) => r.severity === "non_conformance").length;
                 const ofiCount = auditReports.filter((r) => r.severity === "open_for_improvement").length;
                 return (
-                  <div key={audit.id} className="p-4 flex items-center gap-4">
+                  <div key={audit.id || `sched-${idx}`} className="p-4 flex items-center gap-4">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isOngoing ? "bg-primary/10" : "bg-surface-container"}`}>
                       <span className={`material-symbols-outlined text-[16px] ${isOngoing ? "text-primary" : "text-on-surface-variant"}`}>calendar_month</span>
                     </div>

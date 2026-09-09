@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import { DOMAINS, AUDIT_COORDINATORS } from "../context/app-context";
 import { getReports } from "../services/reportService";
 import { getAuditPlans } from "../services/auditPlanService";
@@ -459,7 +459,7 @@ export default function IQASummaryPage() {
                       : "—";
 
                   return (
-                    <div key={report.iqaNumber || idx} className="contents">
+                    <Fragment key={report.iqaNumber || idx}>
                       <tr
                         onClick={() =>
                           setExpandedId(isExpanded ? null : report.iqaNumber)
@@ -867,7 +867,7 @@ export default function IQASummaryPage() {
                           </td>
                         </tr>
                       )}
-                    </div>
+                    </Fragment>
                   );
                 })
               )}

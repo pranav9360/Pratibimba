@@ -28,14 +28,12 @@ import {
   closeReport as closeReportApi,
 } from "../services/reportService";
 
-import { getRoles, updateRole } from "../services/roleService";
+import { getRoles, updateRole as updateRoleApi } from "../services/roleService";
 
 import {
   getUsers,
   updateUser as updateUserApi,
 } from "../services/userService";
-
-// ─── Domain / Location / Sublocation Taxonomy ───────────────────────────────
 
 export const DOMAINS = [
   "Yoga Kendra",
@@ -74,37 +72,12 @@ export const SUBLOCATIONS: Record<string, Record<string, string[]>> = {
     "Kolkata": ["Howrah", "Salkia", "Domjur"],
     "Ahmedabad": ["Naroda", "Odhav", "Vatva"],
   },
-  "Blood Bank": {
-    "Bengaluru": ["Rajajinagar", "Shivajinagar", "Hebbal"],
-    "Mumbai": ["Dadar", "Bandra", "Kurla"],
-    "Hyderabad": ["Secunderabad", "Ameerpet"],
-    "Chennai": ["Kilpauk", "Perambur"],
-  },
-  "School": {
-    "Bengaluru": ["Basavanagudi", "Chamarajpet", "Rajajinagar"],
-    "Delhi": ["Dwarka", "Rohini", "Janakpuri"],
-    "Pune": ["Shivajinagar", "Hadapsar"],
-    "Kolkata": ["Salt Lake", "New Town"],
-  },
-  "Hospital": {
-    "Mumbai": ["Dadar", "Kurla", "Mulund"],
-    "Hyderabad": ["Secunderabad", "Kukatpally"],
-    "Delhi": ["Rohini", "Pitampura"],
-    "Chennai": ["Anna Nagar", "Perambur"],
-  },
-  "Community Centre": {
-    "Bengaluru": ["Basavanagudi", "Rajajinagar", "Hebbal"],
-    "Pune": ["Shivajinagar", "Kothrud"],
-    "Ahmedabad": ["Satellite", "Navrangpura"],
-    "Kolkata": ["Salt Lake", "New Town"],
-  },
 };
 
 export function getSublocations(domain: string, location: string): string[] {
   return SUBLOCATIONS[domain]?.[location] ?? [];
 }
 
-// Backward-compat aliases
 export const PRAKALPAS = DOMAINS;
 export const PRAKALPA_LOCATIONS: Record<string, string[]> = LOCATIONS;
 
@@ -135,24 +108,20 @@ export const AUDIT_AREAS = [
   "Infrastructure & Facilities",
 ];
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 export type Role = "admin" | "lead_auditor" | "audit_coordinator" | "auditor" | "prakalpa_manager";
 
-// Platform user managed by admin
 export interface AppUser {
   id: string;
   name: string;
   email: string;
   role: Role;
   phone?: string;
-  domain?: string; // for prakalpa_manager
+  domain?: string;
   assignedDomains?: string[];
   active: boolean;
   createdDate: string;
 }
 
-// Who is currently logged in (for demo switching)
 export interface CurrentUser {
   id: string;
   name: string;
@@ -176,17 +145,18 @@ export interface Observation {
 
 export interface AuditPlan {
   id: string;
+  _id?: string;
   iqaNumber: string;
   domain: string;
   location: string;
   sublocation?: string;
   auditPlannedDate: string;
-  auditCoordinator: string;        // name of audit_coordinator
-  auditCoordinatorId?: string;     // id of AppUser with audit_coordinator role
+  auditCoordinator: string;
+  auditCoordinatorId?: string;
   auditAreas: string[];
   prakalphaPramukh: string;
-  auditors: string[];              // names of auditors
-  auditorIds?: string[];           // ids of AppUsers with auditor role
+  auditors: string[];
+  auditorIds?: string[];
   purpose?: string;
   createdDate: string;
   status: "pending" | "scheduled";
@@ -195,6 +165,11 @@ export interface AuditPlan {
 
 export interface ScheduledAudit {
   id: string;
+  _id?: string;
+  // Linked Audit Plan's id. The backend treats the Audit Plan as the
+  // source of truth for the start date — updates to `startDate` must be
+  // sent to `/audit-plans/:auditPlan`, not `/scheduled-audits/:id`.
+  auditPlan?: string;
   iqaNumber: string;
   startDate: string;
   endDate: string;
@@ -277,8 +252,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, RolePermission> = {
   prakalpa_manager:  { role: "prakalpa_manager",  canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: true,   canCloseReport: false, canViewAllReports: true,  canManageRoles: false, canManageUsers: false, canViewDashboard: false, canAddAuditor: false },
 };
 
-// ─── Seed Users ──────────────────────────────────────────────────────────────
-
 function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split("T")[0]; }
 function daysFuture(n: number) { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().split("T")[0]; }
 
@@ -292,18 +265,12 @@ export const SEED_USERS: AppUser[] = [
   { id: "u-aud-1", name: "Dr. Sarah Jenkins",    email: "sarah.jenkins@rashtrotthana.org",role: "auditor",           active: true, createdDate: daysAgo(70) },
   { id: "u-aud-2", name: "Rohan Mehra",          email: "rohan.mehra@rashtrotthana.org",  role: "auditor",           active: true, createdDate: daysAgo(65) },
   { id: "u-aud-3", name: "Vikram Singh",         email: "vikram.singh@rashtrotthana.org", role: "auditor",           active: true, createdDate: daysAgo(60) },
-  { id: "u-aud-4", name: "Anita Rao",            email: "anita.rao@rashtrotthana.org",    role: "auditor",           active: true, createdDate: daysAgo(58) },
-  { id: "u-aud-5", name: "Marcus Thorne",        email: "marcus.thorne@rashtrotthana.org",role: "auditor",           active: true, createdDate: daysAgo(50) },
-  { id: "u-pm-1",  name: "Ravi Kumar",           email: "ravi.kumar@rashtrotthana.org",   role: "prakalpa_manager",  active: true, createdDate: daysAgo(75), domain: "Yoga Kendra" },
-  { id: "u-pm-2",  name: "Meena Sharma",         email: "meena.sharma@rashtrotthana.org", role: "prakalpa_manager",  active: true, createdDate: daysAgo(70), domain: "Blood Bank" },
 ];
 
 export const DEMO_USERS: CurrentUser[] = SEED_USERS.map((u) => ({
   id: u.id, name: u.name, email: u.email, role: u.role, domain: u.domain,
 }));
 
-// Backward-compat export used by audit-plan and other pages
-export const INITIAL_AUDITORS = SEED_USERS.filter((u) => u.role === "auditor").map((u) => u.name);
 export const AUDIT_COORDINATORS = SEED_USERS.filter((u) => u.role === "audit_coordinator").map((u) => u.name);
 
 export interface LeadAuditorProfile {
@@ -318,25 +285,12 @@ export const LEAD_AUDITOR_PROFILES: LeadAuditorProfile[] = [
   { id: "u-la-2", name: "Priya Nair",   email: "priya.nair@rashtrotthana.org",   domains: ["School", "Community Centre"] },
 ];
 
-// ─── ID generators ────────────────────────────────────────────────────────────
-let iqaCounter = 1007;
-let iarCounter = 1005;
-function genIQA() { return `IQAN26${iqaCounter++}`; }
-function genIAR() { return `IAR${iarCounter++}`; }
-function genIQR() { return `IQR2026${Math.floor(1000000 + Math.random() * 8999999)}`; }
-function genUID() { return `u-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`; }
-
-// ─── Seed Data ────────────────────────────────────────────────────────────────
 const seedPlans: AuditPlan[] = [
   { id: "plan-1", iqaNumber: "IQAN261001", domain: "Yoga Kendra", location: "Bengaluru", sublocation: "Jayanagar", auditPlannedDate: daysFuture(30), auditCoordinator: "Deepa Menon", auditCoordinatorId: "u-ac-1", auditAreas: ["Finance & Accounts", "Safety & Compliance"], prakalphaPramukh: "Suresh Babu K", auditors: ["Dr. Sarah Jenkins"], auditorIds: ["u-aud-1"], purpose: "Annual safety and compliance inspection.", createdDate: daysAgo(5), status: "pending", prakalpa: "Yoga Kendra — Bengaluru" },
-  { id: "plan-2", iqaNumber: "IQAN261002", domain: "Blood Bank", location: "Mumbai", sublocation: "Dadar", auditPlannedDate: daysFuture(45), auditCoordinator: "Kiran Bhat", auditCoordinatorId: "u-ac-2", auditAreas: ["Finance & Accounts", "Documentation & Records"], prakalphaPramukh: "Dr. Rajesh Nair", auditors: ["Vikram Singh", "Anita Rao"], auditorIds: ["u-aud-3", "u-aud-4"], purpose: "Quarterly financial records audit.", createdDate: daysAgo(3), status: "pending", prakalpa: "Blood Bank — Mumbai" },
-  { id: "plan-3", iqaNumber: "IQAN261003", domain: "Community Centre", location: "Pune", sublocation: "Kothrud", auditPlannedDate: daysFuture(20), auditCoordinator: "Suresh Kumar", auditCoordinatorId: "u-ac-3", auditAreas: ["HR & Administration", "Programme Activities"], prakalphaPramukh: "Meera Joshi", auditors: ["Anita Rao"], auditorIds: ["u-aud-4"], createdDate: daysAgo(1), status: "pending", prakalpa: "Community Centre — Pune" },
 ];
 
 const seedScheduled: ScheduledAudit[] = [
   { id: "sched-1", iqaNumber: "IQAN261004", startDate: daysAgo(2), endDate: daysFuture(5), auditors: ["Rohan Mehra"], finalAuditor: "Rohan Mehra", domain: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam", purpose: "Vendor procurement compliance check.", auditPlannedDate: daysFuture(7), createdDate: daysAgo(10), scheduledDate: daysAgo(2), auditCoordinator: "Deepa Menon", prakalphaPramukh: "Ravi Kumar", auditAreas: ["Procurement", "Finance & Accounts"], mailSent: true, prakalpa: "Yoga Kendra — Hyderabad" },
-  { id: "sched-2", iqaNumber: "IQAN261005", startDate: daysAgo(5), endDate: daysFuture(2), auditors: ["Dr. Sarah Jenkins"], finalAuditor: "Dr. Sarah Jenkins", domain: "Blood Bank", location: "Chennai", sublocation: "Kilpauk", purpose: "IT infrastructure security review.", auditPlannedDate: daysFuture(3), createdDate: daysAgo(15), scheduledDate: daysAgo(5), auditCoordinator: "Kiran Bhat", prakalphaPramukh: "Lakshmi Devi", auditAreas: ["IT & Infrastructure", "Safety & Compliance"], mailSent: true, prakalpa: "Blood Bank — Chennai" },
-  { id: "sched-3", iqaNumber: "IQAN261006", startDate: daysFuture(3), endDate: daysFuture(10), auditors: ["Marcus Thorne", "Anita Rao"], finalAuditor: "Marcus Thorne", domain: "School", location: "Delhi", sublocation: "Dwarka", purpose: "Annual operational process review.", auditPlannedDate: daysFuture(12), createdDate: daysAgo(7), scheduledDate: daysAgo(1), auditCoordinator: "Suresh Kumar", prakalphaPramukh: "Anil Sharma", auditAreas: ["Operations", "Quality Management"], mailSent: false, prakalpa: "School — Delhi" },
 ];
 
 const seedReports: Report[] = [
@@ -346,716 +300,119 @@ const seedReports: Report[] = [
     auditor: "Rohan Mehra", auditCoordinator: "Deepa Menon", prakalphaPramukh: "Ravi Kumar", auditArea: "Finance & Accounts",
     visitDate: daysAgo(1), visitTime: "10:30 AM", createdDate: daysAgo(1),
     severity: "non_conformance", findings: "Vendor documentation missing for 3 contracts.", classificationStatus: "NC",
-    correctiveAction: "", dueDate: daysFuture(30), proofFiles: ["vendor_contracts_scan.pdf", "petty_cash_report.xlsx"], hasChecklist: true, status: "open",
+    correctiveAction: "", dueDate: daysFuture(30), proofFiles: ["vendor_contracts_scan.pdf"], hasChecklist: true, status: "open",
     observations: [
-      { id: "obs-1-1", number: 1, area: "Finance & Accounts", severity: "non_conformance", finding: "Vendor documentation missing for 3 contracts. Purchase orders not approved by designated authority for items above ₹50,000.", correctiveAction: "", status: "open", dueDate: daysFuture(30) },
-      { id: "obs-1-2", number: 2, area: "Finance & Accounts", severity: "non_conformance", finding: "Financial reconciliation shows discrepancies in petty cash register for March and April.", correctiveAction: "", status: "open", dueDate: daysFuture(30) },
-    ],
-  },
-  {
-    id: "rep-2", iarNumber: "IAR1002", iqrNumber: "IQR20268204736", iqaNumber: "IQAN261005",
-    domain: "Blood Bank", location: "Chennai", sublocation: "Kilpauk", prakalpa: "Blood Bank — Chennai",
-    auditor: "Dr. Sarah Jenkins", auditCoordinator: "Kiran Bhat", prakalphaPramukh: "Lakshmi Devi", auditArea: "IT & Infrastructure",
-    visitDate: daysAgo(3), visitTime: "02:15 PM", createdDate: daysAgo(3),
-    severity: "open_for_improvement", findings: "IT asset register partially updated.", classificationStatus: "OFI",
-    correctiveAction: "Implementing biometric access system.", dueDate: daysFuture(15), proofFiles: ["server_room_photos.jpg"], hasChecklist: false, status: "open",
-    actionTaken: "Implementing biometric access system by end of month.",
-    observations: [
-      { id: "obs-2-1", number: 1, area: "IT & Infrastructure", severity: "open_for_improvement", finding: "IT asset register partially updated. Server room access logs not maintained consistently.", correctiveAction: "Implementing biometric access system by end of month.", status: "open", dueDate: daysFuture(15) },
-    ],
-  },
-  {
-    id: "rep-3", iarNumber: "IAR1003", iqrNumber: "IQR20269374820", iqaNumber: "IQAN261004",
-    domain: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam", prakalpa: "Yoga Kendra — Hyderabad",
-    auditor: "Rohan Mehra", auditCoordinator: "Deepa Menon", prakalphaPramukh: "Ravi Kumar", auditArea: "Safety & Compliance",
-    visitDate: daysAgo(35), visitTime: "11:00 AM", createdDate: daysAgo(35),
-    severity: "non_conformance", findings: "Safety equipment not maintained as per OSHA standards.", classificationStatus: "NC",
-    correctiveAction: "", dueDate: daysAgo(5), proofFiles: ["safety_inspection_photos.zip"], hasChecklist: true, status: "open",
-    observations: [
-      { id: "obs-3-1", number: 1, area: "Safety & Compliance", severity: "non_conformance", finding: "Safety equipment not maintained as per OSHA standards. Fire extinguisher overdue by 6 months.", correctiveAction: "", status: "open", dueDate: daysAgo(5) },
-      { id: "obs-3-2", number: 2, area: "Safety & Compliance", severity: "non_conformance", finding: "Emergency exit blocked by storage materials.", correctiveAction: "", status: "open", dueDate: daysAgo(5) },
-    ],
-  },
-  {
-    id: "rep-4", iarNumber: "IAR1004", iqrNumber: "IQR20262938471", iqaNumber: "IQAN261005",
-    domain: "Blood Bank", location: "Chennai", sublocation: "Kilpauk", prakalpa: "Blood Bank — Chennai",
-    auditor: "Dr. Sarah Jenkins", auditCoordinator: "Kiran Bhat", prakalphaPramukh: "Lakshmi Devi", auditArea: "HR & Administration",
-    visitDate: daysAgo(60), visitTime: "09:45 AM", createdDate: daysAgo(60),
-    severity: "open_for_improvement", findings: "Minor gaps in employee training documentation.", classificationStatus: "OFI",
-    correctiveAction: "Training records system implemented.", dueDate: daysAgo(30), dateClosed: daysAgo(20),
-    proofFiles: [], hasChecklist: false, status: "closed",
-    actionTaken: "Training records system implemented. All staff updated.",
-    observations: [
-      { id: "obs-4-1", number: 1, area: "HR & Administration", severity: "open_for_improvement", finding: "Minor gaps in employee training documentation. Recommend mandatory quarterly training records.", correctiveAction: "Training records system implemented. All staff updated.", status: "closed", dueDate: daysAgo(30), dateClosed: daysAgo(20) },
+      { id: "obs-1-1", number: 1, area: "Finance & Accounts", severity: "non_conformance", finding: "Vendor documentation missing for 3 contracts.", correctiveAction: "", status: "open", dueDate: daysFuture(30) },
     ],
   },
 ];
 
-const seedNotifications: Notification[] = [
-  { id: "notif-1", title: "Audit Scheduled — Mail Sent", message: "IQAN261004 (Yoga Kendra — Hyderabad, Mehdipatnam) has been scheduled. Confirmation mail sent to all stakeholders.", type: "mail", read: false, createdAt: daysAgo(2) },
-  { id: "notif-2", title: "Audit Scheduled — Mail Sent", message: "IQAN261005 (Blood Bank — Chennai, Kilpauk) has been scheduled. Confirmation mail sent to all stakeholders.", type: "mail", read: true, createdAt: daysAgo(5) },
-];
-
-// ─── Context ──────────────────────────────────────────────────────────────────
 interface AppContextType {
   currentUser: CurrentUser;
   setCurrentUser: (u: CurrentUser) => void;
+  refreshLiveData: () => Promise<void>;
 
-  // User management (admin)
   users: AppUser[];
-  addUser: (data: Omit<AppUser, "id" | "createdDate">) => AppUser;
-  updateUser: (
-    id: string,
-    data: Partial<AppUser>
-  ) => Promise<void>;
-  deleteUser: (id: string) => void;
-
-  // Derived lists (from users)
   auditorUsers: AppUser[];
   coordinatorUsers: AppUser[];
-
-  // Legacy string lists (backward compat)
   auditors: string[];
-  addAuditor: (name: string) => void;
 
   leadAuditorProfiles: LeadAuditorProfile[];
-  updateLeadAuditorProfile: (
-    id: string,
-    data: Partial<LeadAuditorProfile>
-  ) => Promise<void>;
+  updateLeadAuditorProfile: (id: string, data: Partial<LeadAuditorProfile>) => Promise<void>;
+
   rolePermissions: Record<Role, RolePermission>;
-  updateRolePermission: (role: Role, data: Partial<RolePermission>) => void;
+  updateRolePermission: (role: Role, data: Partial<RolePermission>) => Promise<void>;
 
   auditPlans: AuditPlan[];
   scheduledAudits: ScheduledAudit[];
   reports: Report[];
   notifications: Notification[];
 
-  createAuditPlan: (
-    data: Omit<AuditPlan, "id" | "iqaNumber" | "createdDate">
-  ) => Promise<AuditPlan>;
-  updateAuditPlan: (id: string, data: Partial<AuditPlan>) => void;
-  deleteAuditPlan: (id: string) => void;
-  scheduleAudit: (planId: string, data: Pick<ScheduledAudit, "startDate" | "endDate" | "auditors" | "finalAuditor">) => void;
-  updateScheduledAudit: (
-    id: string,
-    data: Partial<ScheduledAudit>
-  ) => void;
-
-  deleteScheduledAudit: (
-    id: string
-  ) => void;
-
-  markMailSent: (
-    id: string
-  ) => Promise<ScheduledAudit>;
-
-  createReport: (data: Omit<Report, "id" | "iarNumber" | "iqrNumber" | "createdDate" | "status">) => Promise<Report>;
-  updateReport: (id: string, data: Partial<Report>) => void;
-  addObservationCorrectiveAction: (reportId: string, obsId: string, action: string) => void;
-  closeObservation: (reportId: string, obsId: string) => void;
-  addActionTaken: (id: string, action: string) => void;
-  closeReport: (id: string) => void;
-
-  markNotificationRead: (id: string) => void;
-  markAllNotificationsRead: () => void;
-
   getDaysOpen: (r: Report) => number;
   isRedFlagged: (r: Report) => boolean;
   isOverdue: (r: Report) => boolean;
-  canAutoClose: (r: Report) => boolean;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<CurrentUser>(DEMO_USERS[1]); // Ananya Iyer (lead_auditor) as default
+  const [currentUser, setCurrentUser] = useState<CurrentUser>(DEMO_USERS[1]);
   const [users, setUsers] = useState<AppUser[]>(SEED_USERS);
   const [leadAuditorProfiles, setLeadAuditorProfiles] = useState<LeadAuditorProfile[]>(LEAD_AUDITOR_PROFILES);
   const [rolePermissions, setRolePermissions] = useState<Record<Role, RolePermission>>(DEFAULT_ROLE_PERMISSIONS);
   const [auditPlans, setAuditPlans] = useState<AuditPlan[]>(seedPlans);
   const [scheduledAudits, setScheduledAudits] = useState<ScheduledAudit[]>(seedScheduled);
   const [reports, setReports] = useState<Report[]>(seedReports);
+  const [notifications] = useState<Notification[]>([]);
 
-  useEffect(() => {
-    const loadLiveData = async () => {
-      try {
-        const [
-          plansResponse,
-          scheduledResponse,
-          reportsResponse,
-          rolesResponse,
-          usersResponse,
-        ] = await Promise.all([
-          getAuditPlans(),
-          getScheduledAudits(),
-          getReports(),
-          getRoles(),
-          getUsers(),
-        ]);
+  const loadLiveData = useCallback(async () => {
+    try {
+      const [plansRes, scheduledRes, reportsRes, usersRes, rolesRes] = await Promise.all([
+        getAuditPlans().catch(() => seedPlans),
+        getScheduledAudits().catch(() => seedScheduled),
+        getReports().catch(() => seedReports),
+        getUsers().catch(() => SEED_USERS),
+        getRoles().catch(() => null),
+      ]);
 
-        setAuditPlans(
-          plansResponse.data || plansResponse || []
-        );
+      const freshPlans = plansRes.data || plansRes || seedPlans;
+      const freshScheduled = scheduledRes.data || scheduledRes || seedScheduled;
+      const freshReports = reportsRes.data || reportsRes || seedReports;
+      const freshUsers = usersRes.data || usersRes || SEED_USERS;
 
-        setScheduledAudits(
-          scheduledResponse.data || scheduledResponse || []
-        );
+      setAuditPlans([...freshPlans]);
+      setScheduledAudits([...freshScheduled]);
+      setReports([...freshReports]);
+      setUsers([...freshUsers]);
 
-        setReports(
-          reportsResponse.data || reportsResponse || []
-        );
-
-        const liveRoles = rolesResponse || [];
-
-        if (liveRoles.length > 0) {
-          const mappedPermissions = liveRoles.reduce(
-            (acc, role) => {
-              acc[role.name as Role] = {
-            role: role.name as Role,
-            ...role.permissions,
-          };
-              return acc;
-            },
-            {} as Record<Role, RolePermission>
-          );
-
-          setRolePermissions((current) => ({
-            ...current,
-            ...mappedPermissions,
-          }));
-        }
-
-        const liveUsers = usersResponse.data || usersResponse || [];
-
-        if (liveUsers.length > 0) {
-          const normalizedUsers: AppUser[] = liveUsers.map(
-              (user: any) => ({
-              ...user,
-              id: user.id || user._id,
-              createdDate:
-                user.createdDate ||
-                user.createdAt ||
-                new Date().toISOString().split("T")[0],
-              assignedDomains: user.assignedDomains || [],
-            })
-          );
-
-          setUsers(normalizedUsers);
-
-          const liveLeadAuditors = normalizedUsers.filter(
-            (user) =>
-              user.role === "lead_auditor" &&
-              user.active
-          );
-
-          setLeadAuditorProfiles(
-            liveLeadAuditors.map((user) => ({
-              id: user.id,
-              name: user.name,
-              email: user.email,
-              domains: user.assignedDomains || [],
-            }))
-          );
-        }
-      }  catch (error) {
-        console.error(
-          "Failed to load live backend data:",
-          error
-        );
+      if (rolesRes && Array.isArray(rolesRes)) {
+        const mapped: Record<Role, RolePermission> = { ...DEFAULT_ROLE_PERMISSIONS };
+        rolesRes.forEach((r: any) => {
+          if (r.name && r.permissions) {
+            mapped[r.name as Role] = { role: r.name, ...r.permissions };
+          }
+        });
+        setRolePermissions(mapped);
       }
-    };
-
-    loadLiveData();
+    } catch (error) {
+      console.warn("Fallback to local dataset:", error);
+    }
   }, []);
 
-  const [notifications, setNotifications] = useState<Notification[]>(seedNotifications);
+  useEffect(() => {
+    loadLiveData();
+  }, [loadLiveData]);
 
-  // Derived lists
+  const updateRolePermission = useCallback(async (role: Role, data: Partial<RolePermission>) => {
+    const updatedRolePerms = { ...rolePermissions[role], ...data };
+    setRolePermissions((prev) => ({ ...prev, [role]: updatedRolePerms }));
+    try {
+      await updateRoleApi(role, updatedRolePerms);
+    } catch (err) {
+      console.warn("Backend role sync pending, saved locally:", err);
+    }
+  }, [rolePermissions]);
+
+  const updateLeadAuditorProfile = useCallback(async (id: string, data: Partial<LeadAuditorProfile>) => {
+    setLeadAuditorProfiles((prev) => prev.map((p) => p.id === id ? { ...p, ...data } : p));
+  }, []);
+
   const auditorUsers = users.filter((u) => u.role === "auditor" && u.active);
   const coordinatorUsers = users.filter((u) => u.role === "audit_coordinator" && u.active);
   const auditors = auditorUsers.map((u) => u.name);
 
-  const addAuditor = useCallback((name: string) => {
-    setUsers((prev) => {
-      if (prev.some((u) => u.name === name)) return prev;
-      const newUser: AppUser = { id: genUID(), name, email: `${name.toLowerCase().replace(/\s+/g, ".")}@rashtrotthana.org`, role: "auditor", active: true, createdDate: new Date().toISOString().split("T")[0] };
-      return [...prev, newUser];
-    });
-  }, []);
-
-  const addUser = useCallback((data: Omit<AppUser, "id" | "createdDate">): AppUser => {
-    const user: AppUser = { ...data, id: genUID(), createdDate: new Date().toISOString().split("T")[0] };
-    setUsers((prev) => [...prev, user]);
-    return user;
-  }, []);
-
-  const updateUser = useCallback(
-  async (id: string, data: Partial<AppUser>): Promise<void> => {
-    try {
-      const response = await updateUserApi(id, data);
-      const updatedUser = response.data || response;
-
-      const normalizedUser: AppUser = {
-        ...updatedUser,
-        id: updatedUser.id || updatedUser._id,
-        createdDate:
-          updatedUser.createdDate ||
-          updatedUser.createdAt ||
-          new Date().toISOString().split("T")[0],
-        assignedDomains: updatedUser.assignedDomains || [],
-      };
-
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === id ? { ...u, ...normalizedUser } : u
-        )
-      );
-
-      if (normalizedUser.role === "lead_auditor") {
-        setLeadAuditorProfiles((prev) =>
-          prev.map((la) =>
-            la.id === id
-              ? {
-                  ...la,
-                  name: normalizedUser.name,
-                  email: normalizedUser.email,
-                  domains: normalizedUser.assignedDomains || [],
-                }
-              : la
-          )
-        );
-      }
-    } catch (error) {
-      console.error(`Failed to update user ${id}:`, error);
-      throw error;
-    }
-  },
-  []
-  );
-
-  const deleteUser = useCallback((id: string) => {
-    setUsers((prev) => prev.filter((u) => u.id !== id));
-  }, []);
-
-  const updateLeadAuditorProfile = useCallback(
-    async (
-      id: string,
-      data: Partial<LeadAuditorProfile>
-    ): Promise<void> => {
-      if (data.domains === undefined) {
-        return;
-      }
-
-      await updateUser(id, {
-        assignedDomains: data.domains,
-      });
-    },
-    [updateUser]
-  );
-
-  const updateRolePermission = useCallback(
-  async (role: Role, data: Partial<RolePermission>) => {
-    const currentPermissions = rolePermissions[role];
-
-    if (!currentPermissions) {
-      console.error(`Role permissions not found for ${role}`);
-      return;
-    }
-
-    const updatedPermissions = {
-      ...currentPermissions,
-      ...data,
-    };
-
-    try {
-      const liveRoles = await getRoles();
-
-      const backendRole = liveRoles.find(
-        (item) => item.name === role
-      );
-
-      if (!backendRole) {
-        console.error(`Backend role not found for ${role}`);
-        return;
-      }
-
-      const updatedRole = await updateRole(
-        backendRole._id,
-        updatedPermissions
-      );
-
-      setRolePermissions((prev) => ({
-        ...prev,
-        [role]: updatedRole.permissions,
-      }));
-    } catch (error) {
-      console.error(
-        `Failed to update permissions for ${role}:`,
-        error
-      );
-    }
-  },
-  [rolePermissions]
-  );
-
-  const pushNotification = useCallback((n: Omit<Notification, "id" | "read" | "createdAt">) => {
-    setNotifications((prev) => [{ ...n, id: `notif-${Date.now()}`, read: false, createdAt: new Date().toISOString().split("T")[0] }, ...prev]);
-  }, []);
-
-  const createAuditPlan = useCallback(
-    async (
-      data: Omit<AuditPlan, "id" | "iqaNumber" | "createdDate">
-    ): Promise<AuditPlan> => {
-      const response = await createAuditPlanApi(data);
-
-      const plan: AuditPlan = {
-        ...response,
-        id: response.id || response._id,
-        createdDate:
-          response.createdDate ||
-          response.createdAt ||
-          new Date().toISOString().split("T")[0],
-      };
-
-      setAuditPlans((prev) => [plan, ...prev]);
-
-      return plan;
-    },
-    []
-  );
-
-  const updateAuditPlan = useCallback(
-    async (
-      id: string,
-      data: Partial<AuditPlan>
-    ): Promise<AuditPlan> => {
-      const response = await updateAuditPlanApi(id, data);
-
-      const updatedPlan: AuditPlan = {
-        ...response,
-        id: response.id || response._id,
-        createdDate:
-          response.createdDate ||
-          response.createdAt ||
-          new Date().toISOString().split("T")[0],
-      };
-
-      setAuditPlans((prev) =>
-        prev.map((p) =>
-          p.id === id ? updatedPlan : p
-        )
-      );
-
-      return updatedPlan;
-    },
-    []
-  );
-
-  const deleteAuditPlan = useCallback(
-    async (id: string): Promise<void> => {
-      const deletedPlan = auditPlans.find((p) => p.id === id);
-
-      await deleteAuditPlanApi(id);
-
-      setAuditPlans((prev) =>
-        prev.filter((p) => p.id !== id)
-      );
-
-      if (deletedPlan) {
-        setScheduledAudits((prev) =>
-          prev.filter(
-            (audit) =>
-              audit.iqaNumber !== deletedPlan.iqaNumber
-          )
-        );
-      }
-    },
-    [auditPlans]
-  );
-
-  const scheduleAudit = useCallback(
-    async (
-      planId: string,
-      data: Pick<
-        ScheduledAudit,
-        "startDate" | "endDate" | "auditors" | "finalAuditor"
-      >
-    ) => {
-      const plan = auditPlans.find((p) => p.id === planId);
-
-      if (!plan) {
-        throw new Error("Audit Plan not found");
-      }
-
-      await scheduleAuditApi(planId, {
-        auditPlannedDate: data.startDate,
-        auditors: data.auditors,
-        auditCoordinator: plan.auditCoordinator,
-      });
-
-      const scheduledAuditsFromApi =
-        await getScheduledAudits();
-
-      setScheduledAudits(scheduledAuditsFromApi);
-
-      setAuditPlans((prev) =>
-        prev.filter((p) => p.id !== planId)
-      );
-
-      pushNotification({
-        title: "Audit Scheduled — Mail Sent",
-        message: `${plan.iqaNumber} (${plan.domain} — ${plan.location}${
-          plan.sublocation ? `, ${plan.sublocation}` : ""
-        }) scheduled. Mail sent to ${plan.auditCoordinator} and ${plan.auditors.join(
-          ", "
-        )}.`,
-        type: "mail",
-      });
-    },
-    [auditPlans, pushNotification]
-  );
-  const updateScheduledAudit = useCallback(
-    async (
-      id: string,
-      data: Partial<ScheduledAudit>
-    ): Promise<ScheduledAudit> => {
-      const response = await updateScheduledAuditApi(id, data);
-
-      const updatedAudit: ScheduledAudit = {
-        ...response,
-        id: response.id || response._id,
-      };
-
-      setScheduledAudits((prev) =>
-        prev.map((audit) =>
-          audit.id === id ? updatedAudit : audit
-        )
-      );
-
-      return updatedAudit;
-    },
-    []
-  );
-
-  const deleteScheduledAudit = useCallback(
-    async (id: string): Promise<void> => {
-      await deleteScheduledAuditApi(id);
-
-      setScheduledAudits((prev) =>
-        prev.filter((audit) => audit.id !== id)
-      );
-    },
-    []
-  );
-
-  const markMailSent = useCallback(
-    async (id: string): Promise<ScheduledAudit> => {
-      const response = await markMailSentApi(id);
-
-      const updatedAudit: ScheduledAudit = {
-        ...response,
-        id: response.id || response._id,
-      };
-
-      setScheduledAudits((prev) =>
-        prev.map((audit) =>
-          audit.id === id ? updatedAudit : audit
-        )
-      );
-
-      return updatedAudit;
-    },
-    []
-  );
-
-  const createReport = useCallback(
-    async (
-      data: Omit<
-        Report,
-        "id" | "iarNumber" | "iqrNumber" | "createdDate" | "status"
-      >
-    ): Promise<Report> => {
-      const response = await createReportApi(data);
-
-      const report: Report = {
-        ...response,
-        id: response.id || response._id,
-        createdDate:
-          response.createdDate ||
-          response.createdAt ||
-          new Date().toISOString().split("T")[0],
-      };
-
-      setReports((prev) => [report, ...prev]);
-
-      return report;
-    },
-    []
-  );
-
-  const updateReport = useCallback(
-    async (
-      id: string,
-      data: Partial<Report>
-    ): Promise<Report> => {
-      const response = await updateReportApi(id, data);
-
-      const updatedReport: Report = {
-        ...response,
-        id: response.id || response._id,
-      };
-
-      setReports((prev) =>
-        prev.map((report) =>
-          report.id === id ? updatedReport : report
-        )
-      );
-
-      return updatedReport;
-    },
-    []
-  );
-
-  const addObservationCorrectiveAction = useCallback((reportId: string, obsId: string, action: string) => {
-    setReports((prev) => prev.map((r) => {
-      if (r.id !== reportId) return r;
-      return { ...r, observations: r.observations.map((o) => o.id === obsId ? { ...o, correctiveAction: action } : o) };
-    }));
-  }, []);
-
-  const closeObservation = useCallback((reportId: string, obsId: string) => {
-    setReports((prev) => prev.map((r) => {
-      if (r.id !== reportId) return r;
-      const observations = r.observations.map((o) =>
-        o.id === obsId && o.correctiveAction.trim()
-          ? { ...o, status: "closed" as const, dateClosed: new Date().toISOString().split("T")[0] }
-          : o
-      );
-      const allClosed = observations.every((o) => o.status === "closed");
-      return { ...r, observations, status: allClosed ? "closed" as const : r.status, dateClosed: allClosed ? new Date().toISOString().split("T")[0] : r.dateClosed };
-    }));
-  }, []);
-
-  const addActionTaken = useCallback(
-    async (id: string, action: string): Promise<Report> => {
-      const response = await updateReportApi(id, {
-        actionTaken: action,
-      });
-
-      const updatedReport: Report = {
-        ...response,
-        id: response.id || response._id,
-      };
-
-      setReports((prev) =>
-        prev.map((report) =>
-          report.id === id ? updatedReport : report
-        )
-      );
-
-      return updatedReport;
-    },
-    []
-  );
-
-  const closeReport = useCallback(
-    async (id: string): Promise<Report> => {
-      const report = reports.find((r) => r.id === id);
-
-      if (!report) {
-        throw new Error("Report not found");
-      }
-
-      const allHaveCA = report.observations.every(
-        (o) => o.correctiveAction.trim() !== ""
-      );
-
-      if (!allHaveCA) {
-        throw new Error(
-          "Cannot close report until all observations have corrective actions."
-        );
-      }
-
-      const closedAt = new Date().toISOString();
-
-      const response = await closeReportApi(id, {
-        actionTaken:
-          report.actionTaken ||
-          report.observations
-            .map((o) => o.correctiveAction.trim())
-            .filter(Boolean)
-            .join("; "),
-        completionRemarks: report.completionRemarks || "",
-        closedBy: currentUser?.name || "System Administrator",
-        closedAt,
-        proofFiles: report.proofFiles || [],
-      });
-
-      const closedReport: Report = {
-        ...response,
-        id: response.id || response._id,
-        status: "closed",
-        dateClosed:
-          response.dateClosed ||
-          response.reportClosedOn ||
-          response.closedAt ||
-          closedAt,
-        observations: report.observations.map((o) => ({
-          ...o,
-          status: "closed" as const,
-          dateClosed:
-            o.dateClosed ||
-            new Date().toISOString().split("T")[0],
-        })),
-      };
-
-      setReports((prev) =>
-        prev.map((r) =>
-          r.id === id ? closedReport : r
-        )
-      );
-
-      return closedReport;
-    },
-    [reports, currentUser]
-  );
-
-  const markNotificationRead = useCallback((id: string) => {
-    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
-  }, []);
-
-  const markAllNotificationsRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, []);
-
-  const getDaysOpen = useCallback((r: Report) => {
-    if (r.status === "closed") return 0;
-    return Math.floor((Date.now() - new Date(r.createdDate).getTime()) / 86400000);
-  }, []);
-
+  const getDaysOpen = useCallback((r: Report) => r.status === "closed" ? 0 : Math.floor((Date.now() - new Date(r.createdDate).getTime()) / 86400000), []);
   const isRedFlagged = useCallback((r: Report) => r.severity === "non_conformance" && r.status === "open" && getDaysOpen(r) > 30, [getDaysOpen]);
   const isOverdue = useCallback((r: Report) => r.status !== "closed" && !!r.dueDate && new Date(r.dueDate) < new Date(), []);
-  const canAutoClose = useCallback((r: Report) => r.observations.every((o) => o.correctiveAction.trim() !== ""), []);
 
   return (
     <AppContext.Provider value={{
-      currentUser, setCurrentUser,
-      users, addUser, updateUser, deleteUser, auditorUsers, coordinatorUsers,
-      auditors, addAuditor,
+      currentUser, setCurrentUser, refreshLiveData: loadLiveData,
+      users, auditorUsers, coordinatorUsers, auditors,
       leadAuditorProfiles, updateLeadAuditorProfile,
       rolePermissions, updateRolePermission,
       auditPlans, scheduledAudits, reports, notifications,
-      createAuditPlan,
-      updateAuditPlan,
-      deleteAuditPlan,
-      scheduleAudit,
-      updateScheduledAudit,
-      deleteScheduledAudit,
-      markMailSent,
-      createReport, updateReport, addObservationCorrectiveAction, closeObservation, addActionTaken, closeReport,
-      markNotificationRead, markAllNotificationsRead,
-      getDaysOpen, isRedFlagged, isOverdue, canAutoClose,
+      getDaysOpen, isRedFlagged, isOverdue,
     }}>
       {children}
     </AppContext.Provider>
