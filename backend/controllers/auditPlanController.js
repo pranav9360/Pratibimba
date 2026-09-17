@@ -112,3 +112,20 @@ export const scheduleAuditPlan = asyncHandler(async (req, res) => {
   );
 
 });
+
+
+export const unscheduleAuditPlan =
+  asyncHandler(async (req, res) => {
+    const plan =
+      await auditPlanService.unscheduleAuditPlan(
+        req.params.id
+      );
+
+    res.json(
+      new ApiResponse(
+        200,
+        "Audit plan unscheduled successfully",
+        plan
+      )
+    );
+  });

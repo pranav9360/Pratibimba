@@ -52,7 +52,14 @@ const getNextIqaNumber = async () => {
 };
 
 export const getAuditPlans = async () => {
-  return await AuditPlan.find().sort({ createdAt: -1 });
+  return await AuditPlan.find()
+    .collation({
+      locale: "en",
+      numericOrdering: true,
+    })
+    .sort({
+      iqaNumber: 1,
+    });
 };
 
 export const getAuditPlanById = async (id) => {
@@ -168,10 +175,9 @@ export const scheduleAuditPlan = async (id, scheduleData) => {
   const scheduledAuditData = {
     auditPlan: plan._id,
     iqaNumber: plan.iqaNumber,
-    domain: plan.domain,
+    prakalpa: plan.prakalpa,
     location: plan.location,
     sublocation: plan.sublocation,
-    prakalpa: plan.prakalpa,
     auditCoordinator: plan.auditCoordinator,
     prakalphaPramukh: plan.prakalphaPramukh,
     auditAreas: plan.auditAreas,
@@ -193,4 +199,61 @@ export const scheduleAuditPlan = async (id, scheduleData) => {
   }
 
   return await AuditPlan.findById(plan._id);
+};
+
+/*
+ * Move an Audit Plan back from scheduled → pending/planned.
+ *
+ * The ScheduledAudit execution record is removed entirely,
+ * so scheduling-only information such as:
+ *   - start/end scheduling state
+ *   - assigned scheduled auditors
+ *   - mail dispatch state
+ *   - completion state
+ * disappears with that ScheduledAudit document.
+ *
+ * The AuditPlan remains as the master planning record.
+ */
+export const unscheduleAuditPlan = async (id) => {
+  const plan = await AuditPlan.findById(id);
+
+  if (!plan) {
+    throw new AppError("Audit plan not found", 404);
+  }
+
+  if (plan.status === "completed") {
+    throw new AppError(
+      "Completed audits cannot be unscheduled.",
+      400
+    );
+  }
+
+  if (plan.status !== "scheduled") {
+    throw new AppError(
+      "Only scheduled audit plans can be unscheduled.",
+      400
+    );
+  }
+
+  /*
+   * Delete the linked execution/scheduling record.
+   */
+  await ScheduledAudit.deleteOne({
+    auditPlan: plan._id,
+  });
+
+  /*
+   * Return the master AuditPlan to planned/pending state.
+   */
+  plan.status = "pending";
+
+  /*
+   * Auditors are a scheduling-phase value.
+   * Clear them when unscheduling.
+   */
+  plan.auditors = [];
+
+  await plan.save();
+
+  return plan;
 };

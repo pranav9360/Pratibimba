@@ -10,6 +10,7 @@ import {
   updateAuditPlan,
   deleteAuditPlan,
   scheduleAuditPlan,
+  unscheduleAuditPlan,
 } from "../controllers/auditPlanController.js";
 
 import {
@@ -59,6 +60,17 @@ router.put(
   authenticate,
   authorize("admin", "lead_auditor"),
   scheduleAuditPlan
+);
+
+
+router.patch(
+  "/:id/unschedule",
+  authenticate,
+  authorize(
+    "admin",
+    "lead_auditor"
+  ),
+  unscheduleAuditPlan
 );
 
 export default router;
