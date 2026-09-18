@@ -27,12 +27,8 @@ const reportSchema = new mongoose.Schema(
 
     prakalpa: {
       type: String,
-      default: "",
-    },
-
-    domain: {
-      type: String,
       required: true,
+      trim: true,
     },
 
     location: {
@@ -144,6 +140,25 @@ const reportSchema = new mongoose.Schema(
     closedAt: {
       type: Date,
       default: null,
+    },
+
+    // =========================
+    // Email Lifecycle
+    // =========================
+
+    mailSent: {
+      type: Boolean,
+      default: false,
+    },
+
+    mailSentAt: {
+      type: Date,
+      default: null,
+    },
+
+    mailSentTo: {
+      type: [String],
+      default: [],
     },
   },
   {

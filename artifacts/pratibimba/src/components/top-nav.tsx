@@ -33,10 +33,11 @@ const ROLE_BADGE: Record<string, string> = {
 const ROLE_GROUP_ORDER: string[] = ["admin", "lead_auditor", "audit_coordinator", "auditor", "prakalpa_manager"];
 
 export function TopNav() {
-  const [pathname] = useLocation();
+  const [pathname, setLocation] = useLocation();
   const { currentUser, setCurrentUser, notifications, markNotificationRead, markAllNotificationsRead } = useApp();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -62,8 +63,24 @@ export function TopNav() {
   );
 
   return (
-    <header className="sticky top-0 z-40 w-full h-16 bg-surface border-b border-outline-variant/20 flex justify-between items-center px-8">
-      <nav className="flex items-center font-label-md text-on-surface-variant">
+    <header className="sticky top-0 z-40 w-full min-h-16 bg-surface border-b border-outline-variant/20 flex justify-between items-center px-3 sm:px-4 md:px-8">
+      <div className="flex items-center min-w-0 gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setShowMobileMenu((s) => !s);
+            setShowNotifications(false);
+            setShowUserMenu(false);
+          }}
+          className="md:hidden shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors"
+          aria-label="Open navigation"
+        >
+          <span className="material-symbols-outlined text-[24px]">
+            {showMobileMenu ? "close" : "menu"}
+          </span>
+        </button>
+
+        <nav className="flex items-center min-w-0 font-label-md text-on-surface-variant overflow-hidden">
         {breadcrumbs.map((crumb, idx) => (
           <span key={crumb.href} className="flex items-center">
             {idx > 0 && <span className="material-symbols-outlined text-sm mx-1.5 text-on-surface-variant/40">chevron_right</span>}
@@ -74,10 +91,11 @@ export function TopNav() {
             )}
           </span>
         ))}
-      </nav>
+        </nav>
+      </div>
 
-      <div className="flex items-center gap-3">
-        <span className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${roleBadge}`}>
+      <div className="flex items-center gap-1 sm:gap-2 md:gap-3 shrink-0">
+        <span className={`hidden sm:inline-flex px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${roleBadge}`}>
           {roleLabel}
         </span>
 
@@ -98,7 +116,7 @@ export function TopNav() {
           {showNotifications && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
-              <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-xl shadow-floating border border-outline-variant/20 z-50 overflow-hidden">
+              <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 sm:w-96 bg-white rounded-xl shadow-floating border border-outline-variant/20 z-50 overflow-hidden">
                 <div className="px-4 py-3 border-b border-outline-variant/10 bg-surface-container-lowest flex justify-between items-center">
                   <p className="font-label-md text-on-surface font-bold">Notifications</p>
                   {unreadCount > 0 && (
@@ -141,7 +159,7 @@ export function TopNav() {
         <div className="relative">
           <button
             onClick={() => { setShowUserMenu((s) => !s); setShowNotifications(false); }}
-            className="flex items-center gap-2 hover:bg-surface-container-low px-3 py-1.5 rounded-lg transition-all"
+            className="flex items-center gap-1 sm:gap-2 hover:bg-surface-container-low px-1.5 sm:px-3 py-1.5 rounded-lg transition-all"
           >
             <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-on-secondary font-bold text-[11px]">
               {currentUser.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
@@ -156,7 +174,7 @@ export function TopNav() {
           {showUserMenu && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-              <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-floating border border-outline-variant/20 z-50 overflow-hidden max-h-[80vh] overflow-y-auto">
+              <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 sm:w-80 bg-white rounded-xl shadow-floating border border-outline-variant/20 z-50 overflow-hidden max-h-[80vh] overflow-y-auto">
                 <div className="px-4 py-3 border-b border-outline-variant/10 bg-surface-container-lowest sticky top-0">
                   <p className="font-label-md text-on-surface-variant uppercase tracking-wider text-[11px]">Switch Demo User</p>
                 </div>
@@ -164,7 +182,7 @@ export function TopNav() {
                   const label = ROLE_LABELS[user.role] ?? user.role;
                   const badge = ROLE_BADGE[user.role] ?? "bg-surface-container text-on-surface-variant";
                   const isActive = currentUser.id === user.id;
-                  const sub = user.domain ?? "";
+                  const sub = user.prakalpa ?? "";
                   return (
                     <button
                       key={user.id}
@@ -189,6 +207,64 @@ export function TopNav() {
           )}
         </div>
       </div>
+
+      {showMobileMenu && (
+        <>
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="md:hidden fixed inset-0 top-16 bg-black/30 z-40"
+            onClick={() => setShowMobileMenu(false)}
+          />
+
+          <div className="md:hidden fixed left-0 right-0 top-16 z-50 bg-secondary shadow-xl border-t border-white/10 max-h-[calc(100vh-4rem)] overflow-y-auto">
+            <div className="p-3 space-y-1">
+              {[
+                { label: "Dashboard", href: "/dashboard", icon: "dashboard", roles: ["lead_auditor", "audit_coordinator", "auditor", "prakalpa_manager", "admin"] },
+                { label: "Audit Plan", href: "/audit-plan", icon: "event_note", roles: ["lead_auditor", "admin"] },
+                { label: "Audit Calendar", href: "/audit-calendar", icon: "calendar_month", roles: ["lead_auditor", "audit_coordinator", "auditor", "admin"] },
+                { label: "Scheduled Audits", href: "/scheduled-audits", icon: "pending_actions", roles: ["lead_auditor", "audit_coordinator", "auditor", "admin"] },
+                { label: "All Reports", href: "/all-reports", icon: "fact_check", roles: ["lead_auditor", "audit_coordinator", "prakalpa_manager", "admin"] },
+                { label: "Open Reports", href: "/open-reports", icon: "inbox", roles: ["lead_auditor", "audit_coordinator", "prakalpa_manager", "auditor", "admin"] },
+                { label: "Checklist", href: "/checklist", icon: "checklist", roles: ["lead_auditor", "audit_coordinator", "auditor", "admin"] },
+                { label: "IQA Summary", href: "/iqa-summary", icon: "summarize", roles: ["lead_auditor", "audit_coordinator", "admin"] },
+                { label: "User Management", href: "/user-management", icon: "manage_accounts", roles: ["admin"] },
+                { label: "Role Access", href: "/role-access", icon: "admin_panel_settings", roles: ["lead_auditor", "admin"] },
+              ]
+                .filter((item) => item.roles.includes(currentUser?.role || ""))
+                .map((item) => {
+                  const active =
+                    pathname === item.href ||
+                    pathname?.startsWith(`${item.href}/`);
+
+                  return (
+                    <button
+                      type="button"
+                      key={item.href}
+                      onClick={() => {
+                        setShowMobileMenu(false);
+                        setLocation(item.href);
+                      }}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
+                        active
+                          ? "bg-white/20 text-on-secondary font-bold"
+                          : "text-on-secondary/80 hover:bg-white/10"
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[20px]">
+                        {item.icon}
+                      </span>
+
+                      <span className="font-label-md text-[13px]">
+                        {item.label}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        </>
+      )}
     </header>
   );
 }

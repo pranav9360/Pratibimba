@@ -9,6 +9,7 @@ import {
   getReportById,
   closeReport,
   updateReport,
+  sendReportEmail,
 } from "../controllers/reportController.js";
 
 const router = express.Router();
@@ -51,4 +52,15 @@ router.patch(
   authenticate,
   updateReport
 );
+
+// ===========================
+// Send Report Email
+// ===========================
+
+router.post(
+  "/:id/send-email",
+  authenticate,
+  sendReportEmail
+);
+
 export default router;

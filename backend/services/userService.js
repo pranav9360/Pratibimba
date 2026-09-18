@@ -1,6 +1,6 @@
 import User from "../models/User.js";
 import Role from "../models/Role.js";
-import Domain from "../models/Domain.js";
+import Prakalpa from "../models/Prakalpa.js";
 import AppError from "../utils/AppError.js";
 
 export const getUsers = async () => {
@@ -39,19 +39,19 @@ export const createUser = async (data) => {
 
   if (data.role === "prakalpa_manager") {
 
-    if (!data.domain) {
+    if (!data.prakalpa) {
       throw new AppError(
-        "Prakalpa Manager must have a domain",
+        "Prakalpa Manager must have a prakalpa",
         400
       );
     }
 
-    const domain = await Domain.findOne({
-      name: data.domain,
+    const prakalpa = await Prakalpa.findOne({
+      name: data.prakalpa,
     });
 
-    if (!domain) {
-      throw new AppError("Invalid domain", 400);
+    if (!prakalpa) {
+      throw new AppError("Invalid prakalpa", 400);
     }
 
   }
@@ -108,19 +108,19 @@ export const updateUser = async (id, data) => {
   // Domain validation
   if (data.role === "prakalpa_manager") {
 
-    if (!data.domain) {
+    if (!data.prakalpa) {
       throw new AppError(
-        "Prakalpa Manager must have a domain",
+        "Prakalpa Manager must have a prakalpa",
         400
       );
     }
 
-    const domain = await Domain.findOne({
-      name: data.domain,
+    const prakalpa = await Prakalpa.findOne({
+      name: data.prakalpa,
     });
 
-    if (!domain) {
-      throw new AppError("Invalid domain", 400);
+    if (!prakalpa) {
+      throw new AppError("Invalid prakalpa", 400);
     }
 
   }

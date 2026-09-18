@@ -11,6 +11,7 @@ import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import roleRoutes from "./routes/roleRoutes.js";
 import domainRoutes from "./routes/domainRoutes.js";
+import prakalpaRoutes from "./routes/prakalpaRoutes.js";
 import locationRoutes from "./routes/locationRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import auditPlanRoutes from "./routes/auditPlanRoutes.js";
@@ -97,7 +98,8 @@ app.get("/api/v1/health", (req, res) => {
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/roles", roleRoutes);
-app.use("/api/v1/domains", domainRoutes);
+app.use("/api/v1/domains", domainRoutes); // temporary legacy compatibility
+app.use("/api/v1/prakalpas", prakalpaRoutes);
 app.use("/api/v1/locations", locationRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/audit-plans", auditPlanRoutes);

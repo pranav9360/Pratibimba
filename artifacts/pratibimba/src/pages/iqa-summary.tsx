@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, Fragment } from "react";
-import { DOMAINS, AUDIT_COORDINATORS } from "../context/app-context";
+import { PRAKALPAS, AUDIT_COORDINATORS } from "../context/app-context";
 import { getReports } from "../services/reportService";
 import { getAuditPlans } from "../services/auditPlanService";
 
@@ -9,7 +9,7 @@ function downloadCSV(
 ) {
   const headers = [
     "Audit ID",
-    "Domain",
+    "Prakalpa",
     "Location",
     "Sublocation",
     "Audit Planned Date",
@@ -68,7 +68,7 @@ function downloadCSV(
 
     return [
       report.iqaNumber,
-      report.domain,
+      report.prakalpa,
       report.location || "",
       report.sublocation || "",
       report.visitDate || "",
@@ -103,7 +103,7 @@ export default function IQASummaryPage() {
   const [auditPlans, setAuditPlans] = useState<any[]>([]);
   const [reports, setReports] = useState<any[]>([]);
 
-  const [filterDomain, setFilterDomain] = useState("All");
+  const [filterPrakalpa, setFilterPrakalpa] = useState("All");
   const [filterLocation, setFilterLocation] = useState("All");
   const [filterCoordinator, setFilterCoordinator] = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
@@ -206,11 +206,11 @@ export default function IQASummaryPage() {
       const matchSearch =
         !search ||
         report.iqaNumber.toLowerCase().includes(search.toLowerCase()) ||
-        report.domain.toLowerCase().includes(search.toLowerCase()) ||
+        report.prakalpa.toLowerCase().includes(search.toLowerCase()) ||
         (report.prakalphaPramukh || "")
           .toLowerCase()
           .includes(search.toLowerCase());
-      const matchDomain = filterDomain === "All" || report.domain === filterDomain;
+      const matchPrakalpa = filterPrakalpa === "All" || report.prakalpa === filterPrakalpa;
       const matchLocation = filterLocation === "All" || report.location === filterLocation;
       const matchCoord =
         filterCoordinator === "All" || report.auditCoordinator === filterCoordinator;
@@ -226,7 +226,7 @@ export default function IQASummaryPage() {
         (report.auditAreas || []).includes(filterAuditArea);
       return (
         matchSearch &&
-        matchDomain &&
+        matchPrakalpa &&
         matchLocation &&
         matchCoord &&
         matchStatus &&
@@ -237,7 +237,7 @@ export default function IQASummaryPage() {
   }, [
     summaryRows,
     search,
-    filterDomain,
+    filterPrakalpa,
     filterLocation,
     filterCoordinator,
     filterStatus,
@@ -247,7 +247,7 @@ export default function IQASummaryPage() {
 
   const clearFilters = () => {
     setSearch("");
-    setFilterDomain("All");
+    setFilterPrakalpa("All");
     setFilterLocation("All");
     setFilterCoordinator("All");
     setFilterStatus("All");
@@ -257,7 +257,7 @@ export default function IQASummaryPage() {
 
   const hasFilters =
     search ||
-    filterDomain !== "All" ||
+    filterPrakalpa !== "All" ||
     filterLocation !== "All" ||
     filterCoordinator !== "All" ||
     filterStatus !== "All" ||
@@ -265,7 +265,7 @@ export default function IQASummaryPage() {
     filterAuditArea !== "All";
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 min-w-0">
       <div className="flex flex-wrap justify-between items-start gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">IQA Summary</h2>
@@ -286,32 +286,32 @@ export default function IQASummaryPage() {
       {/* Filters */}
       <div className="bg-white p-4 rounded-xl border border-outline-variant/20 shadow-soft space-y-3">
         <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative flex-1 min-w-[180px]">
+          <div className="relative w-full sm:flex-1 sm:min-w-[180px]">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[18px]">
               search
             </span>
             <input
               type="text"
-              placeholder="Search Audit ID, Domain..."
+              placeholder="Search Audit ID, Prakalpa..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 border border-outline-variant/40 rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-surface-container-lowest"
             />
           </div>
           <select
-            value={filterDomain}
-            onChange={(e) => setFilterDomain(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+            value={filterPrakalpa}
+            onChange={(e) => setFilterPrakalpa(e.target.value)}
+            className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
           >
-            <option value="All">All Domains</option>
-            {DOMAINS.map((d) => (
+            <option value="All">All Prakalpas</option>
+            {PRAKALPAS.map((d) => (
               <option key={d}>{d}</option>
             ))}
           </select>
           <select
             value={filterLocation}
             onChange={(e) => setFilterLocation(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+            className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
           >
             <option value="All">All Locations</option>
             {allLocations.map((l) => (
@@ -321,7 +321,7 @@ export default function IQASummaryPage() {
           <select
             value={filterCoordinator}
             onChange={(e) => setFilterCoordinator(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+            className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
           >
             <option value="All">All Coordinators</option>
             {AUDIT_COORDINATORS.map((c) => (
@@ -331,7 +331,7 @@ export default function IQASummaryPage() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+            className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
           >
             <option value="All">All Status</option>
             <option value="Planned">Planned</option>
@@ -346,12 +346,12 @@ export default function IQASummaryPage() {
             placeholder="Prakalpa Pramukh"
             value={filterPramukh}
             onChange={(e) => setFilterPramukh(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none w-44"
+            className="w-full sm:w-44 border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
           />
           <select
             value={filterAuditArea}
             onChange={(e) => setFilterAuditArea(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+            className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
           >
             <option value="All">All Audit Areas</option>
             {allAuditAreas.map((a) => (
@@ -372,12 +372,12 @@ export default function IQASummaryPage() {
       {/* Summary Table */}
       <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-[12px]">
+          <table className="w-full min-w-[1350px] text-left text-[12px]">
             <thead className="bg-surface-container-lowest border-b border-outline-variant/20">
               <tr>
                 {[
                   "Audit ID",
-                  "Domain",
+                  "Prakalpa",
                   "Location",
                   "Sublocation",
                   "Planned Date",
@@ -486,10 +486,10 @@ export default function IQASummaryPage() {
                           </div>
                         </td>
 
-                        {/* Domain */}
+                        {/* Prakalpa */}
                         <td className="px-3 py-3">
                           <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-bold whitespace-nowrap">
-                            {report.domain}
+                            {report.prakalpa}
                           </span>
                         </td>
 
@@ -807,7 +807,7 @@ export default function IQASummaryPage() {
                                         </div>
 
                                         {/* Rich Backend Lifecycle Metadata Cards */}
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-outline-variant/10 text-[11px] text-on-surface-variant">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-outline-variant/10 text-[11px] text-on-surface-variant">
                                           <div>
                                             <span className="block text-[10px] text-on-surface-variant/60">
                                               Created

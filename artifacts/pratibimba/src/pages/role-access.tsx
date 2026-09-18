@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { useApp, LEAD_AUDITOR_PROFILES, DOMAINS, type Role, type RolePermission } from "../context/app-context";
+import { useApp, LEAD_AUDITOR_PROFILES, PRAKALPAS, type Role, type RolePermission } from "../context/app-context";
 
 const ROLE_META: Record<Role, { label: string; color: string; icon: string; description: string }> = {
   admin:             { label: "Admin",             color: "text-error",              icon: "shield_person",         description: "Full platform administration — manages users, roles, and access." },
   lead_auditor:      { label: "Lead Auditor",      color: "text-primary",            icon: "manage_accounts",       description: "Oversees audit planning, assigns coordinators and auditors to plans." },
   audit_coordinator: { label: "Audit Coordinator", color: "text-tertiary",           icon: "group_work",            description: "Leads field audit teams. Takes a team of auditors to the audit site." },
   auditor:           { label: "Auditor",           color: "text-secondary",          icon: "person_search",         description: "Part of the field audit team. Files audit reports and findings." },
-  prakalpa_manager:  { label: "Prakalpa Manager",  color: "text-on-surface-variant", icon: "supervised_user_circle",description: "Domain unit manager with access to their domain's reports and corrective actions." },
+  prakalpa_manager:  { label: "Prakalpa Manager",  color: "text-on-surface-variant", icon: "supervised_user_circle",description: "Prakalpa unit manager with access to their prakalpa's reports and corrective actions." },
 };
 
 const PERMISSION_LABELS: Record<keyof Omit<RolePermission, "role">, string> = {
@@ -25,15 +25,15 @@ export default function RoleAccessPage() {
   const { currentUser, rolePermissions, updateRolePermission, leadAuditorProfiles, updateLeadAuditorProfile } = useApp();
   const canAccess = currentUser.role === "lead_auditor" || currentUser.role === "admin";
   const [editingLA, setEditingLA] = useState<string | null>(null);
-  const [laEditDomains, setLaEditDomains] = useState<string[]>([]);
+  const [laEditPrakalpas, setLaEditPrakalpas] = useState<string[]>([]);
 
   const allPermissions = Object.keys(PERMISSION_LABELS) as Array<keyof Omit<RolePermission, "role">>;
   const roles: Role[] = ["admin", "lead_auditor", "audit_coordinator", "auditor", "prakalpa_manager"];
 
   if (!canAccess) {
     return (
-      <div className="p-8">
-        <div className="max-w-lg mx-auto mt-16 bg-white rounded-2xl shadow-soft border border-outline-variant/10 p-10 text-center space-y-4">
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="max-w-lg mx-auto mt-8 sm:mt-16 bg-white rounded-2xl shadow-soft border border-outline-variant/10 p-5 sm:p-10 text-center space-y-4">
           <span className="material-symbols-outlined text-[48px] text-on-surface-variant/20">lock</span>
           <h2 className="font-headline-md text-on-surface">Access Restricted</h2>
           <p className="font-body-md text-on-surface-variant">Only Lead Auditors and Admins can manage role permissions.</p>
@@ -46,21 +46,21 @@ export default function RoleAccessPage() {
     const la = leadAuditorProfiles.find((x) => x.id === id);
     if (!la) return;
     setEditingLA(id);
-    setLaEditDomains([...la.domains]);
+    setLaEditPrakalpas([...la.prakalpas]);
   };
 
-  const toggleLaDomain = (domain: string) => {
-    setLaEditDomains((prev) => prev.includes(domain) ? prev.filter((d) => d !== domain) : [...prev, domain]);
+  const toggleLaPrakalpa = (prakalpa: string) => {
+    setLaEditPrakalpas((prev) => prev.includes(prakalpa) ? prev.filter((d) => d !== prakalpa) : [...prev, prakalpa]);
   };
 
-  const saveLaDomains = () => {
+  const saveLaPrakalpas = () => {
     if (!editingLA) return;
-    updateLeadAuditorProfile(editingLA, { domains: laEditDomains });
+    updateLeadAuditorProfile(editingLA, { prakalpas: laEditPrakalpas });
     setEditingLA(null);
   };
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-8 min-w-0">
       <div>
         <h2 className="font-headline-md text-on-surface">Role Access Management</h2>
         <p className="font-body-md text-on-surface-variant mt-0.5">Configure what each role can do within the system.</p>
@@ -140,9 +140,9 @@ export default function RoleAccessPage() {
         </div>
       </section>
 
-      {/* Lead Auditor Domain Assignments */}
+      {/* Lead Auditor Prakalpa Assignments */}
       <section>
-        <h3 className="font-headline-sm text-on-surface mb-4">Lead Auditor Domain Assignments</h3>
+        <h3 className="font-headline-sm text-on-surface mb-4">Lead Auditor Prakalpa Assignments</h3>
         <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
           <div className="divide-y divide-outline-variant/10">
             {leadAuditorProfiles.map((la) => (
@@ -158,18 +158,18 @@ export default function RoleAccessPage() {
                         <p className="font-label-md text-on-surface-variant/60 text-[11px]">{la.email}</p>
                       </div>
                     </div>
-                    <p className="font-label-md text-on-surface-variant/70 text-[12px]">Select domains to assign:</p>
+                    <p className="font-label-md text-on-surface-variant/70 text-[12px]">Select prakalpas to assign:</p>
                     <div className="flex flex-wrap gap-2">
-                      {DOMAINS.map((d) => (
-                        <button key={d} type="button" onClick={() => toggleLaDomain(d)}
-                          className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border-2 transition-all ${laEditDomains.includes(d) ? "bg-primary text-on-primary border-primary" : "bg-white text-on-surface-variant border-outline-variant hover:border-primary/50"}`}>
+                      {PRAKALPAS.map((d) => (
+                        <button key={d} type="button" onClick={() => toggleLaPrakalpa(d)}
+                          className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border-2 transition-all ${laEditPrakalpas.includes(d) ? "bg-primary text-on-primary border-primary" : "bg-white text-on-surface-variant border-outline-variant hover:border-primary/50"}`}>
                           {d}
                         </button>
                       ))}
                     </div>
                     <div className="flex gap-3">
                       <button onClick={() => setEditingLA(null)} className="px-4 py-2 border border-outline-variant rounded-lg font-label-md text-[12px] hover:bg-surface-container-low">Cancel</button>
-                      <button onClick={saveLaDomains} className="px-4 py-2 bg-primary text-on-primary rounded-lg font-label-md font-bold text-[12px]">Save</button>
+                      <button onClick={saveLaPrakalpas} className="px-4 py-2 bg-primary text-on-primary rounded-lg font-label-md font-bold text-[12px]">Save</button>
                     </div>
                   </div>
                 ) : (
@@ -182,9 +182,9 @@ export default function RoleAccessPage() {
                         <p className="font-label-md font-bold text-on-surface">{la.name}</p>
                         <p className="font-label-md text-on-surface-variant/60 text-[11px]">{la.email}</p>
                         <div className="flex flex-wrap gap-1 mt-2">
-                          {la.domains.length === 0 ? (
-                            <span className="text-[11px] text-on-surface-variant/50 italic">No domains assigned</span>
-                          ) : la.domains.map((d) => (
+                          {la.prakalpas.length === 0 ? (
+                            <span className="text-[11px] text-on-surface-variant/50 italic">No prakalpas assigned</span>
+                          ) : la.prakalpas.map((d) => (
                             <span key={d} className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-[11px] font-bold">{d}</span>
                           ))}
                         </div>
@@ -192,7 +192,7 @@ export default function RoleAccessPage() {
                     </div>
                     <button onClick={() => startEditLA(la.id)} className="flex items-center gap-1.5 px-3 py-1.5 border border-outline-variant rounded-lg font-label-md text-[12px] hover:bg-surface-container-low">
                       <span className="material-symbols-outlined text-[15px]">edit</span>
-                      Edit Domains
+                      Edit Prakalpas
                     </button>
                   </div>
                 )}

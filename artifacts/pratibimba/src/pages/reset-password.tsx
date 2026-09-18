@@ -40,7 +40,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="w-full max-w-[480px] bg-white p-8 rounded-xl border border-outline-variant/20 relative overflow-hidden shadow-xl">
+    <div className="w-full max-w-[480px] bg-white p-5 sm:p-8 rounded-xl border border-outline-variant/20 relative overflow-hidden shadow-xl">
       <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary via-primary-container to-secondary" />
 
       <div className="mb-8 text-center">

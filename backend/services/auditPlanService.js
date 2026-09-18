@@ -75,8 +75,19 @@ export const getAuditPlanById = async (id) => {
 export const createAuditPlan = async (data) => {
   const iqaNumber = await getNextIqaNumber();
 
+  /*
+   * Auditor assignment belongs to scheduling.
+   * Even if an old frontend sends auditors while
+   * creating a plan, do not persist them here.
+   */
+  const {
+    auditors: _ignoredAuditors,
+    ...planningData
+  } = data;
+
   const auditPlan = await AuditPlan.create({
-    ...data,
+    ...planningData,
+    auditors: [],
     iqaNumber,
   });
 
@@ -90,32 +101,49 @@ export const updateAuditPlan = async (id, data) => {
     throw new AppError("Audit Plan not found", 404);
   }
 
-  Object.assign(plan, data);
+  /*
+   * Completed AuditPlans are historical records.
+   */
+  if (plan.status === "completed") {
+    throw new AppError(
+      "Completed audit plans cannot be edited.",
+      400
+    );
+  }
+
+  /*
+   * Normal Audit Plan editing is allowed only while
+   * the plan is pending/planned.
+   *
+   * Scheduled-audit changes are handled by
+   * scheduledAuditService, which synchronizes the
+   * master AuditPlan directly.
+   */
+  if (plan.status === "scheduled") {
+    throw new AppError(
+      "Scheduled audits must be edited from Scheduled Audits.",
+      400
+    );
+  }
+
+  /*
+   * Auditors do not belong to planning.
+   */
+  const {
+    auditors: _ignoredAuditors,
+    status: _ignoredStatus,
+    ...planningData
+  } = data;
+
+  Object.assign(plan, planningData);
+
+  /*
+   * A plan edited from Audit Plan remains pending.
+   */
+  plan.status = "pending";
+  plan.auditors = [];
 
   await plan.save();
-
-  // Keep scheduled audit synchronized
-  const scheduledAudit = await ScheduledAudit.findOne({
-    auditPlan: plan._id,
-  });
-
-  if (scheduledAudit) {
-    scheduledAudit.startDate = plan.auditPlannedDate;
-
-    if (scheduledAudit.endDate < scheduledAudit.startDate) {
-      scheduledAudit.endDate = plan.auditPlannedDate;
-    }
-
-    scheduledAudit.auditCoordinator = plan.auditCoordinator;
-    scheduledAudit.auditors = plan.auditors;
-    scheduledAudit.auditAreas = plan.auditAreas;
-    scheduledAudit.purpose = plan.purpose || "";
-    scheduledAudit.location = plan.location;
-    scheduledAudit.sublocation = plan.sublocation;
-    scheduledAudit.prakalphaPramukh = plan.prakalphaPramukh;
-
-    await scheduledAudit.save();
-  }
 
   return await AuditPlan.findById(plan._id);
 };
@@ -127,11 +155,16 @@ export const deleteAuditPlan = async (id) => {
     throw new AppError("Audit Plan not found", 404);
   }
 
-  // Only delete a plan that has not entered the audit lifecycle.
-  // Once scheduled, the plan must remain as historical audit data.
   if (plan.status === "scheduled") {
     throw new AppError(
       "A scheduled audit cannot be deleted from the audit lifecycle.",
+      400
+    );
+  }
+
+  if (plan.status === "completed") {
+    throw new AppError(
+      "A completed audit cannot be deleted from the audit lifecycle.",
       400
     );
   }
@@ -152,25 +185,94 @@ export const scheduleAuditPlan = async (id, scheduleData) => {
     throw new AppError("Audit Plan not found", 404);
   }
 
-  if (scheduleData.auditPlannedDate) {
-    plan.auditPlannedDate = scheduleData.auditPlannedDate;
+  if (plan.status === "completed") {
+    throw new AppError(
+      "Completed audits cannot be scheduled.",
+      400
+    );
   }
 
+  if (plan.status === "scheduled") {
+    throw new AppError(
+      "This audit is already scheduled.",
+      400
+    );
+  }
+
+  /*
+   * Coordinator was selected during planning.
+   * Scheduling may receive it, but if it is omitted
+   * we retain the coordinator already on AuditPlan.
+   */
   if (scheduleData.auditCoordinator) {
-    plan.auditCoordinator = scheduleData.auditCoordinator;
+    plan.auditCoordinator =
+      scheduleData.auditCoordinator;
   }
 
-  if (scheduleData.auditors) {
-    plan.auditors = scheduleData.auditors;
+  /*
+   * Auditors are assigned during scheduling.
+   */
+  if (
+    !Array.isArray(scheduleData.auditors) ||
+    scheduleData.auditors.length === 0
+  ) {
+    throw new AppError(
+      "Please select at least one auditor before scheduling.",
+      400
+    );
   }
 
+  plan.auditors = scheduleData.auditors;
+
+  /*
+   * The scheduled start date becomes the current
+   * operational audit date on the master AuditPlan.
+   */
+  const requestedStartDate =
+    scheduleData.startDate ||
+    scheduleData.auditPlannedDate ||
+    plan.auditPlannedDate;
+
+  const requestedEndDate =
+    scheduleData.endDate ||
+    requestedStartDate;
+
+  const startDate =
+    new Date(requestedStartDate);
+
+  const endDate =
+    new Date(requestedEndDate);
+
+  if (Number.isNaN(startDate.getTime())) {
+    throw new AppError(
+      "Invalid Start Date.",
+      400
+    );
+  }
+
+  if (Number.isNaN(endDate.getTime())) {
+    throw new AppError(
+      "Invalid End Date.",
+      400
+    );
+  }
+
+  if (endDate < startDate) {
+    throw new AppError(
+      "End Date cannot be before Start Date.",
+      400
+    );
+  }
+
+  plan.auditPlannedDate = startDate;
   plan.status = "scheduled";
 
   await plan.save();
 
-  let scheduledAudit = await ScheduledAudit.findOne({
-    auditPlan: plan._id,
-  });
+  let scheduledAudit =
+    await ScheduledAudit.findOne({
+      auditPlan: plan._id,
+    });
 
   const scheduledAuditData = {
     auditPlan: plan._id,
@@ -184,17 +286,29 @@ export const scheduleAuditPlan = async (id, scheduleData) => {
     purpose: plan.purpose || "",
     auditors: plan.auditors,
     finalAuditor:
-      plan.auditors.length > 0 ? plan.auditors[0] : "",
-    startDate: plan.auditPlannedDate,
-    endDate: plan.auditPlannedDate,
+      scheduleData.finalAuditor ||
+      (plan.auditors.length > 0
+        ? plan.auditors[0]
+        : ""),
+    startDate,
+    endDate,
+    status: "upcoming",
     mailSent: false,
   };
 
   if (scheduledAudit) {
-    Object.assign(scheduledAudit, scheduledAuditData);
+    Object.assign(
+      scheduledAudit,
+      scheduledAuditData
+    );
+
     await scheduledAudit.save();
   } else {
-    scheduledAudit = new ScheduledAudit(scheduledAuditData);
+    scheduledAudit =
+      new ScheduledAudit(
+        scheduledAuditData
+      );
+
     await scheduledAudit.save();
   }
 
@@ -202,17 +316,16 @@ export const scheduleAuditPlan = async (id, scheduleData) => {
 };
 
 /*
- * Move an Audit Plan back from scheduled → pending/planned.
+ * Move scheduled → pending/planned.
  *
- * The ScheduledAudit execution record is removed entirely,
- * so scheduling-only information such as:
- *   - start/end scheduling state
- *   - assigned scheduled auditors
- *   - mail dispatch state
- *   - completion state
- * disappears with that ScheduledAudit document.
+ * Scheduling-only information is removed by deleting
+ * the linked ScheduledAudit.
  *
- * The AuditPlan remains as the master planning record.
+ * Coordinator remains on AuditPlan because it is a
+ * planning-phase value.
+ *
+ * Auditors are cleared because they belong to the
+ * scheduling phase.
  */
 export const unscheduleAuditPlan = async (id) => {
   const plan = await AuditPlan.findById(id);
@@ -235,21 +348,15 @@ export const unscheduleAuditPlan = async (id) => {
     );
   }
 
-  /*
-   * Delete the linked execution/scheduling record.
-   */
   await ScheduledAudit.deleteOne({
     auditPlan: plan._id,
   });
 
-  /*
-   * Return the master AuditPlan to planned/pending state.
-   */
   plan.status = "pending";
 
   /*
-   * Auditors are a scheduling-phase value.
-   * Clear them when unscheduling.
+   * Auditors must be selected again the next time
+   * this plan is scheduled.
    */
   plan.auditors = [];
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useApp, type AppUser, type Role, DOMAINS } from "../context/app-context";
+import { useApp, type AppUser, type Role, PRAKALPAS } from "../context/app-context";
 import { useEffect } from "react";
 
 import {
@@ -28,7 +28,7 @@ type UserFormData = {
   role: Role;
   active: boolean;
   phone: string;
-  domain: string;
+  prakalpa: string;
 };
 
 const emptyForm = (): UserFormData => ({
@@ -38,7 +38,7 @@ const emptyForm = (): UserFormData => ({
   role: "auditor",
   active: true,
   phone: "",
-  domain: "",
+  prakalpa: "",
 });
 
 interface UserFormProps {
@@ -73,7 +73,7 @@ function UserForm({ initial, onSave, onCancel, isEdit }: UserFormProps) {
         </div>
 
         <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Full Name <span className="text-error">*</span></label>
               <input
@@ -129,7 +129,7 @@ function UserForm({ initial, onSave, onCancel, isEdit }: UserFormProps) {
                       {r.value === "lead_auditor" && "Creates audit plans, assigns teams."}
                       {r.value === "audit_coordinator" && "Leads field audit teams with auditors."}
                       {r.value === "auditor" && "Part of the field audit team."}
-                      {r.value === "prakalpa_manager" && "Oversees a domain unit or prakalpa."}
+                      {r.value === "prakalpa_manager" && "Oversees a Prakalpa."}
                     </p>
                   </div>
                   {form.role === r.value && <span className="material-symbols-outlined text-[18px] ml-auto">check_circle</span>}
@@ -140,19 +140,19 @@ function UserForm({ initial, onSave, onCancel, isEdit }: UserFormProps) {
 
           {form.role === "prakalpa_manager" && (
             <div>
-              <label className="font-label-md text-on-surface-variant block mb-1">Domain</label>
+              <label className="font-label-md text-on-surface-variant block mb-1">Prakalpa</label>
               <select
-                value={form.domain ?? ""}
-                onChange={(e) => set("domain", e.target.value)}
+                value={form.prakalpa ?? ""}
+                onChange={(e) => set("prakalpa", e.target.value)}
                 className="w-full border border-outline-variant rounded-lg px-3 py-2.5 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
               >
-                <option value="">Select domain…</option>
-                {DOMAINS.map((d) => <option key={d} value={d}>{d}</option>)}
+                <option value="">Select prakalpa…</option>
+                {PRAKALPAS.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Phone (optional)</label>
               <input
@@ -236,9 +236,9 @@ export default function UserManagement() {
   }, {});
 
   return (
-    <div className="space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 min-w-0">
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
         <div>
           <h1 className="font-headline-md font-bold text-on-surface">User Management</h1>
           <p className="font-body-md text-on-surface-variant mt-1">{users.length} users · {users.filter((u) => u.active).length} active</p>
@@ -253,7 +253,7 @@ export default function UserManagement() {
       </div>
 
       {/* Role summary cards */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {ROLE_OPTIONS.map((r) => (
           <button
             key={r.value}
@@ -267,7 +267,7 @@ export default function UserManagement() {
       </div>
 
       {/* Search + filter */}
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[18px]">search</span>
           <input
@@ -280,7 +280,7 @@ export default function UserManagement() {
         <select
           value={filterRole}
           onChange={(e) => setFilterRole(e.target.value as Role | "all")}
-          className="border border-outline-variant rounded-xl px-4 py-2.5 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+          className="w-full sm:w-auto border border-outline-variant rounded-xl px-4 py-2.5 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
         >
           <option value="all">All Roles</option>
           {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -289,13 +289,14 @@ export default function UserManagement() {
 
       {/* Users table */}
       <div className="bg-white rounded-2xl border border-outline-variant/20 overflow-hidden shadow-sm">
-        <table className="w-full">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[900px]">
           <thead>
             <tr className="bg-surface-container-lowest border-b border-outline-variant/10">
               <th className="text-left px-5 py-3 font-label-md text-on-surface-variant text-[11px] uppercase tracking-wider">User</th>
               <th className="text-left px-5 py-3 font-label-md text-on-surface-variant text-[11px] uppercase tracking-wider">Email</th>
               <th className="text-left px-5 py-3 font-label-md text-on-surface-variant text-[11px] uppercase tracking-wider">Role</th>
-              <th className="text-left px-5 py-3 font-label-md text-on-surface-variant text-[11px] uppercase tracking-wider">Domain</th>
+              <th className="text-left px-5 py-3 font-label-md text-on-surface-variant text-[11px] uppercase tracking-wider">Prakalpa</th>
               <th className="text-left px-5 py-3 font-label-md text-on-surface-variant text-[11px] uppercase tracking-wider">Status</th>
               <th className="text-left px-5 py-3 font-label-md text-on-surface-variant text-[11px] uppercase tracking-wider">Added</th>
               <th className="px-5 py-3" />
@@ -326,7 +327,7 @@ export default function UserManagement() {
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${meta.color}`}>{meta.label}</span>
                   </td>
                   <td className="px-5 py-3.5">
-                    <span className="font-body-md text-on-surface-variant text-[12px]">{u.domain || "—"}</span>
+                    <span className="font-body-md text-on-surface-variant text-[12px]">{u.prakalpa || "—"}</span>
                   </td>
                   <td className="px-5 py-3.5">
                     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${u.active ? "bg-primary/10 text-primary" : "bg-error/10 text-error"}`}>
@@ -362,6 +363,7 @@ export default function UserManagement() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Add / Edit form modal */}
@@ -375,7 +377,7 @@ export default function UserManagement() {
                   password: "",
                   role: editUser.role,
                   phone: editUser.phone ?? "",
-                  domain: editUser.domain ?? "",
+                  prakalpa: editUser.prakalpa ?? "",
                   active: editUser.active,
                 }
               : emptyForm()
@@ -422,7 +424,7 @@ export default function UserManagement() {
             <p className="font-body-md text-on-surface-variant mb-5">
               This will permanently remove <strong>{confirmDelete.name}</strong> from the platform. This action cannot be undone.
             </p>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
               <button
                 onClick={async () => {

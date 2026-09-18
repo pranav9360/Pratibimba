@@ -4,17 +4,16 @@ import authenticate from "../middleware/authMiddleware.js";
 import authorize from "../middleware/authorize.js";
 
 import {
-  getLocations,
-  getLocationsByPrakalpa,
-  createLocation,
-  updateLocation,
-  deleteLocation,
-} from "../controllers/locationController.js";
+  getPrakalpas,
+  createPrakalpa,
+  updatePrakalpa,
+  deletePrakalpa,
+} from "../controllers/prakalpaController.js";
 
 import {
-  createLocationValidator,
-  updateLocationValidator,
-} from "../validators/locationValidator.js";
+  createPrakalpaValidator,
+  updatePrakalpaValidator,
+} from "../validators/prakalpaValidator.js";
 
 const router =
   express.Router();
@@ -22,13 +21,7 @@ const router =
 router.get(
   "/",
   authenticate,
-  getLocations
-);
-
-router.get(
-  "/prakalpa/:prakalpa",
-  authenticate,
-  getLocationsByPrakalpa
+  getPrakalpas
 );
 
 router.post(
@@ -38,8 +31,8 @@ router.post(
     "admin",
     "lead_auditor"
   ),
-  createLocationValidator,
-  createLocation
+  createPrakalpaValidator,
+  createPrakalpa
 );
 
 router.put(
@@ -49,15 +42,15 @@ router.put(
     "admin",
     "lead_auditor"
   ),
-  updateLocationValidator,
-  updateLocation
+  updatePrakalpaValidator,
+  updatePrakalpa
 );
 
 router.delete(
   "/:id",
   authenticate,
   authorize("admin"),
-  deleteLocation
+  deletePrakalpa
 );
 
 export default router;

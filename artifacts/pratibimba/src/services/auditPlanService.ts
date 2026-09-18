@@ -98,3 +98,18 @@ export async function scheduleAudit(id: string, data: any) {
   const response = await handleResponse(res);
   return withId(response.data);
 }
+
+
+export async function unscheduleAuditPlan(id: string) {
+  if (!id) {
+    throw new Error("unscheduleAuditPlan: missing audit plan id");
+  }
+
+  const res = await fetch(`${BASE_URL}/${id}/unschedule`, {
+    method: "PATCH",
+    headers: authHeaders(),
+  });
+
+  const response = await handleResponse(res);
+  return withId(response.data);
+}

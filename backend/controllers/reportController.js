@@ -80,6 +80,25 @@ export const closeReport = asyncHandler(async (req, res) => {
   );
 });
 
+// ==============================
+// Send Report Email
+// ==============================
+
+export const sendReportEmail = asyncHandler(async (req, res) => {
+  const report = await reportService.sendReportEmail(
+    req.params.id,
+    req.body
+  );
+
+  res.json(
+    new ApiResponse(
+      200,
+      "Report email sent successfully",
+      report
+    )
+  );
+});
+
 export const updateReport = asyncHandler(async (req, res) => {
 
   const report =

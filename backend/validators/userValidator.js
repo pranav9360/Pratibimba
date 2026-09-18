@@ -29,9 +29,13 @@ export const createUserValidator = [
     .optional()
     .trim(),
 
-  body("domain")
+  body("prakalpa")
     .optional()
     .trim(),
+
+  body("assignedPrakalpas")
+    .optional()
+    .isArray(),
 
   body("active")
     .optional()
@@ -59,9 +63,13 @@ export const updateUserValidator = [
     .optional()
     .trim(),
 
-  body("domain")
+  body("prakalpa")
     .optional()
     .trim(),
+
+  body("assignedPrakalpas")
+    .optional()
+    .isArray(),
 
   body("active")
     .optional()

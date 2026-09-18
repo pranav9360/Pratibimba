@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { useApp, DOMAINS } from "../context/app-context";
+import { useApp, PRAKALPAS } from "../context/app-context";
 
 export default function DashboardPage() {
   const { auditPlans, scheduledAudits, reports, getDaysOpen, isRedFlagged, isOverdue, refreshLiveData } = useApp();
@@ -41,17 +41,17 @@ export default function DashboardPage() {
   const redFlagged = reports.filter(isRedFlagged);
   const overdueNCs = ncOpen.filter(isOverdue);
 
-  // Domain coverage
-  const domainsWithAudit = new Set([
-    ...scheduledAudits.map((s) => s.domain),
-    ...auditPlans.map((p) => p.domain),
+  // Prakalpa coverage
+  const prakalpasWithAudit = new Set([
+    ...scheduledAudits.map((s) => s.prakalpa),
+    ...auditPlans.map((p) => p.prakalpa),
   ]);
-  const totalDomains = DOMAINS.length;
-  const domainsWithScope = domainsWithAudit.size;
-  const iqaCoverage = totalDomains > 0 ? Math.round((domainsWithScope / totalDomains) * 100) : 0;
+  const totalPrakalpas = PRAKALPAS.length;
+  const prakalpasWithScope = prakalpasWithAudit.size;
+  const iqaCoverage = totalPrakalpas > 0 ? Math.round((prakalpasWithScope / totalPrakalpas) * 100) : 0;
 
   const auditsPlanned = auditPlans.length + scheduledAudits.length;
-  const avgAuditsPerDomain = domainsWithScope > 0 ? (auditsPlanned / domainsWithScope).toFixed(1) : "0";
+  const avgAuditsPerPrakalpa = prakalpasWithScope > 0 ? (auditsPlanned / prakalpasWithScope).toFixed(1) : "0";
   const auditsCompleted = scheduledAudits.filter((s) => new Date(s.endDate) < new Date()).length;
 
   const ncClosedPct = ncReports.length > 0 ? Math.round((ncClosed.length / ncReports.length) * 100) : 0;
@@ -63,7 +63,7 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 min-w-0">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">IQA Dashboard</h2>
@@ -86,15 +86,15 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Domain Coverage */}
+      {/* Prakalpa Coverage */}
       <section>
-        <h3 className="font-headline-sm text-on-surface mb-4">Domain Coverage</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <h3 className="font-headline-sm text-on-surface mb-4">Prakalpa Coverage</h3>
+        <div className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           {[
-            { label: "Total Domains", value: totalDomains, icon: "domain", color: "text-on-surface", border: "border-l-outline-variant" },
-            { label: "Domains Audited", value: domainsWithScope, icon: "domain_verification", color: "text-secondary", border: "border-l-secondary" },
+            { label: "Total Prakalpas", value: totalPrakalpas, icon: "account_tree", color: "text-on-surface", border: "border-l-outline-variant" },
+            { label: "Prakalpas Audited", value: prakalpasWithScope, icon: "domain_verification", color: "text-secondary", border: "border-l-secondary" },
             { label: "IQA Coverage", value: `${iqaCoverage}%`, icon: "donut_large", color: "text-primary", border: "border-l-primary" },
-            { label: "Avg Audits / Domain", value: avgAuditsPerDomain, icon: "calculate", color: "text-on-secondary-container", border: "border-l-on-secondary-container" },
+            { label: "Avg Audits / Prakalpa", value: avgAuditsPerPrakalpa, icon: "calculate", color: "text-on-secondary-container", border: "border-l-on-secondary-container" },
           ].map((stat) => (
             <div key={stat.label} className={`bg-white p-4 rounded-xl shadow-soft border-l-4 ${stat.border}`}>
               <div className="flex justify-between items-start">
@@ -110,7 +110,7 @@ export default function DashboardPage() {
       {/* Audit Activity */}
       <section>
         <h3 className="font-headline-sm text-on-surface mb-4">Audit Activity</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           {[
             { label: "Audits Planned", value: auditsPlanned, icon: "event_note", color: "text-secondary", border: "border-l-secondary" },
             { label: "Audits Completed", value: auditsCompleted, icon: "task_alt", color: "text-secondary", border: "border-l-secondary" },
@@ -131,7 +131,7 @@ export default function DashboardPage() {
       {/* NC / OFI Stats */}
       <section>
         <h3 className="font-headline-sm text-on-surface mb-4">NC & OFI Findings</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
           {[
             { label: "Total NCs", value: ncReports.length, icon: "error_outline", color: "text-error", border: "border-l-error" },
             { label: "Total OFIs", value: ofiReports.length, icon: "info", color: "text-primary", border: "border-l-primary" },
@@ -235,7 +235,7 @@ export default function DashboardPage() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="font-data-mono text-[11px] font-bold text-on-surface">{report.iarNumber}</p>
-                  <p className="font-label-md text-on-surface-variant/70 truncate">{report.domain} — {report.location}</p>
+                  <p className="font-label-md text-on-surface-variant/70 truncate">{report.prakalpa} — {report.location}</p>
                   {report.observations?.length > 0 && (
                     <p className="font-label-md text-on-surface-variant/50 text-[10px]">{report.observations.length} observation{report.observations.length > 1 ? "s" : ""}</p>
                   )}
@@ -257,7 +257,7 @@ export default function DashboardPage() {
             <Link href="/audit-plan" className="font-label-md text-primary hover:underline">View All ({auditPlans.length})</Link>
           </div>
           {auditPlans.length === 0 ? (
-            <div className="p-8 text-center text-on-surface-variant/50 font-body-md">No audit plans pending</div>
+            <div className="p-4 sm:p-8 text-center text-on-surface-variant/50 font-body-md">No audit plans pending</div>
           ) : (
             <div className="divide-y divide-outline-variant/10">
               {auditPlans.slice(0, 3).map((plan, idx) => (
@@ -267,7 +267,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-data-mono text-[11px] text-primary font-bold">{plan.iqaNumber}</p>
-                    <p className="font-body-md font-medium text-on-surface truncate">{plan.domain} — {plan.location}</p>
+                    <p className="font-body-md font-medium text-on-surface truncate">{plan.prakalpa} — {plan.location}</p>
                     <p className="font-label-md text-on-surface-variant/70 truncate">{plan.auditCoordinator}</p>
                   </div>
                   <div className="text-right shrink-0">
@@ -286,7 +286,7 @@ export default function DashboardPage() {
             <Link href="/scheduled-audits" className="font-label-md text-primary hover:underline">View All ({scheduledAudits.length})</Link>
           </div>
           {scheduledAudits.length === 0 ? (
-            <div className="p-8 text-center text-on-surface-variant/50 font-body-md">No scheduled audits</div>
+            <div className="p-4 sm:p-8 text-center text-on-surface-variant/50 font-body-md">No scheduled audits</div>
           ) : (
             <div className="divide-y divide-outline-variant/10">
               {scheduledAudits.slice(0, 3).map((audit, idx) => {
@@ -303,7 +303,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-data-mono text-[11px] text-primary font-bold">{audit.iqaNumber}</p>
-                      <p className="font-body-md font-medium text-on-surface truncate">{audit.domain} — {audit.location}</p>
+                      <p className="font-body-md font-medium text-on-surface truncate">{audit.prakalpa} — {audit.location}</p>
                       <div className="flex gap-2 mt-0.5">
                         {ncCount > 0 && <span className="font-label-md text-[10px] text-error">NC:{ncCount}</span>}
                         {ofiCount > 0 && <span className="font-label-md text-[10px] text-primary">OFI:{ofiCount}</span>}

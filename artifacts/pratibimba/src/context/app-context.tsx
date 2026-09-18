@@ -35,7 +35,7 @@ import {
   updateUser as updateUserApi,
 } from "../services/userService";
 
-export const DOMAINS = [
+export const PRAKALPAS = [
   "Yoga Kendra",
   "Blood Bank",
   "School",
@@ -74,14 +74,13 @@ export const SUBLOCATIONS: Record<string, Record<string, string[]>> = {
   },
 };
 
-export function getSublocations(domain: string, location: string): string[] {
-  return SUBLOCATIONS[domain]?.[location] ?? [];
+export function getSublocations(prakalpa: string, location: string): string[] {
+  return SUBLOCATIONS[prakalpa]?.[location] ?? [];
 }
 
-export const PRAKALPAS = DOMAINS;
 export const PRAKALPA_LOCATIONS: Record<string, string[]> = LOCATIONS;
 
-export const DOMAIN_PRAMUKH_DETAILS: Record<string, { pramukh: string; praMukhEmail: string; seniorEmail: string }> = {
+export const PRAKALPA_PRAMUKH_DETAILS: Record<string, { pramukh: string; praMukhEmail: string; seniorEmail: string }> = {
   "Yoga Kendra": { pramukh: "Suresh Babu K", praMukhEmail: "suresh.babu@rashtrotthana.org", seniorEmail: "south.regional@rashtrotthana.org" },
   "Blood Bank": { pramukh: "Dr. Rajesh Nair", praMukhEmail: "rajesh.nair@rashtrotthana.org", seniorEmail: "west.regional@rashtrotthana.org" },
   "School": { pramukh: "Anil Sharma", praMukhEmail: "anil.sharma@rashtrotthana.org", seniorEmail: "north.regional@rashtrotthana.org" },
@@ -93,7 +92,7 @@ export const DOMAIN_PRAMUKH_DETAILS: Record<string, { pramukh: string; praMukhEm
   "Cultural Centre": { pramukh: "Pooja Iyer", praMukhEmail: "pooja.iyer@rashtrotthana.org", seniorEmail: "south.regional@rashtrotthana.org" },
   "Dispensary": { pramukh: "Amit Das", praMukhEmail: "amit.das@rashtrotthana.org", seniorEmail: "east.regional@rashtrotthana.org" },
 };
-export const PRAKALPA_DETAILS = DOMAIN_PRAMUKH_DETAILS;
+export const PRAKALPA_DETAILS = PRAKALPA_PRAMUKH_DETAILS;
 
 export const AUDIT_AREAS = [
   "Finance & Accounts",
@@ -116,8 +115,8 @@ export interface AppUser {
   email: string;
   role: Role;
   phone?: string;
-  domain?: string;
-  assignedDomains?: string[];
+  prakalpa?: string;
+  assignedPrakalpas?: string[];
   active: boolean;
   createdDate: string;
 }
@@ -127,8 +126,8 @@ export interface CurrentUser {
   name: string;
   email: string;
   role: Role;
-  domain?: string;
-  assignedDomains?: string[];
+  prakalpa?: string;
+  assignedPrakalpas?: string[];
 }
 
 export interface Observation {
@@ -147,7 +146,7 @@ export interface AuditPlan {
   id: string;
   _id?: string;
   iqaNumber: string;
-  domain: string;
+  prakalpa: string;
   location: string;
   sublocation?: string;
   auditPlannedDate: string;
@@ -159,8 +158,7 @@ export interface AuditPlan {
   auditorIds?: string[];
   purpose?: string;
   createdDate: string;
-  status: "pending" | "scheduled";
-  prakalpa?: string;
+  status: "pending" | "scheduled" | "completed";
 }
 
 export interface ScheduledAudit {
@@ -175,7 +173,7 @@ export interface ScheduledAudit {
   endDate: string;
   auditors: string[];
   finalAuditor: string;
-  domain: string;
+  prakalpa: string;
   location: string;
   sublocation?: string;
   purpose?: string;
@@ -186,7 +184,7 @@ export interface ScheduledAudit {
   prakalphaPramukh: string;
   auditAreas: string[];
   mailSent?: boolean;
-  prakalpa?: string;
+  status?: "upcoming" | "ongoing" | "completed";
 }
 
 export interface Report {
@@ -194,10 +192,9 @@ export interface Report {
   iarNumber: string;
   iqrNumber: string;
   iqaNumber: string;
-  domain: string;
+  prakalpa: string;
   location?: string;
   sublocation?: string;
-  prakalpa?: string;
   auditor: string;
   auditCoordinator?: string;
   prakalphaPramukh?: string;
@@ -268,7 +265,7 @@ export const SEED_USERS: AppUser[] = [
 ];
 
 export const DEMO_USERS: CurrentUser[] = SEED_USERS.map((u) => ({
-  id: u.id, name: u.name, email: u.email, role: u.role, domain: u.domain,
+  id: u.id, name: u.name, email: u.email, role: u.role, prakalpa: u.prakalpa,
 }));
 
 export const AUDIT_COORDINATORS = SEED_USERS.filter((u) => u.role === "audit_coordinator").map((u) => u.name);
@@ -277,26 +274,26 @@ export interface LeadAuditorProfile {
   id: string;
   name: string;
   email: string;
-  domains: string[];
+  prakalpas: string[];
 }
 
 export const LEAD_AUDITOR_PROFILES: LeadAuditorProfile[] = [
-  { id: "u-la-1", name: "Ananya Iyer",  email: "ananya.iyer@rashtrotthana.org",  domains: ["Yoga Kendra", "Blood Bank", "Training Centre"] },
-  { id: "u-la-2", name: "Priya Nair",   email: "priya.nair@rashtrotthana.org",   domains: ["School", "Community Centre"] },
+  { id: "u-la-1", name: "Ananya Iyer",  email: "ananya.iyer@rashtrotthana.org",  prakalpas: ["Yoga Kendra", "Blood Bank", "Training Centre"] },
+  { id: "u-la-2", name: "Priya Nair",   email: "priya.nair@rashtrotthana.org",   prakalpas: ["School", "Community Centre"] },
 ];
 
 const seedPlans: AuditPlan[] = [
-  { id: "plan-1", iqaNumber: "IQAN261001", domain: "Yoga Kendra", location: "Bengaluru", sublocation: "Jayanagar", auditPlannedDate: daysFuture(30), auditCoordinator: "Deepa Menon", auditCoordinatorId: "u-ac-1", auditAreas: ["Finance & Accounts", "Safety & Compliance"], prakalphaPramukh: "Suresh Babu K", auditors: ["Dr. Sarah Jenkins"], auditorIds: ["u-aud-1"], purpose: "Annual safety and compliance inspection.", createdDate: daysAgo(5), status: "pending", prakalpa: "Yoga Kendra — Bengaluru" },
+  { id: "plan-1", iqaNumber: "IQAN261001", prakalpa: "Yoga Kendra", location: "Bengaluru", sublocation: "Jayanagar", auditPlannedDate: daysFuture(30), auditCoordinator: "Deepa Menon", auditCoordinatorId: "u-ac-1", auditAreas: ["Finance & Accounts", "Safety & Compliance"], prakalphaPramukh: "Suresh Babu K", auditors: ["Dr. Sarah Jenkins"], auditorIds: ["u-aud-1"], purpose: "Annual safety and compliance inspection.", createdDate: daysAgo(5), status: "pending",  },
 ];
 
 const seedScheduled: ScheduledAudit[] = [
-  { id: "sched-1", iqaNumber: "IQAN261004", startDate: daysAgo(2), endDate: daysFuture(5), auditors: ["Rohan Mehra"], finalAuditor: "Rohan Mehra", domain: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam", purpose: "Vendor procurement compliance check.", auditPlannedDate: daysFuture(7), createdDate: daysAgo(10), scheduledDate: daysAgo(2), auditCoordinator: "Deepa Menon", prakalphaPramukh: "Ravi Kumar", auditAreas: ["Procurement", "Finance & Accounts"], mailSent: true, prakalpa: "Yoga Kendra — Hyderabad" },
+  { id: "sched-1", iqaNumber: "IQAN261004", startDate: daysAgo(2), endDate: daysFuture(5), auditors: ["Rohan Mehra"], finalAuditor: "Rohan Mehra", prakalpa: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam", purpose: "Vendor procurement compliance check.", auditPlannedDate: daysFuture(7), createdDate: daysAgo(10), scheduledDate: daysAgo(2), auditCoordinator: "Deepa Menon", prakalphaPramukh: "Ravi Kumar", auditAreas: ["Procurement", "Finance & Accounts"], mailSent: true,  },
 ];
 
 const seedReports: Report[] = [
   {
     id: "rep-1", iarNumber: "IAR1001", iqrNumber: "IQR20261837492", iqaNumber: "IQAN261004",
-    domain: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam", prakalpa: "Yoga Kendra — Hyderabad",
+    prakalpa: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam",
     auditor: "Rohan Mehra", auditCoordinator: "Deepa Menon", prakalphaPramukh: "Ravi Kumar", auditArea: "Finance & Accounts",
     visitDate: daysAgo(1), visitTime: "10:30 AM", createdDate: daysAgo(1),
     severity: "non_conformance", findings: "Vendor documentation missing for 3 contracts.", classificationStatus: "NC",

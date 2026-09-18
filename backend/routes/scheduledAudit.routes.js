@@ -7,9 +7,12 @@ import {
   getScheduledAudits,
   getScheduledAuditById,
   updateScheduledAudit,
+  completeScheduledAudit,
   deleteScheduledAudit,
   markMailSent,
+  sendScheduledAuditEmail,
 } from "../controllers/scheduledAuditController.js";
+
 import {
   updateScheduledAuditValidator,
 } from "../validators/scheduleAuditValidator.js";
@@ -31,21 +34,55 @@ router.get(
 router.put(
   "/:id",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize(
+    "admin",
+    "lead_auditor"
+  ),
   updateScheduledAuditValidator,
   updateScheduledAudit
+);
+
+/*
+ * Explicit completion action.
+ */
+router.patch(
+  "/:id/complete",
+  authenticate,
+  authorize(
+    "admin",
+    "lead_auditor"
+  ),
+  completeScheduledAudit
+);
+
+router.post(
+  "/:id/send-email",
+  authenticate,
+  authorize(
+    "admin",
+    "lead_auditor"
+  ),
+  sendScheduledAuditEmail
+);
+
+router.patch(
+  "/:id/mail-sent",
+  authenticate,
+  authorize(
+    "admin",
+    "lead_auditor"
+  ),
+  markMailSent
 );
 
 router.delete(
   "/:id",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize(
+    "admin",
+    "lead_auditor"
+  ),
   deleteScheduledAudit
 );
-router.patch(
-  "/:id/mail-sent",
-  authenticate,
-  authorize("admin", "lead_auditor"),
-  markMailSent
-);
+
 export default router;

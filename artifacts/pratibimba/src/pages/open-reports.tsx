@@ -1,21 +1,21 @@
 import { useState, useMemo, useEffect } from "react";
 import {
   useApp,
-  DOMAINS,
+  PRAKALPAS,
   AUDIT_COORDINATORS,
 } from "../context/app-context";
 import {
   getReports,
-  sendReportEmail,
   downloadReportPDF,
   closeReport,
 } from "../services/reportService";
+import SendReportEmailModal from "../components/send-report-email-modal";
 
 interface Report {
   _id: string;
   iqrNumber: string;
   iqaNumber: string;
-  domain: string;
+  prakalpa: string;
   location: string;
   sublocation: string;
   auditCoordinator: string;
@@ -35,13 +35,16 @@ interface Report {
   completionRemarks?: string;
   closedBy?: string;
   closedAt?: string;
+  mailSent?: boolean;
+  mailSentAt?: string;
+  mailSentTo?: string[];
 }
 
 function downloadCSV(reports: Report[]) {
   const headers = [
     "Report ID (IQR)",
     "IQA Ref",
-    "Domain",
+    "Prakalpa",
     "Location",
     "Sublocation",
     "Visit Date",
@@ -54,7 +57,7 @@ function downloadCSV(reports: Report[]) {
   const rows = reports.map((r) => [
     r.iqrNumber || "",
     r.iqaNumber || "",
-    r.domain || "",
+    r.prakalpa || "",
     r.location || "",
     r.sublocation || "",
     r.visitDate || "",
@@ -78,6 +81,7 @@ export default function OpenReportsPage() {
   const { currentUser } = useApp();
   const [reports, setReports] = useState<Report[]>([]);
   const [detailTarget, setDetailTarget] = useState<Report | null>(null);
+  const [mailTarget, setMailTarget] = useState<Report | null>(null);
 
   // Close Report Form State
   const [closeTarget, setCloseTarget] = useState<Report | null>(null);
@@ -90,7 +94,7 @@ export default function OpenReportsPage() {
   const [lastClosedNumber, setLastClosedNumber] = useState<string>("");
 
   const [filterReportId, setFilterReportId] = useState("");
-  const [filterDomain, setFilterDomain] = useState("All");
+  const [filterPrakalpa, setFilterPrakalpa] = useState("All");
   const [filterClassification, setFilterClassification] = useState("All");
   const [filterCoordinator, setFilterCoordinator] = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
@@ -112,15 +116,6 @@ export default function OpenReportsPage() {
 
   const handleViewReport = (report: Report) => {
     setDetailTarget(report);
-  };
-
-  const handleSendMail = async (report: Report) => {
-    try {
-      await sendReportEmail(report._id);
-      alert(`Email functionality for ${report.iqrNumber} will be connected to backend.`);
-    } catch (error) {
-      console.error("Error sending report email:", error);
-    }
   };
 
   const handleDownload = async (report: Report) => {
@@ -190,7 +185,7 @@ export default function OpenReportsPage() {
         !q ||
         (r.iqrNumber || "").toLowerCase().includes(q) ||
         (r.iqaNumber || "").toLowerCase().includes(q) ||
-        (r.domain || "").toLowerCase().includes(q) ||
+        (r.prakalpa || "").toLowerCase().includes(q) ||
         (r.findings || "").toLowerCase().includes(q);
 
       const matchReportId =
@@ -199,8 +194,8 @@ export default function OpenReportsPage() {
           .toLowerCase()
           .includes(filterReportId.toLowerCase());
 
-      const matchDomain =
-        filterDomain === "All" || r.domain === filterDomain;
+      const matchPrakalpa =
+        filterPrakalpa === "All" || r.prakalpa === filterPrakalpa;
 
       const matchClass =
         filterClassification === "All" ||
@@ -213,7 +208,7 @@ export default function OpenReportsPage() {
         r.auditCoordinator === filterCoordinator;
 
       const matchUser = isManager
-        ? r.domain === currentUser.domain
+        ? r.prakalpa === currentUser.prakalpa
         : isAuditor
         ? (r.auditors || []).includes(currentUser.name || "") ||
           r.auditor === currentUser.name
@@ -222,7 +217,7 @@ export default function OpenReportsPage() {
       return (
         ms &&
         matchReportId &&
-        matchDomain &&
+        matchPrakalpa &&
         matchClass &&
         matchCoord &&
         matchUser
@@ -232,7 +227,7 @@ export default function OpenReportsPage() {
     openReports,
     search,
     filterReportId,
-    filterDomain,
+    filterPrakalpa,
     filterClassification,
     filterCoordinator,
     isManager,
@@ -243,7 +238,7 @@ export default function OpenReportsPage() {
   const clearFilters = () => {
     setSearch("");
     setFilterReportId("");
-    setFilterDomain("All");
+    setFilterPrakalpa("All");
     setFilterClassification("All");
     setFilterStatus("All");
     setFilterCoordinator("All");
@@ -269,17 +264,17 @@ export default function OpenReportsPage() {
   }, [filtered]);
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 min-w-0">
       <div className="flex flex-wrap justify-between items-start gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">Open Reports</h2>
           <p className="font-body-md text-on-surface-variant mt-0.5">
             {filtered.length} active reports
-            {isManager ? ` — ${currentUser.domain}` : ""}
+            {isManager ? ` — ${currentUser.prakalpa}` : ""}
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2 sm:gap-3">
           <button
             onClick={loadReports}
             className="flex items-center gap-2 px-4 py-2.5 border border-outline-variant rounded-lg font-label-md font-medium hover:bg-surface-container-low transition-colors"
@@ -302,7 +297,7 @@ export default function OpenReportsPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white border border-outline-variant/20 rounded-xl p-4 shadow-soft">
           <p className="text-on-surface-variant text-sm font-label-md">
             Open Reports
@@ -359,7 +354,7 @@ export default function OpenReportsPage() {
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-xl border border-outline-variant/20 shadow-soft flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[180px]">
+        <div className="relative w-full sm:flex-1 sm:min-w-[180px]">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[18px]">
             search
           </span>
@@ -376,16 +371,16 @@ export default function OpenReportsPage() {
           placeholder="Report ID (IQR)"
           value={filterReportId}
           onChange={(e) => setFilterReportId(e.target.value)}
-          className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none w-36"
+          className="w-full sm:w-36 border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
         />
         {!isManager && (
           <select
-            value={filterDomain}
-            onChange={(e) => setFilterDomain(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+            value={filterPrakalpa}
+            onChange={(e) => setFilterPrakalpa(e.target.value)}
+            className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
           >
-            <option value="All">All Domains</option>
-            {DOMAINS.map((d) => (
+            <option value="All">All Prakalpas</option>
+            {PRAKALPAS.map((d) => (
               <option key={d}>{d}</option>
             ))}
           </select>
@@ -393,7 +388,7 @@ export default function OpenReportsPage() {
         <select
           value={filterClassification}
           onChange={(e) => setFilterClassification(e.target.value)}
-          className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+          className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
         >
           <option value="All">All Types</option>
           <option value="NC">NC</option>
@@ -402,7 +397,7 @@ export default function OpenReportsPage() {
         <select
           value={filterCoordinator}
           onChange={(e) => setFilterCoordinator(e.target.value)}
-          className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
+          className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
         >
           <option value="All">All Coordinators</option>
           {AUDIT_COORDINATORS.map((c) => (
@@ -411,7 +406,7 @@ export default function OpenReportsPage() {
         </select>
         {(search ||
           filterReportId ||
-          filterDomain !== "All" ||
+          filterPrakalpa !== "All" ||
           filterClassification !== "All" ||
           filterStatus !== "All" ||
           filterCoordinator !== "All") && (
@@ -438,13 +433,13 @@ export default function OpenReportsPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
           <div className="overflow-x-auto max-h-[600px]">
-            <table className="w-full text-left">
+            <table className="w-full min-w-[1100px] text-left">
               <thead className="sticky top-0 z-10 bg-white shadow-sm border-b border-outline-variant/20">
                 <tr>
                   {[
                     "Report ID",
                     "IQA Ref",
-                    "Domain",
+                    "Prakalpa",
                     "Location",
                     "Auditor",
                     "Audit Date",
@@ -525,7 +520,7 @@ export default function OpenReportsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-primary/10 text-primary font-bold text-[10px] tracking-wide whitespace-nowrap">
-                          {report.domain}
+                          {report.prakalpa}
                         </span>
                       </td>
                       <td className="px-4 py-3 font-body-md text-on-surface-variant text-[12px] whitespace-nowrap">
@@ -628,13 +623,13 @@ export default function OpenReportsPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleSendMail(report);
+                              setMailTarget(report);
                             }}
-                            className="p-2 rounded-lg transition-all hover:scale-110 hover:bg-secondary/10 text-secondary"
-                            title="Send Report Email"
+                            className="p-2 rounded-lg transition-all hover:scale-110 hover:bg-secondary/10 text-secondary relative"
+                            title={report.mailSent ? "Resend Report Email" : "Send Report Email"}
                           >
                             <span className="material-symbols-outlined text-[18px]">
-                              mail
+                              {report.mailSent ? "mark_email_read" : "mail"}
                             </span>
                           </button>
 
@@ -714,7 +709,7 @@ export default function OpenReportsPage() {
 
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto space-y-6 flex-1">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-5">
                 <div>
                   <p className="text-xs text-on-surface-variant">IQR Number</p>
                   <p className="font-semibold text-on-surface font-data-mono">
@@ -730,9 +725,9 @@ export default function OpenReportsPage() {
                 </div>
 
                 <div>
-                  <p className="text-xs text-on-surface-variant">Domain</p>
+                  <p className="text-xs text-on-surface-variant">Prakalpa</p>
                   <p className="font-semibold text-on-surface">
-                    {detailTarget.domain}
+                    {detailTarget.prakalpa}
                   </p>
                 </div>
 
@@ -850,7 +845,7 @@ export default function OpenReportsPage() {
               )}
 
               {detailTarget.closedBy && (
-                <div className="grid grid-cols-2 gap-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                   <div>
                     <p className="text-xs text-on-surface-variant">Closed By</p>
                     <p className="font-semibold text-on-surface">{detailTarget.closedBy}</p>
@@ -891,7 +886,7 @@ export default function OpenReportsPage() {
             <div className="p-4 border-t border-outline-variant/10 shrink-0 flex justify-between items-center">
               <div className="flex gap-2">
                 <button
-                  onClick={() => handleSendMail(detailTarget)}
+                  onClick={() => setMailTarget(detailTarget)}
                   className="px-4 py-2 rounded-lg border border-outline-variant hover:bg-surface-container-low transition-colors flex items-center gap-1.5"
                   title="Send Email"
                 >
@@ -1060,6 +1055,14 @@ export default function OpenReportsPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {mailTarget && (
+        <SendReportEmailModal
+          report={mailTarget}
+          onClose={() => setMailTarget(null)}
+          onSent={loadReports}
+        />
       )}
     </div>
   );

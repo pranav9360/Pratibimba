@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import { useApp, DOMAINS, LOCATIONS, getSublocations, DOMAIN_PRAMUKH_DETAILS, AUDIT_AREAS, type AuditPlan } from "../context/app-context";
+import { useApp, PRAKALPAS, LOCATIONS, getSublocations, PRAKALPA_PRAMUKH_DETAILS, AUDIT_AREAS, type AuditPlan } from "../context/app-context";
 import { useEffect } from "react";
 
 import {
+  unscheduleAuditPlan,
   getAuditPlans,
   createAuditPlan,
   updateAuditPlan,
@@ -12,8 +13,8 @@ import {
 } from "../services/auditPlanService";
 
 function downloadCSV(plans: AuditPlan[]) {
-  const headers = ["Audit ID", "Domain", "Location", "Sublocation", "Audit Planned Date", "Audit Coordinator", "Audit Areas", "Prakalpa Pramukh", "Auditors", "Purpose", "Status", "Created Date"];
-  const rows = plans.map(p => [p.iqaNumber, p.domain, p.location, p.sublocation || "", p.auditPlannedDate, p.auditCoordinator, (p.auditAreas || []).join("; "), p.prakalphaPramukh, (p.auditors || []).join("; "), `"${(p.purpose || "").replace(/"/g, '""')}"`, p.status, p.createdDate].join(","));
+  const headers = ["Audit ID", "Prakalpa", "Location", "Sublocation", "Audit Planned Date", "Audit Coordinator", "Audit Areas", "Prakalpa Pramukh", "Auditors", "Purpose", "Status", "Created Date"];
+  const rows = plans.map(p => [p.iqaNumber, p.prakalpa, p.location, p.sublocation || "", p.auditPlannedDate, p.auditCoordinator, (p.auditAreas || []).join("; "), p.prakalphaPramukh, (p.auditors || []).join("; "), `"${(p.purpose || "").replace(/"/g, '""')}"`, p.status, p.createdDate].join(","));
   const csv = [headers.join(","), ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
@@ -24,7 +25,13 @@ function downloadCSV(plans: AuditPlan[]) {
 interface ScheduleModalProps {
   plan: AuditPlan;
   onClose: () => void;
-  onSchedule: (data: { startDate: string; endDate: string; auditors: string[]; finalAuditor: string }) => void;
+  onSchedule: (data: {
+    startDate: string;
+    endDate: string;
+    auditors: string[];
+    finalAuditor: string;
+    auditCoordinator: string;
+  }) => void;
   auditors: string[];
 }
 function ScheduleModal({ plan, onClose, onSchedule, auditors }: ScheduleModalProps) {
@@ -51,18 +58,24 @@ function ScheduleModal({ plan, onClose, onSchedule, auditors }: ScheduleModalPro
         <div className="p-6 border-b border-outline-variant/10">
           <h3 className="font-headline-sm">Schedule Audit</h3>
           <p className="font-data-mono text-[11px] text-primary mt-1">{plan.iqaNumber}</p>
-          <p className="font-body-md text-on-surface-variant mt-0.5">{plan.domain} — {plan.location}{plan.sublocation ? `, ${plan.sublocation}` : ""}</p>
+          <p className="font-body-md text-on-surface-variant mt-0.5">{plan.prakalpa} — {plan.location}{plan.sublocation ? `, ${plan.sublocation}` : ""}</p>
         </div>
         <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Start Date</label>
               <input
                 type="date"
                 value={startDate}
-                readOnly
-                disabled
-                className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-surface-container-low text-on-surface-variant cursor-not-allowed"
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setStartDate(value);
+
+                  if (!endDate || value > endDate) {
+                    setEndDate(value);
+                  }
+                }}
+                className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
               />
             </div>
             <div>
@@ -70,6 +83,20 @@ function ScheduleModal({ plan, onClose, onSchedule, auditors }: ScheduleModalPro
               <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} min={startDate} className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
             </div>
           </div>
+          <div>
+            <label className="font-label-md text-on-surface-variant block mb-1">
+              Audit Coordinator
+            </label>
+
+            <div className="w-full border border-outline-variant/40 rounded-lg p-3 font-body-md bg-surface-container-lowest text-on-surface-variant">
+              {plan.auditCoordinator || "—"}
+            </div>
+
+            <p className="text-[11px] text-on-surface-variant/60 mt-1">
+              Coordinator selected during Audit Planning
+            </p>
+          </div>
+
           <div>
             <label className="font-label-md text-on-surface-variant block mb-2">Auditors</label>
             <div className="flex flex-wrap gap-2">
@@ -90,7 +117,15 @@ function ScheduleModal({ plan, onClose, onSchedule, auditors }: ScheduleModalPro
         </div>
         <div className="p-6 pt-0 flex gap-3">
           <button onClick={onClose} className="flex-1 py-3 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
-          <button disabled={!startDate || !endDate || selectedAuditors.length === 0} onClick={() => onSchedule({ startDate, endDate, auditors: selectedAuditors, finalAuditor })} className="flex-1 py-3 bg-primary text-on-primary rounded-lg font-label-md font-bold hover:brightness-110 disabled:opacity-40">Schedule Audit</button>
+          <button disabled={!startDate || !endDate || selectedAuditors.length === 0} onClick={() =>
+            onSchedule({
+              startDate,
+              endDate,
+              auditors: selectedAuditors,
+              finalAuditor,
+              auditCoordinator: plan.auditCoordinator,
+            })
+          } className="flex-1 py-3 bg-primary text-on-primary rounded-lg font-label-md font-bold hover:brightness-110 disabled:opacity-40">Schedule Audit</button>
         </div>
       </div>
     </div>
@@ -101,49 +136,49 @@ interface EditModalProps {
   plan: AuditPlan | null;
   onClose: () => void;
   onSave: (data: Omit<AuditPlan, "id" | "iqaNumber" | "createdDate">) => void;
-  auditors: string[];
   coordinators: string[];
-  onAddAuditor: (name: string) => void;
 }
-function EditModal({ plan, onClose, onSave, auditors, coordinators, onAddAuditor }: EditModalProps) {
-  const [selectedAreas, setSelectedAreas] = useState<string[]>(plan?.auditAreas || []);
-  const [selectedAuditors, setSelectedAuditors] = useState<string[]>(plan?.auditors || []);
-  const [newAuditorName, setNewAuditorName] = useState("");
-  const [showNewAuditor, setShowNewAuditor] = useState(false);
+
+function EditModal({
+  plan,
+  onClose,
+  onSave,
+  coordinators,
+}: EditModalProps) {
+  const [selectedAreas, setSelectedAreas] = useState<string[]>(
+    plan?.auditAreas || []
+  );
   const [form, setForm] = useState({
-    domain: plan?.domain || DOMAINS[0],
+    prakalpa: plan?.prakalpa || PRAKALPAS[0],
     location: plan?.location || "",
     sublocation: plan?.sublocation || "",
     auditPlannedDate: plan?.auditPlannedDate || "",
     auditCoordinator: plan?.auditCoordinator || coordinators[0] || "",
-    prakalphaPramukh: plan?.prakalphaPramukh || DOMAIN_PRAMUKH_DETAILS[plan?.domain || DOMAINS[0]]?.pramukh || "",
+    prakalphaPramukh: plan?.prakalphaPramukh || PRAKALPA_PRAMUKH_DETAILS[plan?.prakalpa || PRAKALPAS[0]]?.pramukh || "",
     purpose: plan?.purpose || "",
     status: plan?.status || "pending" as const,
   });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  const handleDomainChange = (d: string) => {
-    const details = DOMAIN_PRAMUKH_DETAILS[d];
-    setForm((f) => ({ ...f, domain: d, location: "", sublocation: "", prakalphaPramukh: details?.pramukh || "" }));
+  const handlePrakalpaChange = (d: string) => {
+    const details = PRAKALPA_PRAMUKH_DETAILS[d];
+    setForm((f) => ({ ...f, prakalpa: d, location: "", sublocation: "", prakalphaPramukh: details?.pramukh || "" }));
   };
 
-  const locations = LOCATIONS[form.domain] || [];
-  const sublocations = getSublocations(form.domain, form.location);
+  const locations = LOCATIONS[form.prakalpa] || [];
+  const sublocations = getSublocations(form.prakalpa, form.location);
 
   const toggleArea = (a: string) => setSelectedAreas((p) => p.includes(a) ? p.filter((x) => x !== a) : [...p, a]);
-  const toggleAuditor = (a: string) => setSelectedAuditors((p) => p.includes(a) ? p.filter((x) => x !== a) : [...p, a]);
-
-  const handleAddAuditor = () => {
-    const name = newAuditorName.trim();
-    if (!name) return;
-    onAddAuditor(name);
-    setSelectedAuditors((p) => [...p, name]);
-    setNewAuditorName("");
-    setShowNewAuditor(false);
-  };
-
   const handleSave = () => {
-    onSave({ ...form, auditAreas: selectedAreas, auditors: selectedAuditors, prakalpa: `${form.domain} — ${form.location}${form.sublocation ? `, ${form.sublocation}` : ""}` });
+    onSave({
+      ...form,
+      auditAreas: selectedAreas,
+
+      // Auditors are assigned only during scheduling.
+      auditors: [],
+
+      prakalpa: form.prakalpa,
+    });
   };
 
   return (
@@ -155,16 +190,16 @@ function EditModal({ plan, onClose, onSave, auditors, coordinators, onAddAuditor
           {plan ? <p className="font-data-mono text-[11px] text-primary mt-1">{plan.iqaNumber}</p> : <p className="font-label-md text-on-surface-variant/50 mt-0.5">Audit ID auto-generated</p>}
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
-          {/* Domain */}
+          {/* Prakalpa */}
           <div>
-            <label className="font-label-md text-on-surface-variant block mb-1">Domain Type <span className="text-error">*</span></label>
-            <select value={form.domain} onChange={(e) => handleDomainChange(e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-              {DOMAINS.map((d) => <option key={d}>{d}</option>)}
+            <label className="font-label-md text-on-surface-variant block mb-1">Prakalpa Type <span className="text-error">*</span></label>
+            <select value={form.prakalpa} onChange={(e) => handlePrakalpaChange(e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
+              {PRAKALPAS.map((d) => <option key={d}>{d}</option>)}
             </select>
           </div>
 
           {/* Location & Sublocation */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Location <span className="text-error">*</span></label>
               <select value={form.location} onChange={(e) => { set("location", e.target.value); set("sublocation", ""); }} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" disabled={locations.length === 0}>
@@ -194,7 +229,7 @@ function EditModal({ plan, onClose, onSave, auditors, coordinators, onAddAuditor
           </div>
 
           {/* Audit Planning */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Audit Planned Date <span className="text-error">*</span></label>
               <input type="date" value={(form.auditPlannedDate || "").split("T")[0]} onChange={(e) => set("auditPlannedDate", e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
@@ -222,32 +257,6 @@ function EditModal({ plan, onClose, onSave, auditors, coordinators, onAddAuditor
             {selectedAreas.length === 0 && <p className="text-[11px] text-error mt-1">Select at least one audit area</p>}
           </div>
 
-          {/* Auditors */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="font-label-md text-on-surface-variant">Auditors <span className="text-error">*</span></label>
-              <button type="button" onClick={() => setShowNewAuditor((v) => !v)} className="text-[11px] text-primary font-label-md font-bold flex items-center gap-1 hover:underline">
-                <span className="material-symbols-outlined text-[14px]">person_add</span>
-                + New Auditor
-              </button>
-            </div>
-            {showNewAuditor && (
-              <div className="flex gap-2 mb-3">
-                <input type="text" placeholder="Enter auditor name" value={newAuditorName} onChange={(e) => setNewAuditorName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddAuditor()} className="flex-1 border border-primary rounded-lg p-2.5 font-body-md focus:ring-2 focus:ring-primary/20 outline-none" autoFocus />
-                <button type="button" onClick={handleAddAuditor} className="px-4 py-2.5 bg-primary text-on-primary rounded-lg font-label-md font-bold">Add</button>
-              </div>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {auditors.map((a, idx) => (
-                <button key={`${a}-${idx}`} type="button" onClick={() => toggleAuditor(a)}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border-2 transition-all ${selectedAuditors.includes(a) ? "bg-secondary text-on-secondary border-secondary" : "bg-white text-on-surface-variant border-outline-variant hover:border-secondary/50"}`}>
-                  {a}
-                </button>
-              ))}
-            </div>
-            {selectedAuditors.length === 0 && <p className="text-[11px] text-error mt-1">Select at least one auditor</p>}
-          </div>
-
           {/* Purpose (optional) */}
           <div>
             <label className="font-label-md text-on-surface-variant block mb-1">Audit Purpose <span className="text-on-surface-variant/40">(optional)</span></label>
@@ -257,7 +266,12 @@ function EditModal({ plan, onClose, onSave, auditors, coordinators, onAddAuditor
         <div className="p-6 pt-0 flex gap-3 border-t border-outline-variant/10 mt-2 shrink-0">
           <button onClick={onClose} className="flex-1 py-3 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
           <button
-            disabled={!form.auditPlannedDate || !form.location || selectedAreas.length === 0 || selectedAuditors.length === 0}
+            disabled={
+              !form.auditPlannedDate ||
+              !form.location ||
+              !form.auditCoordinator ||
+              selectedAreas.length === 0
+            }
             onClick={handleSave}
             className="flex-1 py-3 bg-primary text-on-primary rounded-lg font-label-md font-bold hover:brightness-110 disabled:opacity-40"
           >
@@ -274,7 +288,7 @@ export default function AuditPlanPage() {
     currentUser,
     auditors,
     coordinatorUsers,
-    addAuditor,
+    refreshLiveData
   } = useApp();
   const [auditPlans, setAuditPlans] = useState<AuditPlan[]>([]);
   useEffect(() => {
@@ -296,30 +310,133 @@ export default function AuditPlanPage() {
   const [scheduleTarget, setScheduleTarget] = useState<AuditPlan | null>(null);
   const [editTarget, setEditTarget] = useState<AuditPlan | null | "new">(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [unscheduleTarget, setUnscheduleTarget] =
+    useState<AuditPlan | null>(null);
+
+  const [isUnscheduling, setIsUnscheduling] =
+    useState(false);
+
+  const [unscheduleError, setUnscheduleError] =
+    useState("");
   const [search, setSearch] = useState("");
-  const [filterDomain, setFilterDomain] = useState("All");
+  const [filterPrakalpa, setFilterPrakalpa] = useState("All");
   const [filterLocation, setFilterLocation] = useState("All");
   const [filterCoordinator, setFilterCoordinator] = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
+
+  const [showAllPlans, setShowAllPlans] =
+    useState(false);
 
   const isLead = currentUser.role === "lead_auditor";
 
   const allLocations = useMemo(() => [...new Set(auditPlans.map((p) => p.location).filter(Boolean))], [auditPlans]);
 
-  const filtered = useMemo(() => auditPlans.filter((p) => {
-    const q = search.toLowerCase();
-    const ms = !q || p.iqaNumber.toLowerCase().includes(q) || p.domain.toLowerCase().includes(q) || p.location.toLowerCase().includes(q) || (p.purpose || "").toLowerCase().includes(q);
-    return ms && (filterDomain === "All" || p.domain === filterDomain) && (filterLocation === "All" || p.location === filterLocation) && (filterCoordinator === "All" || p.auditCoordinator === filterCoordinator) && (filterStatus === "All" || p.status === filterStatus);
-  }), [auditPlans, search, filterDomain, filterLocation, filterCoordinator, filterStatus]);
+  const handleUnschedule =
+    async () => {
+      if (!unscheduleTarget) {
+        return;
+      }
+
+      const id =
+        unscheduleTarget.id ||
+        unscheduleTarget._id;
+
+      if (!id) {
+        setUnscheduleError(
+          "Audit Plan ID is missing."
+        );
+        return;
+      }
+
+      try {
+        setIsUnscheduling(true);
+        setUnscheduleError("");
+
+        await unscheduleAuditPlan(
+          id
+        );
+
+        await loadAuditPlans();
+        await refreshLiveData();
+
+        setUnscheduleTarget(null);
+      } catch (err: any) {
+        console.error(
+          "Failed to unschedule audit:",
+          err
+        );
+
+        setUnscheduleError(
+          err?.response?.data?.message ||
+            err?.message ||
+            "Failed to unschedule audit."
+        );
+      } finally {
+        setIsUnscheduling(false);
+      }
+    };
+
+  const filtered = useMemo(() => {
+    return auditPlans
+      .filter((p) => {
+        const q = search.toLowerCase();
+
+        const ms =
+          !q ||
+          p.iqaNumber.toLowerCase().includes(q) ||
+          p.prakalpa.toLowerCase().includes(q) ||
+          p.location.toLowerCase().includes(q) ||
+          (p.purpose || "").toLowerCase().includes(q);
+
+        // Keep all existing filters unchanged.
+        const matchesExistingFilters =
+          ms &&
+          (filterPrakalpa === "All" ||
+            p.prakalpa === filterPrakalpa) &&
+          (filterLocation === "All" ||
+            p.location === filterLocation) &&
+          (filterCoordinator === "All" ||
+            p.auditCoordinator === filterCoordinator) &&
+          (filterStatus === "All" ||
+            p.status === filterStatus);
+
+        // Default view = active Audit Plans only.
+        // Show All = include completed/older records too.
+        const matchesView =
+          showAllPlans
+            ? ["pending", "scheduled", "completed"].includes(p.status)
+            : p.status === "pending";
+
+        return matchesExistingFilters && matchesView;
+      })
+      .sort((a, b) =>
+        a.iqaNumber.localeCompare(
+          b.iqaNumber,
+          undefined,
+          {
+            numeric: true,
+            sensitivity: "base",
+          }
+        )
+      );
+  }, [
+    auditPlans,
+    search,
+    filterPrakalpa,
+    filterLocation,
+    filterCoordinator,
+    filterStatus,
+    showAllPlans,
+  ]);
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 min-w-0">
       <div className="flex flex-wrap justify-between items-start gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">Audit Plan</h2>
           <p className="font-body-md text-on-surface-variant mt-0.5">{auditPlans.length} plans</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
           <Link href="/audit-calendar" className="flex items-center gap-2 px-4 py-2.5 border border-outline-variant rounded-lg font-label-md font-medium hover:bg-surface-container-low transition-colors">
             <span className="material-symbols-outlined text-[18px]">calendar_month</span>
             Calendar View
@@ -339,30 +456,49 @@ export default function AuditPlanPage() {
 
       {/* Filters */}
       <div className="bg-white p-4 rounded-xl border border-outline-variant/20 shadow-soft flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative w-full sm:flex-1 sm:min-w-[200px]">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[18px]">search</span>
-          <input type="text" placeholder="Search Audit ID, Domain, Location..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-outline-variant/40 rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-surface-container-lowest" />
+          <input type="text" placeholder="Search Audit ID, Prakalpa, Location..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-outline-variant/40 rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-surface-container-lowest" />
         </div>
-        <select value={filterDomain} onChange={(e) => setFilterDomain(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
-          <option value="All">All Domains</option>
-          {DOMAINS.map((d) => <option key={d}>{d}</option>)}
+        <select value={filterPrakalpa} onChange={(e) => setFilterPrakalpa(e.target.value)} className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
+          <option value="All">All Prakalpas</option>
+          {PRAKALPAS.map((d) => <option key={d}>{d}</option>)}
         </select>
-        <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
+        <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)} className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
           <option value="All">All Locations</option>
           {allLocations.map((l) => <option key={l}>{l}</option>)}
         </select>
-        <select value={filterCoordinator} onChange={(e) => setFilterCoordinator(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
+        <select value={filterCoordinator} onChange={(e) => setFilterCoordinator(e.target.value)} className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
           <option value="All">All Coordinators</option>
           {coordinatorNames.map((c, idx) => <option key={`${c}-${idx}`}>{c}</option>)}
         </select>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
+        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
           <option value="All">All Status</option>
           <option value="pending">Pending</option>
           <option value="scheduled">Scheduled</option>
+          <option value="completed">Completed</option>
         </select>
-        {(search || filterDomain !== "All" || filterLocation !== "All" || filterCoordinator !== "All" || filterStatus !== "All") && (
-          <button onClick={() => { setSearch(""); setFilterDomain("All"); setFilterLocation("All"); setFilterCoordinator("All"); setFilterStatus("All"); }} className="font-label-md text-on-surface-variant/60 hover:text-primary">Clear</button>
+        {(search || filterPrakalpa !== "All" || filterLocation !== "All" || filterCoordinator !== "All" || filterStatus !== "All") && (
+          <button onClick={() => { setSearch(""); setFilterPrakalpa("All"); setFilterLocation("All"); setFilterCoordinator("All"); setFilterStatus("All"); }} className="font-label-md text-on-surface-variant/60 hover:text-primary">Clear</button>
         )}
+      </div>
+
+      {/* Audit plan visibility */}
+      <div className="flex items-center justify-start -mt-2">
+        <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showAllPlans}
+            onChange={(e) =>
+              setShowAllPlans(e.target.checked)
+            }
+            className="w-4 h-4 accent-primary cursor-pointer"
+          />
+
+          <span className="font-label-md text-on-surface-variant">
+            Show all audit plans
+          </span>
+        </label>
       </div>
 
       {/* Table */}
@@ -375,10 +511,10 @@ export default function AuditPlanPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full min-w-[1180px] text-left">
               <thead className="bg-surface-container-lowest border-b border-outline-variant/20">
                 <tr>
-                  {["Audit ID", "Domain", "Location", "Sublocation", "Audit Areas", "Planned Date", "Coordinator", "Pramukh", "Auditors", "Status", ...(isLead ? ["Actions"] : [])].map((h) => (
+                  {["Audit ID", "Prakalpa", "Location", "Sublocation", "Audit Areas", "Planned Date", "Coordinator", "Pramukh", "Auditors", "Status", ...(isLead ? ["Actions"] : [])].map((h) => (
                     <th key={h} className="px-4 py-3 font-label-md text-on-surface-variant uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -388,7 +524,7 @@ export default function AuditPlanPage() {
                   <tr key={plan.id || plan._id || `plan-${idx}`} className={`hover:bg-surface-container-low transition-colors ${idx % 2 === 1 ? "bg-surface-container-lowest/50" : ""}`}>
                     <td className="px-4 py-3 font-data-mono text-[12px] text-primary font-bold whitespace-nowrap">{plan.iqaNumber}</td>
                     <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-[11px] font-bold">{plan.domain}</span>
+                      <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-[11px] font-bold">{plan.prakalpa}</span>
                     </td>
                     <td className="px-4 py-3 font-body-md font-medium text-on-surface">{plan.location}</td>
                     <td className="px-4 py-3 font-body-md text-on-surface-variant">{plan.sublocation || "—"}</td>
@@ -413,9 +549,78 @@ export default function AuditPlanPage() {
                     {isLead && (
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => setScheduleTarget(plan)} title="Schedule" className="p-1.5 rounded-lg hover:bg-primary/10 text-primary"><span className="material-symbols-outlined text-[18px]">event</span></button>
-                          <button onClick={() => setEditTarget(plan)} title="Edit" className="p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant"><span className="material-symbols-outlined text-[18px]">edit</span></button>
-                          <button onClick={() => setDeleteConfirm(plan.id || plan._id || "")} title="Delete" className="p-1.5 rounded-lg hover:bg-error/10 text-error"><span className="material-symbols-outlined text-[18px]">delete</span></button>
+
+                          {plan.status === "pending" && (
+                            <>
+                              <button
+                                onClick={() =>
+                                  setScheduleTarget(
+                                    plan
+                                  )
+                                }
+                                title="Schedule"
+                                className="p-1.5 rounded-lg hover:bg-primary/10 text-primary"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">
+                                  event
+                                </span>
+                              </button>
+
+                              <button
+                                onClick={() =>
+                                  setEditTarget(
+                                    plan
+                                  )
+                                }
+                                title="Edit"
+                                className="p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">
+                                  edit
+                                </span>
+                              </button>
+
+                              <button
+                                onClick={() =>
+                                  setDeleteConfirm(
+                                    plan.id ||
+                                      plan._id ||
+                                      ""
+                                  )
+                                }
+                                title="Delete"
+                                className="p-1.5 rounded-lg hover:bg-error/10 text-error"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">
+                                  delete
+                                </span>
+                              </button>
+                            </>
+                          )}
+
+                          {plan.status === "scheduled" && (
+                            <button
+                              onClick={() => {
+                                setUnscheduleError("");
+                                setUnscheduleTarget(
+                                  plan
+                                );
+                              }}
+                              title="Unschedule"
+                              className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-700"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">
+                                event_busy
+                              </span>
+                            </button>
+                          )}
+
+                          {plan.status === "completed" && (
+                            <span className="text-[11px] text-on-surface-variant/60 italic">
+                              Completed
+                            </span>
+                          )}
+
                         </div>
                       </td>
                     )}
@@ -467,11 +672,148 @@ export default function AuditPlanPage() {
               console.error(err);
             }
           }}
-          auditors={auditors}
           coordinators={coordinatorNames}
-          onAddAuditor={addAuditor}
         />
       )}
+      {unscheduleTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => {
+              if (!isUnscheduling) {
+                setUnscheduleTarget(null);
+                setUnscheduleError("");
+              }
+            }}
+          />
+
+          <div className="relative z-10 w-full max-w-md bg-white rounded-2xl shadow-floating border border-outline-variant/20 overflow-hidden">
+
+            <div className="p-6 border-b border-outline-variant/10">
+
+              <div className="flex items-start gap-3">
+
+                <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined">
+                    event_busy
+                  </span>
+                </div>
+
+                <div className="flex-1">
+                  <h3 className="font-headline-sm text-on-surface">
+                    Unschedule Audit?
+                  </h3>
+
+                  <p className="font-body-md text-on-surface-variant mt-1">
+                    {unscheduleTarget.iqaNumber}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isUnscheduling}
+                  onClick={() => {
+                    setUnscheduleTarget(null);
+                    setUnscheduleError("");
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-surface-container disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    close
+                  </span>
+                </button>
+
+              </div>
+
+            </div>
+
+            <div className="p-6 space-y-4">
+
+              <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
+
+                <p className="text-sm font-semibold text-amber-900">
+                  This will move the audit back to Planned status.
+                </p>
+
+                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                  The linked Scheduled Audit and all scheduling-specific values will be removed.
+                </p>
+
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-on-surface-variant font-bold">
+                    Prakalpa
+                  </p>
+                  <p className="mt-1 font-medium">
+                    {unscheduleTarget.prakalpa}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-on-surface-variant font-bold">
+                    Location
+                  </p>
+                  <p className="mt-1 font-medium">
+                    {unscheduleTarget.location}
+                  </p>
+                </div>
+
+              </div>
+
+              {unscheduleError && (
+                <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                  {unscheduleError}
+                </div>
+              )}
+
+            </div>
+
+            <div className="p-6 border-t border-outline-variant/10 flex justify-end gap-3">
+
+              <button
+                type="button"
+                disabled={isUnscheduling}
+                onClick={() => {
+                  setUnscheduleTarget(null);
+                  setUnscheduleError("");
+                }}
+                className="px-4 py-2 border border-outline-variant rounded-lg font-label-md font-semibold hover:bg-surface-container disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={isUnscheduling}
+                onClick={handleUnschedule}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg font-label-md font-bold hover:bg-amber-700 disabled:opacity-60 inline-flex items-center gap-2"
+              >
+                {isUnscheduling ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Unscheduling...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[17px]">
+                      event_busy
+                    </span>
+                    Confirm Unschedule
+                  </>
+                )}
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteConfirm(null)} />

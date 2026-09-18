@@ -20,19 +20,22 @@ export const createReport = async (data: any) => {
 };
 
 // =========================
-// Future Features
+// Send Report Email
 // =========================
 
-export const sendReportEmail = async (id: string) => {
-  // Future backend endpoint
-  // return await api.post(`/reports/${id}/send-email`);
+export interface SendReportEmailPayload {
+  to: string[];
+  cc?: string[];
+  subject?: string;
+  message?: string;
+}
 
-  console.log("Send Report Email:", id);
-
-  return {
-    success: true,
-    message: "Email functionality not connected yet.",
-  };
+export const sendReportEmail = async (
+  id: string,
+  payload: SendReportEmailPayload
+) => {
+  const res = await api.post(`/reports/${id}/send-email`, payload);
+  return res.data.data;
 };
 
 export const downloadReportPDF = async (id: string) => {

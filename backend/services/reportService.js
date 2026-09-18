@@ -3,6 +3,7 @@ import Report from "../models/Report.js";
 import ScheduledAudit from "../models/ScheduledAudit.js";
 import AuditPlan from "../models/AuditPlan.js";
 import AppError from "../utils/AppError.js";
+import { sendMail } from "./emailService.js";
 
 export const createReport = async (data) => {
   const audit = await ScheduledAudit.findById(data.scheduledAudit);
@@ -69,7 +70,6 @@ export const createReport = async (data) => {
       iqaNumber: audit.iqaNumber,
 
       prakalpa: audit.prakalpa,
-      domain: audit.domain,
       location: audit.location,
       sublocation: audit.sublocation,
       auditCoordinator: audit.auditCoordinator,
@@ -143,13 +143,11 @@ export const getReportById = async (id) => {
   return report;
 };
 
-export const generateReportPDF = async (id) => {
-  const report = await Report.findById(id);
-
-  if (!report) {
-    throw new AppError("Report not found", 404);
-  }
-
+// Builds the PDF content onto a fresh PDFDocument but does NOT call
+// doc.end() — callers decide how to consume the stream (pipe straight
+// to an HTTP response for download, or collect it into a Buffer for
+// an email attachment).
+const buildReportDocument = (report) => {
   const doc = new PDFDocument({
     size: "A4",
     margin: 50,
@@ -188,7 +186,7 @@ export const generateReportPDF = async (id) => {
   };
 
   addField("IQA Number", report.iqaNumber);
-  addField("Domain", report.domain);
+  addField("Prakalpa", report.prakalpa);
   addField("Location", report.location);
   addField("Sublocation", report.sublocation);
   addField("Prakalpa", report.prakalpa);
@@ -327,9 +325,150 @@ export const generateReportPDF = async (id) => {
       }
     );
 
+  return doc;
+};
+
+// Streams the PDF for direct browser download (unchanged behaviour).
+export const generateReportPDF = async (id) => {
+  const report = await Report.findById(id);
+
+  if (!report) {
+    throw new AppError("Report not found", 404);
+  }
+
+  const doc = buildReportDocument(report);
+
   doc.end();
 
   return doc;
+};
+
+// Builds the same PDF but resolves to a Buffer instead of streaming it,
+// so it can be attached to an outgoing email.
+export const generateReportPDFBuffer = async (id) => {
+  const report = await Report.findById(id);
+
+  if (!report) {
+    throw new AppError("Report not found", 404);
+  }
+
+  const doc = buildReportDocument(report);
+
+  const buffer = await new Promise((resolve, reject) => {
+    const chunks = [];
+
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    doc.end();
+  });
+
+  return { report, buffer };
+};
+
+// ===================================
+// Draft email content
+// ===================================
+
+const escapeHtml = (value = "") =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+export const buildReportEmailDraft = (report) => {
+  const classification =
+    report.severity === "non_conformance"
+      ? "Non-Conformance"
+      : "Open for Improvement";
+
+  const visitDate = report.visitDate
+    ? new Date(report.visitDate).toLocaleDateString("en-IN")
+    : "—";
+
+  const auditors = Array.isArray(report.auditors)
+    ? report.auditors.join(", ")
+    : "—";
+
+  const subject = `Audit Report ${report.iqrNumber} — ${report.prakalpa}, ${report.location}`;
+
+  const text = [
+    "Dear Sir/Madam,",
+    "",
+    "Please find attached the Internal Quality Audit report for your reference.",
+    "",
+    `IQR Number: ${report.iqrNumber}`,
+    `IQA Reference: ${report.iqaNumber}`,
+    `Prakalpa: ${report.prakalpa}`,
+    `Location: ${report.location}${report.sublocation ? ` (${report.sublocation})` : ""}`,
+    `Audit Coordinator: ${report.auditCoordinator || "—"}`,
+    `Auditor(s): ${auditors}`,
+    `Visit Date: ${visitDate}`,
+    `Classification: ${classification}`,
+    "",
+    "Finding:",
+    report.findings || "—",
+    "",
+    "Kindly review the attached report and take necessary action within the stipulated timeline.",
+    "",
+    "Regards,",
+    "Pratibimba Audit Management System",
+  ].join("\n");
+
+  return { subject, text };
+};
+
+const textToHtml = (text) =>
+  escapeHtml(text)
+    .split("\n")
+    .map((line) => (line.trim() === "" ? "<br/>" : `<p style="margin:0 0 8px">${line}</p>`))
+    .join("");
+
+// ===================================
+// Send Report Email
+// ===================================
+
+export const sendReportEmail = async (id, payload = {}) => {
+  const { report, buffer } = await generateReportPDFBuffer(id);
+
+  const { to, cc, subject, message } = payload;
+
+  const toList = Array.isArray(to) ? to.filter(Boolean) : (to ? [to] : []);
+  const ccList = Array.isArray(cc) ? cc.filter(Boolean) : (cc ? [cc] : []);
+
+  if (toList.length === 0) {
+    throw new AppError("Please provide at least one recipient email address.", 400);
+  }
+
+  const draft = buildReportEmailDraft(report);
+
+  const finalSubject = subject && subject.trim() ? subject.trim() : draft.subject;
+  const finalText = message && message.trim() ? message : draft.text;
+
+  await sendMail({
+    to: toList,
+    cc: ccList,
+    subject: finalSubject,
+    text: finalText,
+    html: textToHtml(finalText),
+    attachments: [
+      {
+        filename: `${report.iqrNumber}.pdf`,
+        content: buffer,
+        contentType: "application/pdf",
+      },
+    ],
+  });
+
+  report.mailSent = true;
+  report.mailSentAt = new Date();
+  report.mailSentTo = toList;
+
+  await report.save();
+
+  return report;
 };
 
 // ===================================

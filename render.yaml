@@ -14,3 +14,17 @@ services:
         value: 7d
       - key: ALLOWED_ORIGIN
         sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_SECURE
+        value: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM_NAME
+        value: Pratibimba Audit System
+      - key: MAIL_FROM_EMAIL
+        sync: false

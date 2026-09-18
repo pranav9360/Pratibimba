@@ -161,13 +161,13 @@ export default function CreateReportPage() {
 
   if (loading) {
     return (
-      <div className="p-8 font-body-md text-on-surface-variant">Loading...</div>
+      <div className="p-4 sm:p-6 lg:p-8 font-body-md text-on-surface-variant">Loading...</div>
     );
   }
 
   if (!audit) {
     return (
-      <div className="p-8 flex flex-col items-center justify-center min-h-[60vh] gap-4">
+      <div className="p-4 sm:p-6 lg:p-8 flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <span className="material-symbols-outlined text-[48px] text-on-surface-variant/30">
           search_off
         </span>
@@ -187,7 +187,7 @@ export default function CreateReportPage() {
   // Updated Success Screen UI
   if (success) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-[70vh]">
+      <div className="p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[70vh]">
         <div className="max-w-md w-full text-center space-y-6">
           <div className="w-20 h-20 rounded-full bg-secondary/10 flex items-center justify-center mx-auto">
             <span className="material-symbols-outlined text-secondary text-[40px] filled">
@@ -235,19 +235,19 @@ export default function CreateReportPage() {
       : audit.finalAuditor || audit.auditCoordinator;
 
   return (
-    <div className="p-8 max-w-[800px] mx-auto space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-[800px] mx-auto space-y-6 min-w-0">
       <div>
         <h2 className="font-headline-md text-on-surface">Create Audit Report</h2>
         <p className="font-body-md text-on-surface-variant mt-0.5">
-          Documenting findings for {audit.prakalpa || `${audit.domain} — ${audit.location}`}
+          Documenting findings for {audit.prakalpa}
         </p>
       </div>
 
       {/* Audit Info Banner */}
-      <div className="bg-secondary/5 border border-secondary/20 rounded-xl p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="bg-secondary/5 border border-secondary/20 rounded-xl p-4 sm:p-5 grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: "IQA Number", value: audit.iqaNumber },
-          { label: "Prakalpa", value: audit.prakalpa || `${audit.domain} — ${audit.location}` },
+          { label: "Prakalpa", value: audit.prakalpa },
           { label: "Auditor(s)", value: assignedAuditors },
           {
             label: "Audit Period",
@@ -275,14 +275,14 @@ export default function CreateReportPage() {
         onSubmit={handleSubmit}
         className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden"
       >
-        <div className="p-6 border-b border-outline-variant/10 bg-surface-container-lowest">
+        <div className="p-4 sm:p-6 border-b border-outline-variant/10 bg-surface-container-lowest">
           <h3 className="font-headline-sm">Report Details</h3>
           <p className="font-body-md text-on-surface-variant mt-0.5">
             All fields marked * are required.
           </p>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-4 sm:p-6 space-y-6">
           {/* Header Controls */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -546,7 +546,7 @@ export default function CreateReportPage() {
         </div>
 
         {/* Form Footer & Submit Button */}
-        <div className="p-6 pt-0 border-t border-outline-variant/10 bg-surface-container-lowest flex gap-3">
+        <div className="p-4 sm:p-6 sm:pt-0 border-t border-outline-variant/10 bg-surface-container-lowest flex flex-col sm:flex-row gap-3">
           <button
             type="button"
             onClick={() => navigate("/scheduled-audits")}

@@ -42,15 +42,15 @@ const userSchema = new mongoose.Schema(
       ],
     },
 
-    domain: {
+    prakalpa: {
       type: String,
       default: "",
       trim: true,
     },
 
-    assignedDomains: {
-    type: [String],
-    default: [],
+    assignedPrakalpas: {
+      type: [String],
+      default: [],
     },
 
     active: {
