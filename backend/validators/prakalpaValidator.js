@@ -18,6 +18,24 @@ export const createPrakalpaValidator = [
     .notEmpty()
     .withMessage("Audit Area cannot be empty"),
 
+  body("prakalpaPramukh")
+    .optional()
+    .isString()
+    .trim()
+    .withMessage("Prakalpa Pramukh must be a string"),
+
+  body("prakalpaPramukhEmail")
+    .optional({ checkFalsy: true })
+    .isEmail()
+    .normalizeEmail()
+    .withMessage("Prakalpa Pramukh email must be valid"),
+
+  body("seniorEmail")
+    .optional({ checkFalsy: true })
+    .isEmail()
+    .normalizeEmail()
+    .withMessage("Senior email must be valid"),
+
   body("active")
     .optional()
     .isBoolean(),
@@ -41,6 +59,24 @@ export const updatePrakalpaValidator = [
     .trim()
     .notEmpty()
     .withMessage("Audit Area cannot be empty"),
+
+  body("prakalpaPramukh")
+    .optional()
+    .isString()
+    .trim()
+    .withMessage("Prakalpa Pramukh must be a string"),
+
+  body("prakalpaPramukhEmail")
+    .optional({ checkFalsy: true })
+    .isEmail()
+    .normalizeEmail()
+    .withMessage("Prakalpa Pramukh email must be valid"),
+
+  body("seniorEmail")
+    .optional({ checkFalsy: true })
+    .isEmail()
+    .normalizeEmail()
+    .withMessage("Senior email must be valid"),
 
   body("active")
     .optional()

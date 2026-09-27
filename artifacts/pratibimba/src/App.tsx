@@ -21,6 +21,7 @@ import CreateReportPage from "./pages/create-report";
 import IQASummaryPage from "./pages/iqa-summary";
 import RoleAccessPage from "./pages/role-access";
 import UserManagementPage from "./pages/user-management";
+import PrakalpaManagementPage from "./pages/prakalpa-management";
 
 function AuthLayout({
   children,
@@ -220,6 +221,12 @@ function Router() {
       <Route path="/user-management">
         <DashboardLayout>
           <UserManagementPage />
+        </DashboardLayout>
+      </Route>
+
+      <Route path="/prakalpa-management">
+        <DashboardLayout>
+          <PrakalpaManagementPage />
         </DashboardLayout>
       </Route>
 

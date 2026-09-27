@@ -28,12 +28,13 @@ export const createAuditPlanValidator = [
       "Audit Coordinator is required"
     ),
 
-  body("prakalphaPramukh")
-    .trim()
-    .notEmpty()
-    .withMessage(
-      "Prakalpa Pramukh is required"
-    ),
+  /*
+   * prakalphaPramukh is intentionally NOT accepted as
+   * required client master data.
+   *
+   * auditPlanService derives it from the selected
+   * Prakalpa master record.
+   */
 
   body("auditAreas")
     .isArray()

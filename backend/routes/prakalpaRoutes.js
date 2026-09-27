@@ -27,10 +27,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize(
-    "admin",
-    "lead_auditor"
-  ),
+  authorize("admin"),
   createPrakalpaValidator,
   createPrakalpa
 );
@@ -38,10 +35,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize(
-    "admin",
-    "lead_auditor"
-  ),
+  authorize("admin"),
   updatePrakalpaValidator,
   updatePrakalpa
 );

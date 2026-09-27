@@ -1,7 +1,17 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
-import { useApp, PRAKALPAS, LOCATIONS, getSublocations, PRAKALPA_PRAMUKH_DETAILS, AUDIT_AREAS, type AuditPlan } from "../context/app-context";
+import { useApp, type AuditPlan } from "../context/app-context";
 import { useEffect } from "react";
+
+import {
+  getPrakalpas,
+  type Prakalpa,
+} from "../services/prakalpaService";
+
+import {
+  getLocations,
+  type Location,
+} from "../services/locationService";
 
 import {
   unscheduleAuditPlan,
@@ -137,6 +147,8 @@ interface EditModalProps {
   onClose: () => void;
   onSave: (data: Omit<AuditPlan, "id" | "iqaNumber" | "createdDate">) => void;
   coordinators: string[];
+  prakalpas: Prakalpa[];
+  masterLocations: Location[];
 }
 
 function EditModal({
@@ -144,31 +156,90 @@ function EditModal({
   onClose,
   onSave,
   coordinators,
+  prakalpas,
+  masterLocations,
 }: EditModalProps) {
+  const firstPrakalpa =
+    plan?.prakalpa ||
+    prakalpas.find((p) => p.active !== false)?.name ||
+    "";
+
   const [selectedAreas, setSelectedAreas] = useState<string[]>(
     plan?.auditAreas || []
   );
+
   const [form, setForm] = useState({
-    prakalpa: plan?.prakalpa || PRAKALPAS[0],
+    prakalpa: firstPrakalpa,
     location: plan?.location || "",
     sublocation: plan?.sublocation || "",
     auditPlannedDate: plan?.auditPlannedDate || "",
     auditCoordinator: plan?.auditCoordinator || coordinators[0] || "",
-    prakalphaPramukh: plan?.prakalphaPramukh || PRAKALPA_PRAMUKH_DETAILS[plan?.prakalpa || PRAKALPAS[0]]?.pramukh || "",
+    prakalphaPramukh:
+      plan?.prakalphaPramukh ||
+      prakalpas.find((p) => p.name === firstPrakalpa)?.prakalpaPramukh ||
+      "",
     purpose: plan?.purpose || "",
     status: plan?.status || "pending" as const,
   });
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  const handlePrakalpaChange = (d: string) => {
-    const details = PRAKALPA_PRAMUKH_DETAILS[d];
-    setForm((f) => ({ ...f, prakalpa: d, location: "", sublocation: "", prakalphaPramukh: details?.pramukh || "" }));
+  const activePrakalpas = useMemo(
+    () => prakalpas.filter((p) => p.active !== false),
+    [prakalpas]
+  );
+
+  const selectedPrakalpa = useMemo(
+    () => prakalpas.find((p) => p.name === form.prakalpa),
+    [prakalpas, form.prakalpa]
+  );
+
+  const availableAuditAreas =
+    selectedPrakalpa?.auditAreas || [];
+
+  const locations = useMemo(
+    () =>
+      masterLocations.filter(
+        (location) =>
+          location.active !== false &&
+          location.prakalpa === form.prakalpa
+      ),
+    [masterLocations, form.prakalpa]
+  );
+
+  const selectedLocation = useMemo(
+    () =>
+      locations.find(
+        (location) =>
+          location.name === form.location
+      ),
+    [locations, form.location]
+  );
+
+  const sublocations =
+    selectedLocation?.sublocations || [];
+
+  const handlePrakalpaChange = (name: string) => {
+    const prakalpa = prakalpas.find((p) => p.name === name);
+
+    setForm((f) => ({
+      ...f,
+      prakalpa: name,
+      location: "",
+      sublocation: "",
+      prakalphaPramukh: prakalpa?.prakalpaPramukh || "",
+    }));
+
+    // Audit areas are specific to each Prakalpa.
+    // Reset them whenever the Prakalpa changes.
+    setSelectedAreas([]);
   };
 
-  const locations = LOCATIONS[form.prakalpa] || [];
-  const sublocations = getSublocations(form.prakalpa, form.location);
-
-  const toggleArea = (a: string) => setSelectedAreas((p) => p.includes(a) ? p.filter((x) => x !== a) : [...p, a]);
+  const toggleArea = (a: string) =>
+    setSelectedAreas((p) =>
+      p.includes(a)
+        ? p.filter((x) => x !== a)
+        : [...p, a]
+    );
   const handleSave = () => {
     onSave({
       ...form,
@@ -194,38 +265,82 @@ function EditModal({
           <div>
             <label className="font-label-md text-on-surface-variant block mb-1">Prakalpa Type <span className="text-error">*</span></label>
             <select value={form.prakalpa} onChange={(e) => handlePrakalpaChange(e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-              {PRAKALPAS.map((d) => <option key={d}>{d}</option>)}
+              <option value="">— Select Prakalpa —</option>
+              {activePrakalpas.map((p) => (
+                <option key={p._id || p.id || p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
             </select>
           </div>
 
           {/* Location & Sublocation */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="font-label-md text-on-surface-variant block mb-1">Location <span className="text-error">*</span></label>
-              <select value={form.location} onChange={(e) => { set("location", e.target.value); set("sublocation", ""); }} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" disabled={locations.length === 0}>
+              <label className="font-label-md text-on-surface-variant block mb-1">
+                Location
+                {locations.length > 0 && (
+                  <span className="text-error"> *</span>
+                )}
+              </label>
+              {locations.length === 0 ? (
+                <div className="w-full border border-outline-variant/40 rounded-lg p-3 font-body-md bg-surface-container-lowest text-on-surface-variant/60">
+                  No location configured
+                </div>
+              ) : (
+                <select
+                  value={form.location}
+                  onChange={(e) => {
+                    set("location", e.target.value);
+                    set("sublocation", "");
+                  }}
+                  className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                >
                 <option value="">— Select —</option>
-                {locations.map((l) => <option key={l}>{l}</option>)}
-              </select>
+                {locations.map((l) => (
+                  <option key={l._id || l.id || l.name} value={l.name}>
+                    {l.name}
+                  </option>
+                ))}
+                </select>
+              )}
             </div>
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Sublocation</label>
-              {sublocations.length === 1 ? (
-                <div className="w-full border border-outline-variant/40 rounded-lg p-3 font-body-md bg-surface-container-lowest text-on-surface-variant">
-                  {sublocations[0]}
+              {sublocations.length === 0 ? (
+                <div className="w-full border border-outline-variant/40 rounded-lg p-3 font-body-md bg-surface-container-lowest text-on-surface-variant/60">
+                  No sublocation
                 </div>
               ) : (
-                <select value={form.sublocation} onChange={(e) => set("sublocation", e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" disabled={sublocations.length === 0}>
-                  <option value="">— Select —</option>
-                  {sublocations.map((s) => <option key={s}>{s}</option>)}
+                <select
+                  value={form.sublocation}
+                  onChange={(e) => set("sublocation", e.target.value)}
+                  className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                >
+                  <option value="">— Select Sublocation —</option>
+                  {sublocations.map((sub) => (
+                    <option key={sub} value={sub}>
+                      {sub}
+                    </option>
+                  ))}
                 </select>
               )}
             </div>
           </div>
 
-          {/* Pramukh (name only, no email) */}
+          {/* Prakalpa Pramukh — automatically derived from Prakalpa master data */}
           <div>
-            <label className="font-label-md text-on-surface-variant block mb-1">Prakalpa Pramukh <span className="text-error">*</span></label>
-            <input type="text" value={form.prakalphaPramukh} onChange={(e) => set("prakalphaPramukh", e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+            <label className="font-label-md text-on-surface-variant block mb-1">
+              Prakalpa Pramukh <span className="text-error">*</span>
+            </label>
+
+            <div className="w-full border border-outline-variant/40 rounded-lg p-3 font-body-md bg-surface-container-lowest text-on-surface">
+              {form.prakalphaPramukh || "— Select a Prakalpa —"}
+            </div>
+
+            <p className="text-[11px] text-on-surface-variant/60 mt-1">
+              Automatically assigned from Prakalpa Management
+            </p>
           </div>
 
           {/* Audit Planning */}
@@ -247,14 +362,23 @@ function EditModal({
           <div>
             <label className="font-label-md text-on-surface-variant block mb-2">Audit Areas <span className="text-error">*</span></label>
             <div className="flex flex-wrap gap-2">
-              {AUDIT_AREAS.map((area) => (
+              {availableAuditAreas.map((area) => (
                 <button key={area} type="button" onClick={() => toggleArea(area)}
                   className={`px-3 py-1.5 rounded-lg text-[12px] font-medium border-2 transition-all ${selectedAreas.includes(area) ? "bg-primary text-on-primary border-primary" : "bg-white text-on-surface-variant border-outline-variant hover:border-primary/50"}`}>
                   {area}
                 </button>
               ))}
             </div>
-            {selectedAreas.length === 0 && <p className="text-[11px] text-error mt-1">Select at least one audit area</p>}
+            {availableAuditAreas.length === 0 ? (
+              <p className="text-[11px] text-amber-700 mt-2">
+                No audit areas are configured for this Prakalpa.
+                Configure them from Prakalpa Management.
+              </p>
+            ) : selectedAreas.length === 0 ? (
+              <p className="text-[11px] text-error mt-1">
+                Select at least one audit area
+              </p>
+            ) : null}
           </div>
 
           {/* Purpose (optional) */}
@@ -267,9 +391,11 @@ function EditModal({
           <button onClick={onClose} className="flex-1 py-3 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
           <button
             disabled={
+              !form.prakalpa ||
               !form.auditPlannedDate ||
-              !form.location ||
+              (locations.length > 0 && !form.location) ||
               !form.auditCoordinator ||
+              !form.prakalphaPramukh ||
               selectedAreas.length === 0
             }
             onClick={handleSave}
@@ -291,9 +417,31 @@ export default function AuditPlanPage() {
     refreshLiveData
   } = useApp();
   const [auditPlans, setAuditPlans] = useState<AuditPlan[]>([]);
+  const [prakalpas, setPrakalpas] = useState<Prakalpa[]>([]);
+  const [masterLocations, setMasterLocations] = useState<Location[]>([]);
+
   useEffect(() => {
     loadAuditPlans();
+    loadMasterData();
   }, []);
+
+  async function loadMasterData() {
+    try {
+      const [prakalpaData, locationData] =
+        await Promise.all([
+          getPrakalpas(),
+          getLocations(),
+        ]);
+
+      setPrakalpas(prakalpaData);
+      setMasterLocations(locationData);
+    } catch (err) {
+      console.error(
+        "Failed to load Audit Plan master data:",
+        err
+      );
+    }
+  }
 
   async function loadAuditPlans() {
     try {
@@ -462,7 +610,13 @@ export default function AuditPlanPage() {
         </div>
         <select value={filterPrakalpa} onChange={(e) => setFilterPrakalpa(e.target.value)} className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
           <option value="All">All Prakalpas</option>
-          {PRAKALPAS.map((d) => <option key={d}>{d}</option>)}
+          {prakalpas
+            .filter((p) => p.active !== false)
+            .map((p) => (
+              <option key={p._id || p.id || p.name} value={p.name}>
+                {p.name}
+              </option>
+            ))}
         </select>
         <select value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)} className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none">
           <option value="All">All Locations</option>
@@ -673,6 +827,8 @@ export default function AuditPlanPage() {
             }
           }}
           coordinators={coordinatorNames}
+          prakalpas={prakalpas}
+          masterLocations={masterLocations}
         />
       )}
       {unscheduleTarget && (

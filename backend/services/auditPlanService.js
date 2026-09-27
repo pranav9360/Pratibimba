@@ -1,6 +1,8 @@
 import AuditPlan from "../models/AuditPlan.js";
 import ScheduledAudit from "../models/ScheduledAudit.js";
 import Report from "../models/Report.js";
+import Prakalpa from "../models/Prakalpa.js";
+import Location from "../models/Location.js";
 import AppError from "../utils/AppError.js";
 
 const getNextIqaNumber = async () => {
@@ -72,22 +74,195 @@ export const getAuditPlanById = async (id) => {
   return plan;
 };
 
+/**
+ * Resolve and validate Audit Plan organisational master data.
+ *
+ * Prakalpa Management is the source of truth for:
+ * - Prakalpa
+ * - Prakalpa Pramukh
+ * - allowed Audit Areas
+ *
+ * Location Management is the source of truth for:
+ * - Location
+ * - Sublocations
+ */
+const resolvePlanningMasterData = async (data) => {
+  const prakalpaName = String(data.prakalpa || "").trim();
+  const locationName = String(data.location || "").trim();
+  const sublocationName = String(data.sublocation || "").trim();
+
+  if (!prakalpaName) {
+    throw new AppError("Prakalpa is required.", 400);
+  }
+
+  const prakalpa = await Prakalpa.findOne({
+    name: prakalpaName,
+    active: true,
+  });
+
+  if (!prakalpa) {
+    throw new AppError(
+      "Selected Prakalpa does not exist or is inactive.",
+      400
+    );
+  }
+
+  const pramukh = String(
+    prakalpa.prakalpaPramukh || ""
+  ).trim();
+
+  if (!pramukh) {
+    throw new AppError(
+      `Prakalpa Pramukh is not configured for ${prakalpa.name}. Please configure it in Prakalpa Management.`,
+      400
+    );
+  }
+
+  /*
+   * Location is required only when this Prakalpa has
+   * official active Location master records.
+   *
+   * Never create or infer a Location here.
+   */
+  const configuredLocations = await Location.find({
+    prakalpa: prakalpa.name,
+    active: true,
+  });
+
+  let location = null;
+  let configuredSublocations = [];
+
+  if (configuredLocations.length > 0) {
+    if (!locationName) {
+      throw new AppError(
+        `Please select a Location for ${prakalpa.name}.`,
+        400
+      );
+    }
+
+    location = configuredLocations.find(
+      (item) =>
+        String(item.name || "").trim() === locationName
+    );
+
+    if (!location) {
+      throw new AppError(
+        `Location "${locationName}" does not belong to ${prakalpa.name} or is inactive.`,
+        400
+      );
+    }
+
+    configuredSublocations = (
+      location.sublocations || []
+    )
+      .map((value) => String(value).trim())
+      .filter(Boolean);
+
+    if (
+      sublocationName &&
+      !configuredSublocations.includes(sublocationName)
+    ) {
+      throw new AppError(
+        `Sublocation "${sublocationName}" does not belong to location "${location.name}".`,
+        400
+      );
+    }
+  } else {
+    /*
+     * No official Location records exist for this Prakalpa.
+     * Do not manufacture one.
+     *
+     * Also reject a client trying to inject a Location that
+     * is not present in master data.
+     */
+    if (locationName) {
+      throw new AppError(
+        `No Locations are configured for ${prakalpa.name}. Please configure official Location data before using a Location.`,
+        400
+      );
+    }
+
+    if (sublocationName) {
+      throw new AppError(
+        `A Sublocation cannot be selected because no Location is configured for ${prakalpa.name}.`,
+        400
+      );
+    }
+  }
+
+  const configuredAuditAreas = (
+    prakalpa.auditAreas || []
+  )
+    .map((value) => String(value).trim())
+    .filter(Boolean);
+
+  const requestedAuditAreas = Array.isArray(data.auditAreas)
+    ? [
+        ...new Set(
+          data.auditAreas
+            .map((value) => String(value).trim())
+            .filter(Boolean)
+        ),
+      ]
+    : [];
+
+  if (requestedAuditAreas.length === 0) {
+    throw new AppError(
+      "Please select at least one Audit Area.",
+      400
+    );
+  }
+
+  const invalidAuditAreas = requestedAuditAreas.filter(
+    (area) => !configuredAuditAreas.includes(area)
+  );
+
+  if (invalidAuditAreas.length > 0) {
+    throw new AppError(
+      `Invalid Audit Area selection for ${prakalpa.name}: ${invalidAuditAreas.join(", ")}`,
+      400
+    );
+  }
+
+  return {
+    prakalpa: prakalpa.name,
+    location: location ? location.name : "",
+    sublocation: location ? sublocationName : "",
+    prakalphaPramukh: pramukh,
+    auditAreas: requestedAuditAreas,
+  };
+};
+
+
 export const createAuditPlan = async (data) => {
+  const masterData =
+    await resolvePlanningMasterData(data);
+
   const iqaNumber = await getNextIqaNumber();
 
   /*
    * Auditor assignment belongs to scheduling.
-   * Even if an old frontend sends auditors while
-   * creating a plan, do not persist them here.
+   *
+   * Master-data-owned fields are also removed from
+   * the request before persistence. Their validated
+   * values come exclusively from master data.
    */
   const {
     auditors: _ignoredAuditors,
+    status: _ignoredStatus,
+    prakalpa: _ignoredPrakalpa,
+    location: _ignoredLocation,
+    sublocation: _ignoredSublocation,
+    prakalphaPramukh: _ignoredPramukh,
+    auditAreas: _ignoredAuditAreas,
     ...planningData
   } = data;
 
   const auditPlan = await AuditPlan.create({
     ...planningData,
+    ...masterData,
     auditors: [],
+    status: "pending",
     iqaNumber,
   });
 
@@ -127,15 +302,61 @@ export const updateAuditPlan = async (id, data) => {
   }
 
   /*
+   * Build the complete planning state first.
+   *
+   * This is important for partial PUT/update requests:
+   * unchanged values come from the existing plan while
+   * submitted values override them.
+   */
+  const candidatePlanningData = {
+    prakalpa:
+      data.prakalpa !== undefined
+        ? data.prakalpa
+        : plan.prakalpa,
+
+    location:
+      data.location !== undefined
+        ? data.location
+        : plan.location,
+
+    sublocation:
+      data.sublocation !== undefined
+        ? data.sublocation
+        : plan.sublocation,
+
+    auditAreas:
+      data.auditAreas !== undefined
+        ? data.auditAreas
+        : plan.auditAreas,
+  };
+
+  const masterData =
+    await resolvePlanningMasterData(
+      candidatePlanningData
+    );
+
+  /*
    * Auditors do not belong to planning.
+   *
+   * Master-data-owned fields cannot be directly
+   * overwritten by the client.
    */
   const {
     auditors: _ignoredAuditors,
     status: _ignoredStatus,
+    prakalpa: _ignoredPrakalpa,
+    location: _ignoredLocation,
+    sublocation: _ignoredSublocation,
+    prakalphaPramukh: _ignoredPramukh,
+    auditAreas: _ignoredAuditAreas,
     ...planningData
   } = data;
 
-  Object.assign(plan, planningData);
+  Object.assign(
+    plan,
+    planningData,
+    masterData
+  );
 
   /*
    * A plan edited from Audit Plan remains pending.

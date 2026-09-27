@@ -18,6 +18,26 @@ const prakalpaSchema = new mongoose.Schema(
           : [],
     },
 
+    prakalpaPramukh: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    prakalpaPramukhEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: "",
+    },
+
+    seniorEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: "",
+    },
+
     active: {
       type: Boolean,
       default: true,

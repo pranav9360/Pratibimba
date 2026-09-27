@@ -5,12 +5,18 @@ export interface Prakalpa {
   id?: string;
   name: string;
   auditAreas?: string[];
+  prakalpaPramukh?: string;
+  prakalpaPramukhEmail?: string;
+  seniorEmail?: string;
   active?: boolean;
 }
 
 export interface PrakalpaPayload {
   name: string;
   auditAreas?: string[];
+  prakalpaPramukh?: string;
+  prakalpaPramukhEmail?: string;
+  seniorEmail?: string;
   active?: boolean;
 }
 

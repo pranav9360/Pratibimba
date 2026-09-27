@@ -18,7 +18,7 @@ const auditPlanSchema =
 
       location: {
         type: String,
-        required: true,
+        default: "",
         trim: true,
       },
 

@@ -21,6 +21,15 @@ const PERMISSION_LABELS: Record<keyof Omit<RolePermission, "role">, string> = {
   canAddAuditor:      "Add New Auditors",
 };
 
+const SYSTEM_CAPABILITIES = [
+  {
+    key: "managePrakalpaStructure",
+    label: "Manage Prakalpa Structure",
+    description: "Create and manage Prakalpas, Audit Areas, Locations and Sublocations.",
+    adminOnly: true,
+  },
+] as const;
+
 export default function RoleAccessPage() {
   const { currentUser, rolePermissions, updateRolePermission, leadAuditorProfiles, updateLeadAuditorProfile } = useApp();
   const canAccess = currentUser.role === "lead_auditor" || currentUser.role === "admin";
@@ -129,6 +138,106 @@ export default function RoleAccessPage() {
                           >
                             <span className={`w-4 h-4 rounded-full shadow-sm mx-0.5 transition-all ${value ? "bg-on-primary" : "bg-on-surface-variant/40"}`} />
                           </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {/* Fixed System Capabilities */}
+      <section>
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-4">
+          <div>
+            <h3 className="font-headline-sm text-on-surface">
+              System Capabilities
+            </h3>
+            <p className="font-body-md text-on-surface-variant mt-1 text-[12px]">
+              Security-sensitive capabilities are fixed by the platform and cannot be reassigned here.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-surface-container-lowest border-b border-outline-variant/20">
+                <tr>
+                  <th className="px-5 py-3 font-label-md text-on-surface-variant uppercase tracking-wider w-64 text-[11px]">
+                    Capability
+                  </th>
+
+                  {roles.map((role) => {
+                    const meta = ROLE_META[role];
+
+                    return (
+                      <th key={role} className="px-3 py-3 text-center">
+                        <span className={`font-label-md text-[10px] font-bold uppercase tracking-wider ${meta.color} whitespace-nowrap`}>
+                          {meta.label}
+                        </span>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+
+              <tbody>
+                {SYSTEM_CAPABILITIES.map((capability) => (
+                  <tr key={capability.key}>
+                    <td className="px-5 py-4">
+                      <div className="flex items-start gap-3">
+                        <span className="material-symbols-outlined text-[20px] text-primary mt-0.5">
+                          account_tree
+                        </span>
+
+                        <div>
+                          <p className="font-label-md font-bold text-on-surface text-[12px]">
+                            {capability.label}
+                          </p>
+
+                          <p className="font-body-md text-on-surface-variant/70 text-[11px] mt-1">
+                            {capability.description}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+
+                    {roles.map((role) => {
+                      const enabled = role === "admin";
+
+                      return (
+                        <td key={role} className="px-3 py-4 text-center">
+                          <div
+                            className={`w-9 h-5 rounded-full relative flex items-center mx-auto ${
+                              enabled
+                                ? "bg-primary justify-end"
+                                : "bg-surface-container-high justify-start"
+                            } opacity-70 cursor-not-allowed`}
+                            title={
+                              enabled
+                                ? "Admin-only system capability"
+                                : "This capability is restricted to Admin"
+                            }
+                          >
+                            <span
+                              className={`w-4 h-4 rounded-full shadow-sm mx-0.5 ${
+                                enabled
+                                  ? "bg-on-primary"
+                                  : "bg-on-surface-variant/40"
+                              }`}
+                            />
+                          </div>
+
+                          <div className="mt-1 flex items-center justify-center gap-1 text-[9px] text-on-surface-variant/50">
+                            <span className="material-symbols-outlined text-[11px]">
+                              lock
+                            </span>
+                            Fixed
+                          </div>
                         </td>
                       );
                     })}

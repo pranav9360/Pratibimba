@@ -34,10 +34,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize(
-    "admin",
-    "lead_auditor"
-  ),
+  authorize("admin"),
   createLocationValidator,
   createLocation
 );
@@ -45,10 +42,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize(
-    "admin",
-    "lead_auditor"
-  ),
+  authorize("admin"),
   updateLocationValidator,
   updateLocation
 );

@@ -12,6 +12,7 @@ const breadcrumbMap: Record<string, string> = {
   "/iqa-summary":     "IQA Summary",
   "/role-access":     "Role Access",
   "/user-management": "User Management",
+  "/prakalpa-management": "Prakalpa Management",
 };
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -228,6 +229,7 @@ export function TopNav() {
                 { label: "Open Reports", href: "/open-reports", icon: "inbox", roles: ["lead_auditor", "audit_coordinator", "prakalpa_manager", "auditor", "admin"] },
                 { label: "Checklist", href: "/checklist", icon: "checklist", roles: ["lead_auditor", "audit_coordinator", "auditor", "admin"] },
                 { label: "IQA Summary", href: "/iqa-summary", icon: "summarize", roles: ["lead_auditor", "audit_coordinator", "admin"] },
+                { label: "Prakalpa Management", href: "/prakalpa-management", icon: "account_tree", roles: ["admin"] },
                 { label: "User Management", href: "/user-management", icon: "manage_accounts", roles: ["admin"] },
                 { label: "Role Access", href: "/role-access", icon: "admin_panel_settings", roles: ["lead_auditor", "admin"] },
               ]
