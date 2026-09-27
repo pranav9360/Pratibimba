@@ -9,6 +9,15 @@ const prakalpaSchema = new mongoose.Schema(
       trim: true,
     },
 
+    auditAreas: {
+      type: [String],
+      default: [],
+      set: (areas) =>
+        Array.isArray(areas)
+          ? [...new Set(areas.map((a) => String(a).trim()).filter(Boolean))]
+          : [],
+    },
+
     active: {
       type: Boolean,
       default: true,
@@ -19,7 +28,4 @@ const prakalpaSchema = new mongoose.Schema(
   }
 );
 
-export default mongoose.model(
-  "Prakalpa",
-  prakalpaSchema
-);
+export default mongoose.model("Prakalpa", prakalpaSchema);

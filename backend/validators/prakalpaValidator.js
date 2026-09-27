@@ -4,9 +4,19 @@ export const createPrakalpaValidator = [
   body("name")
     .trim()
     .notEmpty()
-    .withMessage(
-      "Prakalpa name is required"
-    ),
+    .withMessage("Prakalpa name is required"),
+
+  body("auditAreas")
+    .optional()
+    .isArray()
+    .withMessage("Audit Areas must be an array"),
+
+  body("auditAreas.*")
+    .optional()
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Audit Area cannot be empty"),
 
   body("active")
     .optional()
@@ -18,9 +28,19 @@ export const updatePrakalpaValidator = [
     .optional()
     .trim()
     .notEmpty()
-    .withMessage(
-      "Prakalpa name cannot be empty"
-    ),
+    .withMessage("Prakalpa name cannot be empty"),
+
+  body("auditAreas")
+    .optional()
+    .isArray()
+    .withMessage("Audit Areas must be an array"),
+
+  body("auditAreas.*")
+    .optional()
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Audit Area cannot be empty"),
 
   body("active")
     .optional()
