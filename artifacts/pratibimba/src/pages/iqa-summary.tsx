@@ -19,52 +19,23 @@ function downloadCSV(
     "Audit Days",
     "Auditors",
     "Audit Areas",
-    "Audit Completion Date",
-    "Classification (OFI/NC)",
     "Total Audit Findings",
     "Status",
     "Prakalpa Pramukh",
-    "NC IARs",
-    "OFI IARs",
   ];
   const lines = rows.map(({ report, reports: r }) => {
     const ncIARs = r.filter((x) => x.severity === "non_conformance").length;
     const ofiIARs = r.filter((x) => x.severity === "open_for_improvement").length;
     const allClosed = r.length > 0 && r.every((x) => x.status === "closed");
-    const hasNC = r.some((x) => x.severity === "non_conformance" && x.status === "open");
-    const hasOpen = r.some((x) => x.status === "open");
     const status =
-      r.length === 0
-        ? "Planned"
-        : allClosed
+      allClosed
         ? "Completed"
-        : hasNC
-        ? "NC Open"
-        : hasOpen
-        ? "In Progress"
-        : "Planned";
+        : "In Progress";
 
     const daysList = r.map(getDaysOpen);
     const auditDays = daysList.length > 0 ? Math.max(...daysList) : 0;
 
-    const classifications = [
-      ...new Set(r.map((x) => (x.severity === "non_conformance" ? "NC" : "OFI"))),
-    ].join("/");
 
-    const completionDate =
-      allClosed && r.length > 0
-        ? new Date(
-            [...r].sort(
-              (a, b) =>
-                new Date(b.reportClosedOn || b.closedAt).getTime() -
-                new Date(a.reportClosedOn || a.closedAt).getTime()
-            )[0]?.reportClosedOn || r[0]?.closedAt
-          ).toLocaleDateString("en-IN", {
-            day: "2-digit",
-            month: "short",
-            year: "2-digit",
-          })
-        : "";
 
     return [
       report.iqaNumber,
@@ -78,13 +49,9 @@ function downloadCSV(
       auditDays,
       (report.auditors || []).join("; "),
       (report.auditAreas || []).join("; "),
-      completionDate,
-      classifications || "—",
       r.length,
       status,
       report.prakalphaPramukh || "",
-      ncIARs,
-      ofiIARs,
     ]
       .map(String)
       .join(",");
@@ -187,16 +154,20 @@ export default function IQASummaryPage() {
   }, [summaryRows]);
 
   const getAuditStatus = (r: any[]) => {
-    if (r.length === 0)
-      return { label: "Planned", style: "bg-secondary/10 text-secondary" };
-    if (r.every((x) => x.status === "closed"))
+    if (
+      r.length > 0 &&
+      r.every((x) => x.status === "closed")
+    ) {
       return {
         label: "Completed",
-        style: "bg-surface-container text-on-surface-variant",
+        style: "bg-secondary/10 text-secondary",
       };
-    const hasNC = r.some((x) => x.severity === "non_conformance" && x.status === "open");
-    if (hasNC) return { label: "NC Open", style: "bg-error/10 text-error" };
-    return { label: "In Progress", style: "bg-primary/10 text-primary" };
+    }
+
+    return {
+      label: "In Progress",
+      style: "bg-primary/10 text-primary",
+    };
   };
 
   // STEP 2 & 3: Filter logic updated to evaluate 'report' fields
@@ -334,9 +305,7 @@ export default function IQASummaryPage() {
             className="w-full sm:w-auto border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
           >
             <option value="All">All Status</option>
-            <option value="Planned">Planned</option>
             <option value="In Progress">In Progress</option>
-            <option value="NC Open">NC Open</option>
             <option value="Completed">Completed</option>
           </select>
         </div>
@@ -372,7 +341,7 @@ export default function IQASummaryPage() {
       {/* Summary Table */}
       <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1350px] text-left text-[12px]">
+          <table className="w-full min-w-[1200px] text-left text-[12px]">
             <thead className="bg-surface-container-lowest border-b border-outline-variant/20">
               <tr>
                 {[
@@ -386,14 +355,9 @@ export default function IQASummaryPage() {
                   "End Date",
                   "Days",
                   "Auditors",
-                  "Areas",
-                  "Completion",
-                  "Classification",
-                  "Findings",
+                  "Areas",                  "Findings",
                   "Status",
                   "Pramukh",
-                  "NC",
-                  "OFI",
                   "",
                 ].map((h) => (
                   <th
@@ -409,7 +373,7 @@ export default function IQASummaryPage() {
               {filtered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={19}
+                    colSpan={15}
                     className="px-4 py-16 text-center font-body-md text-on-surface-variant/50"
                   >
                     No audits found
@@ -438,25 +402,7 @@ export default function IQASummaryPage() {
                   // STEP 7: Auditor list mapping
                   const auditorList = report.auditors || [];
 
-                  // STEP 6: Completion Date computed from latest closed report
-                  const completionDateStr =
-                    allClosed && auditReports.length > 0
-                      ? new Date(
-                          [...auditReports].sort(
-                            (a, b) =>
-                              new Date(
-                                b.reportClosedOn || b.closedAt
-                              ).getTime() -
-                              new Date(
-                                a.reportClosedOn || a.closedAt
-                              ).getTime()
-                          )[0]?.reportClosedOn || auditReports[0]?.closedAt
-                        ).toLocaleDateString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "2-digit",
-                        })
-                      : "—";
+
 
                   return (
                     <Fragment key={report.iqaNumber || idx}>
@@ -583,31 +529,6 @@ export default function IQASummaryPage() {
                           </div>
                         </td>
 
-                        {/* STEP 6: Completion Date */}
-                        <td className="px-3 py-3 font-data-mono text-[11px] whitespace-nowrap text-on-surface-variant">
-                          {completionDateStr}
-                        </td>
-
-                        {/* Classifications */}
-                        <td className="px-3 py-3">
-                          {auditReports.length > 0 ? (
-                            <div className="flex gap-1">
-                              {ncIARs > 0 && (
-                                <span className="px-1.5 py-0.5 bg-error/10 text-error rounded text-[10px] font-bold">
-                                  NC:{ncIARs}
-                                </span>
-                              )}
-                              {ofiIARs > 0 && (
-                                <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-bold">
-                                  OFI:{ofiIARs}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-on-surface-variant/50">—</span>
-                          )}
-                        </td>
-
                         {/* Total Findings */}
                         <td className="px-3 py-3 font-data-mono font-bold text-center text-on-surface">
                           {auditReports.length}
@@ -625,28 +546,6 @@ export default function IQASummaryPage() {
                         {/* STEP 10: Prakalpa Pramukh */}
                         <td className="px-3 py-3 text-on-surface-variant whitespace-nowrap">
                           {report.prakalphaPramukh || "—"}
-                        </td>
-
-                        {/* NC Count */}
-                        <td className="px-3 py-3 font-data-mono font-bold text-center">
-                          <span
-                            className={
-                              ncIARs > 0 ? "text-error" : "text-on-surface-variant"
-                            }
-                          >
-                            {ncIARs}
-                          </span>
-                        </td>
-
-                        {/* OFI Count */}
-                        <td className="px-3 py-3 font-data-mono font-bold text-center">
-                          <span
-                            className={
-                              ofiIARs > 0 ? "text-primary" : "text-on-surface-variant"
-                            }
-                          >
-                            {ofiIARs}
-                          </span>
                         </td>
 
                         {/* Expand Chevron */}
@@ -669,7 +568,7 @@ export default function IQASummaryPage() {
                           className="bg-surface-container-lowest/80"
                         >
                           <td
-                            colSpan={19}
+                            colSpan={15}
                             className="px-6 py-4 border-b border-outline-variant/20"
                           >
                             <div className="space-y-3">

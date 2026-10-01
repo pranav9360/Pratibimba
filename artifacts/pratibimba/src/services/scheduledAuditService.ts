@@ -87,3 +87,27 @@ export const markMailSent =
       res.data.data
     );
   };
+
+// =========================
+// Send IQA / Scheduled Audit Email
+// =========================
+
+export interface SendScheduledAuditEmailPayload {
+  to: string[];
+  cc?: string[];
+  subject?: string;
+  message?: string;
+}
+
+export const sendScheduledAuditEmail =
+  async (
+    id: string,
+    payload: SendScheduledAuditEmailPayload
+  ) => {
+    const res = await api.post(
+      `/scheduled-audits/${id}/send-email`,
+      payload
+    );
+
+    return withId(res.data.data);
+  };

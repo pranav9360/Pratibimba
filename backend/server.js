@@ -19,6 +19,7 @@ import scheduledAuditRoutes from "./routes/scheduledAudit.routes.js";
 import notFound from "./middleware/notFound.js";
 import errorHandler from "./middleware/errorHandler.js";
 import reportRoutes from "./routes/reportRoutes.js";
+import auditFindingRoutes from "./routes/auditFindingRoutes.js";
 
 dotenv.config();
 
@@ -38,30 +39,47 @@ const allowedOrigins = [
   process.env.ALLOWED_ORIGIN,
   process.env.FRONTEND_URL,
   "http://localhost:5173",
+  "https://localhost:5173",
 ].filter(Boolean);
+
+function isTrustedCodespacesOrigin(origin) {
+  try {
+    const url = new URL(origin);
+
+    return (
+      url.protocol === "https:" &&
+      (
+        url.hostname.endsWith(".app.github.dev") ||
+        url.hostname.endsWith(".githubpreview.dev")
+      )
+    );
+  } catch {
+    return false;
+  }
+}
 
 app.use(
   cors({
     origin(origin, callback) {
-      // Allow requests with no origin (like mobile apps, curl, or Postman)
-      if (!origin) return callback(null, true);
-
-      let isAllowed = allowedOrigins.includes(origin);
-
-      // Keep GitHub Codespaces working during development
-      if (!isAllowed) {
-        try {
-          isAllowed = new URL(origin).hostname.endsWith(".app.github.dev");
-        } catch {
-          isAllowed = false;
-        }
+      // curl/Postman/server-to-server requests may have no Origin header.
+      if (!origin) {
+        return callback(null, true);
       }
 
-      callback(
+      const isAllowed =
+        allowedOrigins.includes(origin) ||
+        isTrustedCodespacesOrigin(origin);
+
+      if (!isAllowed) {
+        console.warn("CORS blocked origin:", origin);
+      }
+
+      return callback(
         isAllowed ? null : new Error("Not allowed by CORS"),
         isAllowed
       );
     },
+
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -105,6 +123,7 @@ app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/audit-plans", auditPlanRoutes);
 app.use("/api/v1/scheduled-audits", scheduledAuditRoutes);
 app.use("/api/v1/reports", reportRoutes);
+app.use("/api/v1/audit-findings", auditFindingRoutes);
 
 // ======================
 // Error Handling

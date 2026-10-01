@@ -1,17 +1,103 @@
 import ScheduledAudit from "../models/ScheduledAudit.js";
+import User from "../models/User.js";
 import AuditPlan from "../models/AuditPlan.js";
 import AppError from "../utils/AppError.js";
 import { sendMail } from "./emailService.js";
+/*
+ * ============================================================
+ * Scheduled Audit read jurisdiction
+ * ============================================================
+ *
+ * Authorization is enforced here in the backend.
+ * Frontend filtering is presentation only.
+ *
+ * Current assignment fields store User.name strings, so the
+ * authenticated MongoDB user's name is used for matching.
+ */
 
-export const getScheduledAudits = async (query = {}) => {
-  const filter = {};
+const normalizeUserValue = (value) =>
+  String(value || "").trim();
 
+const getScheduledAuditJurisdiction = (user) => {
+  if (!user) {
+    throw new AppError(
+      "Authentication required",
+      401
+    );
+  }
+
+  const role = normalizeUserValue(user.role);
+  const name = normalizeUserValue(user.name);
+
+  // Administrative oversight
+  if (
+    role === "super_admin" ||
+    role === "admin"
+  ) {
+    return {};
+  }
+
+  if (!name) {
+    throw new AppError(
+      "Authenticated user has no valid identity.",
+      403
+    );
+  }
+
+  // Coordinator sees only audits assigned to them.
+  if (role === "audit_coordinator") {
+    return {
+      auditCoordinator: name,
+    };
+  }
+
+  // Lead sees only audits where explicitly assigned as Lead.
+  if (role === "lead_auditor") {
+    return {
+      leadAuditor: name,
+    };
+  }
+
+  // Auditor sees only audits in their assigned team.
+  if (role === "auditor") {
+    return {
+      auditors: name,
+    };
+  }
+
+  /*
+   * Prakalpa Managers do not receive Scheduled Audit access.
+   * Their jurisdiction belongs to the Reports workflow.
+   *
+   * Unknown roles are also denied by returning an impossible
+   * MongoDB condition.
+   */
+  return {
+    _id: null,
+  };
+};
+
+
+export const getScheduledAudits = async (
+  query = {},
+  user
+) => {
+  const filter = {
+    ...getScheduledAuditJurisdiction(user),
+  };
+
+  /*
+   * Client filters may narrow results but cannot broaden
+   * backend jurisdiction.
+   */
   if (query.prakalpa) {
-    filter.prakalpa = query.prakalpa;
+    filter.prakalpa =
+      String(query.prakalpa).trim();
   }
 
   if (query.location) {
-    filter.location = query.location;
+    filter.location =
+      String(query.location).trim();
   }
 
   return await ScheduledAudit.find(filter).sort({
@@ -19,9 +105,23 @@ export const getScheduledAudits = async (query = {}) => {
   });
 };
 
-export const getScheduledAuditById = async (id) => {
-  const audit = await ScheduledAudit.findById(id);
 
+export const getScheduledAuditById = async (
+  id,
+  user
+) => {
+  const jurisdiction =
+    getScheduledAuditJurisdiction(user);
+
+  const audit = await ScheduledAudit.findOne({
+    _id: id,
+    ...jurisdiction,
+  });
+
+  /*
+   * Use the same response for a missing record and a record
+   * outside jurisdiction. This avoids leaking its existence.
+   */
   if (!audit) {
     throw new AppError(
       "Scheduled audit not found",
@@ -32,18 +132,91 @@ export const getScheduledAuditById = async (id) => {
   return audit;
 };
 
-export const updateScheduledAudit = async (
+/*
+ * ============================================================
+ * Scheduled Audit management jurisdiction
+ * ============================================================
+ *
+ * Viewing an audit and managing an audit are intentionally
+ * separate permissions.
+ *
+ * - Super Admin / Admin: application-wide oversight
+ * - Audit Coordinator: only audits assigned to themselves
+ * - Lead Auditor: no scheduling-management authority
+ * - Auditor: no scheduling-management authority
+ * - Prakalpa Manager: no scheduling-management authority
+ */
+const getManagedScheduledAudit = async (
   id,
-  data
+  user
 ) => {
-  const audit = await ScheduledAudit.findById(id);
+  if (!user) {
+    throw new AppError(
+      "Authentication required",
+      401
+    );
+  }
 
+  const role =
+    normalizeUserValue(user.role);
+
+  const name =
+    normalizeUserValue(user.name);
+
+  const filter = {
+    _id: id,
+  };
+
+  if (
+    role === "admin"
+  ) {
+    // Administrative management authority.
+  } else if (
+    role === "audit_coordinator"
+  ) {
+    if (!name) {
+      throw new AppError(
+        "Authenticated user has no valid identity.",
+        403
+      );
+    }
+
+    filter.auditCoordinator = name;
+  } else {
+    throw new AppError(
+      "You are not authorized to manage this scheduled audit.",
+      403
+    );
+  }
+
+  const audit =
+    await ScheduledAudit.findOne(filter);
+
+  /*
+   * Same response for nonexistent and out-of-jurisdiction
+   * records so another audit's existence is not disclosed.
+   */
   if (!audit) {
     throw new AppError(
       "Scheduled audit not found",
       404
     );
   }
+
+  return audit;
+};
+
+
+export const updateScheduledAudit = async (
+  id,
+  data,
+  user
+) => {
+  const audit =
+    await getManagedScheduledAudit(
+      id,
+      user
+    );
 
   /*
    * Completed audits are historical records.
@@ -119,6 +292,48 @@ export const updateScheduledAudit = async (
   if (!Array.isArray(nextAuditors)) {
     throw new AppError(
       "Auditors must be an array.",
+      400
+    );
+  }
+
+  /*
+   * Resolve Lead Auditor independently from the ordinary
+   * auditor list.
+   *
+   * leadAuditor is the canonical workflow field.
+   */
+  const nextLeadAuditor = String(
+    data.leadAuditor !== undefined
+      ? data.leadAuditor
+      : audit.leadAuditor || ""
+  ).trim();
+
+  if (!nextLeadAuditor) {
+    throw new AppError(
+      "Lead Auditor is required.",
+      400
+    );
+  }
+
+  /*
+   * Lead Auditor is an independent workflow role.
+   *
+   * Do not require the Lead Auditor to also appear in the
+   * ordinary auditors[] team.
+   *
+   * Validate instead that the selected person is an active
+   * Lead Auditor account.
+   */
+  const leadAuditorUser =
+    await User.findOne({
+      name: nextLeadAuditor,
+      role: "lead_auditor",
+      active: true,
+    }).select("_id name role active");
+
+  if (!leadAuditorUser) {
+    throw new AppError(
+      "Selected Lead Auditor is not an active Lead Auditor account.",
       400
     );
   }
@@ -204,27 +419,14 @@ export const updateScheduledAudit = async (
     nextAuditors;
 
   /*
-   * Preserve finalAuditor when it is still one of
-   * the assigned auditors. Otherwise use the first
-   * assigned auditor, or blank if none are assigned.
+   * Persist the explicit Lead Auditor.
+   *
+   * Do not silently assign another auditor if the Lead
+   * Auditor is removed from the team. The coordinator must
+   * explicitly choose the replacement.
    */
-  if (
-    audit.finalAuditor &&
-    !nextAuditors.includes(
-      audit.finalAuditor
-    )
-  ) {
-    audit.finalAuditor =
-      nextAuditors[0] || "";
-  }
-
-  if (
-    !audit.finalAuditor &&
-    nextAuditors.length > 0
-  ) {
-    audit.finalAuditor =
-      nextAuditors[0];
-  }
+  audit.leadAuditor =
+    nextLeadAuditor;
 
   await audit.save();
 
@@ -232,16 +434,14 @@ export const updateScheduledAudit = async (
 };
 
 export const completeScheduledAudit = async (
-  id
+  id,
+  user
 ) => {
-  const audit = await ScheduledAudit.findById(id);
-
-  if (!audit) {
-    throw new AppError(
-      "Scheduled audit not found",
-      404
+  const audit =
+    await getManagedScheduledAudit(
+      id,
+      user
     );
-  }
 
   if (audit.status === "completed") {
     return audit;
@@ -297,19 +497,21 @@ export const completeScheduledAudit = async (
 };
 
 export const deleteScheduledAudit = async (
-  id
+  id,
+  user
 ) => {
+  /*
+   * Prove ownership before deletion.
+   */
   const audit =
-    await ScheduledAudit.findByIdAndDelete(
-      id
+    await getManagedScheduledAudit(
+      id,
+      user
     );
 
-  if (!audit) {
-    throw new AppError(
-      "Scheduled audit not found",
-      404
-    );
-  }
+  await ScheduledAudit.deleteOne({
+    _id: audit._id,
+  });
 
   return audit;
 };
@@ -388,26 +590,21 @@ const textToHtml = (text) =>
 
 export const sendScheduledAuditEmail = async (
   id,
-  payload = {}
+  payload = {},
+  user
 ) => {
   const audit =
-    await ScheduledAudit.findById(
-      id
+    await getManagedScheduledAudit(
+      id,
+      user
     );
-
-  if (!audit) {
-    throw new AppError(
-      "Scheduled audit not found",
-      404
-    );
-  }
 
   const {
     to,
     cc,
     subject,
     message,
-  } = payload;
+} = payload;
 
   const toList =
     Array.isArray(to)
@@ -458,6 +655,12 @@ export const sendScheduledAuditEmail = async (
   audit.mailSent = true;
   audit.mailSentAt =
     new Date();
+  audit.mailSentTo = [
+    ...new Set([
+      ...toList,
+      ...ccList,
+    ]),
+  ];
 
   await audit.save();
 
@@ -465,11 +668,13 @@ export const sendScheduledAuditEmail = async (
 };
 
 export const markMailSent = async (
-  id
+  id,
+  user
 ) => {
   const audit =
-    await ScheduledAudit.findById(
-      id
+    await getManagedScheduledAudit(
+      id,
+      user
     );
 
   if (!audit) {

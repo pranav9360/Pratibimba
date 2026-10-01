@@ -35,7 +35,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("super_admin", "admin"),
   createAuditPlanValidator,
   createAuditPlan
 );
@@ -43,7 +43,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("super_admin", "admin"),
   updateAuditPlanValidator,
   updateAuditPlan
 );
@@ -51,14 +51,17 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("super_admin", "admin"),
   deleteAuditPlan
 );
 
 router.put(
   "/:id/schedule",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize(
+    "admin",
+    "audit_coordinator"
+  ),
   scheduleAuditPlan
 );
 
@@ -68,7 +71,7 @@ router.patch(
   authenticate,
   authorize(
     "admin",
-    "lead_auditor"
+    "audit_coordinator"
   ),
   unscheduleAuditPlan
 );

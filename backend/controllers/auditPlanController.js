@@ -8,7 +8,9 @@ import * as auditPlanService from "../services/auditPlanService.js";
 
 export const getAuditPlans = asyncHandler(async (req, res) => {
 
-  const plans = await auditPlanService.getAuditPlans();
+  const plans = await auditPlanService.getAuditPlans(
+    req.user
+  );
 
   res.json(
     new ApiResponse(
@@ -23,7 +25,8 @@ export const getAuditPlans = asyncHandler(async (req, res) => {
 export const getAuditPlanById = asyncHandler(async (req, res) => {
 
   const plan = await auditPlanService.getAuditPlanById(
-    req.params.id
+    req.params.id,
+    req.user
   );
 
   res.json(
@@ -45,7 +48,8 @@ export const createAuditPlan = asyncHandler(async (req, res) => {
   }
 
   const plan = await auditPlanService.createAuditPlan(
-    req.body
+    req.body,
+    req.user
   );
 
   res.status(201).json(
@@ -68,7 +72,8 @@ export const updateAuditPlan = asyncHandler(async (req, res) => {
 
   const plan = await auditPlanService.updateAuditPlan(
     req.params.id,
-    req.body
+    req.body,
+    req.user
   );
 
   res.json(
@@ -84,7 +89,8 @@ export const updateAuditPlan = asyncHandler(async (req, res) => {
 export const deleteAuditPlan = asyncHandler(async (req, res) => {
 
   await auditPlanService.deleteAuditPlan(
-    req.params.id
+    req.params.id,
+    req.user
   );
 
   res.json(
@@ -100,7 +106,8 @@ export const scheduleAuditPlan = asyncHandler(async (req, res) => {
 
   const plan = await auditPlanService.scheduleAuditPlan(
     req.params.id,
-    req.body
+    req.body,
+    req.user
   );
 
   res.json(
@@ -118,7 +125,8 @@ export const unscheduleAuditPlan =
   asyncHandler(async (req, res) => {
     const plan =
       await auditPlanService.unscheduleAuditPlan(
-        req.params.id
+        req.params.id,
+        req.user
       );
 
     res.json(

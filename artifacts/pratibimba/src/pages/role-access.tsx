@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useApp, LEAD_AUDITOR_PROFILES, PRAKALPAS, type Role, type RolePermission } from "../context/app-context";
 
 const ROLE_META: Record<Role, { label: string; color: string; icon: string; description: string }> = {
+  super_admin:     { label: "Super Admin",       color: "text-error",              icon: "admin_panel_settings",  description: "Platform-level administration and administrative account management." },
   admin:             { label: "Admin",             color: "text-error",              icon: "shield_person",         description: "Full platform administration — manages users, roles, and access." },
   lead_auditor:      { label: "Lead Auditor",      color: "text-primary",            icon: "manage_accounts",       description: "Oversees audit planning, assigns coordinators and auditors to plans." },
   audit_coordinator: { label: "Audit Coordinator", color: "text-tertiary",           icon: "group_work",            description: "Leads field audit teams. Takes a team of auditors to the audit site." },
@@ -19,6 +20,18 @@ const PERMISSION_LABELS: Record<keyof Omit<RolePermission, "role">, string> = {
   canManageUsers:     "Manage Users",
   canViewDashboard:   "View Dashboard",
   canAddAuditor:      "Add New Auditors",
+  canAssignAuditCoordinator: "Assign Audit Coordinator",
+  canAssignAuditors: "Assign Auditors",
+  canAssignLeadAuditor: "Assign Lead Auditor",
+  canSubmitFindings: "Submit Findings",
+  canReviewFindings: "Review Findings",
+  canSubmitFindingsToCoordinator: "Submit Findings to Coordinator",
+  canGenerateReport: "Generate Report",
+  canSendReportToPrakalpa: "Send Report to Prakalpa",
+  canSubmitCorrectiveAction: "Submit Corrective Action",
+  canVerifyCorrectiveAction: "Verify Corrective Action",
+  canManagePrakalpas: "Manage Prakalpas",
+  canManageAdmins: "Manage Admins",
 };
 
 const SYSTEM_CAPABILITIES = [
@@ -37,7 +50,14 @@ export default function RoleAccessPage() {
   const [laEditPrakalpas, setLaEditPrakalpas] = useState<string[]>([]);
 
   const allPermissions = Object.keys(PERMISSION_LABELS) as Array<keyof Omit<RolePermission, "role">>;
-  const roles: Role[] = ["admin", "lead_auditor", "audit_coordinator", "auditor", "prakalpa_manager"];
+  const roles: Role[] = [
+    "super_admin",
+    "admin",
+    "lead_auditor",
+    "audit_coordinator",
+    "auditor",
+    "prakalpa_manager",
+  ];
 
   if (!canAccess) {
     return (

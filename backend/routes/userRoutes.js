@@ -21,21 +21,21 @@ const router = express.Router();
 router.get(
   "/",
   authenticate,
-  authorize("admin"),
+  authorize("super_admin", "admin"),
   getUsers
 );
 
 router.get(
   "/:id",
   authenticate,
-  authorize("admin"),
+  authorize("super_admin", "admin"),
   getUserById
 );
 
 router.post(
   "/",
   authenticate,
-  authorize("admin"),
+  authorize("super_admin", "admin"),
   createUserValidator,
   createUser
 );
@@ -43,7 +43,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("admin"),
+  authorize("super_admin", "admin"),
   updateUserValidator,
   updateUser
 );
@@ -51,7 +51,7 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("admin"),
+  authorize("super_admin", "admin"),
   deleteUser
 );
 

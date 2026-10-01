@@ -25,7 +25,6 @@ import {
   getReports,
   createReport as createReportApi,
   updateReport as updateReportApi,
-  closeReport as closeReportApi,
 } from "../services/reportService";
 
 import { getRoles, updateRole as updateRoleApi } from "../services/roleService";
@@ -34,6 +33,12 @@ import {
   getUsers,
   updateUser as updateUserApi,
 } from "../services/userService";
+
+import {
+  getAuthenticatedUser,
+  hasAuthenticationToken,
+  clearAuthenticatedSession,
+} from "../services/authService";
 
 export const PRAKALPAS = [
   "Yoga Kendra",
@@ -107,7 +112,13 @@ export const AUDIT_AREAS = [
   "Infrastructure & Facilities",
 ];
 
-export type Role = "admin" | "lead_auditor" | "audit_coordinator" | "auditor" | "prakalpa_manager";
+export type Role =
+  | "super_admin"
+  | "admin"
+  | "lead_auditor"
+  | "audit_coordinator"
+  | "auditor"
+  | "prakalpa_manager";
 
 export interface AppUser {
   id: string;
@@ -172,7 +183,7 @@ export interface ScheduledAudit {
   startDate: string;
   endDate: string;
   auditors: string[];
-  finalAuditor: string;
+  leadAuditor: string;
   prakalpa: string;
   location: string;
   sublocation?: string;
@@ -239,14 +250,172 @@ export interface RolePermission {
   canManageUsers: boolean;
   canViewDashboard: boolean;
   canAddAuditor: boolean;
+
+  // Workflow permissions
+  canAssignAuditCoordinator: boolean;
+  canAssignAuditors: boolean;
+  canAssignLeadAuditor: boolean;
+  canSubmitFindings: boolean;
+  canReviewFindings: boolean;
+  canSubmitFindingsToCoordinator: boolean;
+  canGenerateReport: boolean;
+  canSendReportToPrakalpa: boolean;
+  canSubmitCorrectiveAction: boolean;
+  canVerifyCorrectiveAction: boolean;
+  canManagePrakalpas: boolean;
+  canManageAdmins: boolean;
 }
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<Role, RolePermission> = {
-  admin:             { role: "admin",             canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: false,  canCloseReport: false, canViewAllReports: true,  canManageRoles: true,  canManageUsers: true,  canViewDashboard: true,  canAddAuditor: true  },
-  lead_auditor:      { role: "lead_auditor",      canCreateAuditPlan: true,  canScheduleAudit: true,  canEditReport: true,   canCloseReport: true,  canViewAllReports: true,  canManageRoles: true,  canManageUsers: false, canViewDashboard: true,  canAddAuditor: false },
-  audit_coordinator: { role: "audit_coordinator", canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: true,   canCloseReport: true,  canViewAllReports: true,  canManageRoles: false, canManageUsers: false, canViewDashboard: true,  canAddAuditor: false },
-  auditor:           { role: "auditor",           canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: false,  canCloseReport: false, canViewAllReports: false, canManageRoles: false, canManageUsers: false, canViewDashboard: true,  canAddAuditor: false },
-  prakalpa_manager:  { role: "prakalpa_manager",  canCreateAuditPlan: false, canScheduleAudit: false, canEditReport: true,   canCloseReport: false, canViewAllReports: true,  canManageRoles: false, canManageUsers: false, canViewDashboard: false, canAddAuditor: false },
+  super_admin: {
+    role: "super_admin",
+    canCreateAuditPlan: false,
+    canScheduleAudit: false,
+    canEditReport: false,
+    canCloseReport: false,
+    canViewAllReports: true,
+    canManageRoles: false,
+    canManageUsers: true,
+    canViewDashboard: true,
+    canAddAuditor: false,
+    canAssignAuditCoordinator: false,
+    canAssignAuditors: false,
+    canAssignLeadAuditor: false,
+    canSubmitFindings: false,
+    canReviewFindings: false,
+    canSubmitFindingsToCoordinator: false,
+    canGenerateReport: false,
+    canSendReportToPrakalpa: false,
+    canSubmitCorrectiveAction: false,
+    canVerifyCorrectiveAction: false,
+    canManagePrakalpas: false,
+    canManageAdmins: true,
+  },
+
+  admin: {
+    role: "admin",
+    canCreateAuditPlan: true,
+    canScheduleAudit: false,
+    canEditReport: false,
+    canCloseReport: false,
+    canViewAllReports: true,
+    canManageRoles: true,
+    canManageUsers: true,
+    canViewDashboard: true,
+    canAddAuditor: true,
+    canAssignAuditCoordinator: true,
+    canAssignAuditors: false,
+    canAssignLeadAuditor: false,
+    canSubmitFindings: false,
+    canReviewFindings: false,
+    canSubmitFindingsToCoordinator: false,
+    canGenerateReport: false,
+    canSendReportToPrakalpa: false,
+    canSubmitCorrectiveAction: false,
+    canVerifyCorrectiveAction: false,
+    canManagePrakalpas: true,
+    canManageAdmins: false,
+  },
+
+  audit_coordinator: {
+    role: "audit_coordinator",
+    canCreateAuditPlan: false,
+    canScheduleAudit: true,
+    canEditReport: true,
+    canCloseReport: true,
+    canViewAllReports: false,
+    canManageRoles: false,
+    canManageUsers: false,
+    canViewDashboard: true,
+    canAddAuditor: true,
+    canAssignAuditCoordinator: false,
+    canAssignAuditors: true,
+    canAssignLeadAuditor: true,
+    canSubmitFindings: false,
+    canReviewFindings: false,
+    canSubmitFindingsToCoordinator: false,
+    canGenerateReport: true,
+    canSendReportToPrakalpa: true,
+    canSubmitCorrectiveAction: false,
+    canVerifyCorrectiveAction: true,
+    canManagePrakalpas: false,
+    canManageAdmins: false,
+  },
+
+  lead_auditor: {
+    role: "lead_auditor",
+    canCreateAuditPlan: false,
+    canScheduleAudit: false,
+    canEditReport: false,
+    canCloseReport: false,
+    canViewAllReports: false,
+    canManageRoles: false,
+    canManageUsers: false,
+    canViewDashboard: true,
+    canAddAuditor: false,
+    canAssignAuditCoordinator: false,
+    canAssignAuditors: false,
+    canAssignLeadAuditor: false,
+    canSubmitFindings: true,
+    canReviewFindings: true,
+    canSubmitFindingsToCoordinator: true,
+    canGenerateReport: false,
+    canSendReportToPrakalpa: false,
+    canSubmitCorrectiveAction: false,
+    canVerifyCorrectiveAction: false,
+    canManagePrakalpas: false,
+    canManageAdmins: false,
+  },
+
+  auditor: {
+    role: "auditor",
+    canCreateAuditPlan: false,
+    canScheduleAudit: false,
+    canEditReport: false,
+    canCloseReport: false,
+    canViewAllReports: false,
+    canManageRoles: false,
+    canManageUsers: false,
+    canViewDashboard: true,
+    canAddAuditor: false,
+    canAssignAuditCoordinator: false,
+    canAssignAuditors: false,
+    canAssignLeadAuditor: false,
+    canSubmitFindings: true,
+    canReviewFindings: false,
+    canSubmitFindingsToCoordinator: false,
+    canGenerateReport: false,
+    canSendReportToPrakalpa: false,
+    canSubmitCorrectiveAction: false,
+    canVerifyCorrectiveAction: false,
+    canManagePrakalpas: false,
+    canManageAdmins: false,
+  },
+
+  prakalpa_manager: {
+    role: "prakalpa_manager",
+    canCreateAuditPlan: false,
+    canScheduleAudit: false,
+    canEditReport: false,
+    canCloseReport: false,
+    canViewAllReports: false,
+    canManageRoles: false,
+    canManageUsers: false,
+    canViewDashboard: true,
+    canAddAuditor: false,
+    canAssignAuditCoordinator: false,
+    canAssignAuditors: false,
+    canAssignLeadAuditor: false,
+    canSubmitFindings: false,
+    canReviewFindings: false,
+    canSubmitFindingsToCoordinator: false,
+    canGenerateReport: false,
+    canSendReportToPrakalpa: false,
+    canSubmitCorrectiveAction: true,
+    canVerifyCorrectiveAction: false,
+    canManagePrakalpas: false,
+    canManageAdmins: false,
+  },
 };
 
 function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split("T")[0]; }
@@ -263,10 +432,6 @@ export const SEED_USERS: AppUser[] = [
   { id: "u-aud-2", name: "Rohan Mehra",          email: "rohan.mehra@rashtrotthana.org",  role: "auditor",           active: true, createdDate: daysAgo(65) },
   { id: "u-aud-3", name: "Vikram Singh",         email: "vikram.singh@rashtrotthana.org", role: "auditor",           active: true, createdDate: daysAgo(60) },
 ];
-
-export const DEMO_USERS: CurrentUser[] = SEED_USERS.map((u) => ({
-  id: u.id, name: u.name, email: u.email, role: u.role, prakalpa: u.prakalpa,
-}));
 
 export const AUDIT_COORDINATORS = SEED_USERS.filter((u) => u.role === "audit_coordinator").map((u) => u.name);
 
@@ -287,7 +452,7 @@ const seedPlans: AuditPlan[] = [
 ];
 
 const seedScheduled: ScheduledAudit[] = [
-  { id: "sched-1", iqaNumber: "IQAN261004", startDate: daysAgo(2), endDate: daysFuture(5), auditors: ["Rohan Mehra"], finalAuditor: "Rohan Mehra", prakalpa: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam", purpose: "Vendor procurement compliance check.", auditPlannedDate: daysFuture(7), createdDate: daysAgo(10), scheduledDate: daysAgo(2), auditCoordinator: "Deepa Menon", prakalphaPramukh: "Ravi Kumar", auditAreas: ["Procurement", "Finance & Accounts"], mailSent: true,  },
+  { id: "sched-1", iqaNumber: "IQAN261004", startDate: daysAgo(2), endDate: daysFuture(5), auditors: ["Rohan Mehra"], leadAuditor: "Rohan Mehra", prakalpa: "Yoga Kendra", location: "Hyderabad", sublocation: "Mehdipatnam", purpose: "Vendor procurement compliance check.", auditPlannedDate: daysFuture(7), createdDate: daysAgo(10), scheduledDate: daysAgo(2), auditCoordinator: "Deepa Menon", prakalphaPramukh: "Ravi Kumar", auditAreas: ["Procurement", "Finance & Accounts"], mailSent: true,  },
 ];
 
 const seedReports: Report[] = [
@@ -306,7 +471,6 @@ const seedReports: Report[] = [
 
 interface AppContextType {
   currentUser: CurrentUser;
-  setCurrentUser: (u: CurrentUser) => void;
   refreshLiveData: () => Promise<void>;
 
   users: AppUser[];
@@ -324,6 +488,8 @@ interface AppContextType {
   scheduledAudits: ScheduledAudit[];
   reports: Report[];
   notifications: Notification[];
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
 
   getDaysOpen: (r: Report) => number;
   isRedFlagged: (r: Report) => boolean;
@@ -333,14 +499,21 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<CurrentUser>(DEMO_USERS[1]);
+  const [currentUser, setCurrentUser] =
+    useState<CurrentUser | null>(null);
+
+  const [
+    authenticationReady,
+    setAuthenticationReady,
+  ] = useState(false);
   const [users, setUsers] = useState<AppUser[]>(SEED_USERS);
   const [leadAuditorProfiles, setLeadAuditorProfiles] = useState<LeadAuditorProfile[]>(LEAD_AUDITOR_PROFILES);
   const [rolePermissions, setRolePermissions] = useState<Record<Role, RolePermission>>(DEFAULT_ROLE_PERMISSIONS);
   const [auditPlans, setAuditPlans] = useState<AuditPlan[]>(seedPlans);
   const [scheduledAudits, setScheduledAudits] = useState<ScheduledAudit[]>(seedScheduled);
   const [reports, setReports] = useState<Report[]>(seedReports);
-  const [notifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] =
+    useState<Notification[]>([]);
 
   const loadLiveData = useCallback(async () => {
     try {
@@ -376,17 +549,106 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /*
+   * Resolve authenticated identity from the backend before
+   * protected application data is loaded.
+   *
+   * Frontend demo identities are not authentication authorities.
+   * Authenticated identity is resolved from the backend.
+   */
   useEffect(() => {
-    loadLiveData();
-  }, [loadLiveData]);
+    let cancelled = false;
+
+    const bootstrapAuthentication =
+      async () => {
+        if (!hasAuthenticationToken()) {
+          clearAuthenticatedSession();
+
+          if (!cancelled) {
+            window.location.replace("/login");
+          }
+
+          return;
+        }
+
+        try {
+          const user =
+            await getAuthenticatedUser();
+
+          if (cancelled) {
+            return;
+          }
+
+          setCurrentUser(
+            user as CurrentUser
+          );
+
+          setAuthenticationReady(true);
+        } catch (error) {
+          console.warn(
+            "Authentication validation failed:",
+            error
+          );
+
+          clearAuthenticatedSession();
+
+          if (!cancelled) {
+            window.location.replace("/login");
+          }
+        }
+      };
+
+    void bootstrapAuthentication();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!authenticationReady) {
+      return;
+    }
+
+    void loadLiveData();
+  }, [
+    authenticationReady,
+    loadLiveData,
+  ]);
 
   const updateRolePermission = useCallback(async (role: Role, data: Partial<RolePermission>) => {
-    const updatedRolePerms = { ...rolePermissions[role], ...data };
-    setRolePermissions((prev) => ({ ...prev, [role]: updatedRolePerms }));
+    const previousRolePerms = rolePermissions[role];
+    const updatedRolePerms = {
+      ...previousRolePerms,
+      ...data,
+    };
+
+    setRolePermissions((prev) => ({
+      ...prev,
+      [role]: updatedRolePerms,
+    }));
+
     try {
-      await updateRoleApi(role, updatedRolePerms);
+      await updateRoleApi(
+        role,
+        updatedRolePerms
+      );
     } catch (err) {
-      console.warn("Backend role sync pending, saved locally:", err);
+      /*
+       * Backend persistence is authoritative.
+       * Roll back the optimistic UI update if persistence fails.
+       */
+      setRolePermissions((prev) => ({
+        ...prev,
+        [role]: previousRolePerms,
+      }));
+
+      console.error(
+        "Role permission persistence failed:",
+        err
+      );
+
+      throw err;
     }
   }, [rolePermissions]);
 
@@ -398,17 +660,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const coordinatorUsers = users.filter((u) => u.role === "audit_coordinator" && u.active);
   const auditors = auditorUsers.map((u) => u.name);
 
+  const markNotificationRead = useCallback(
+    (id: string) => {
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === id
+            ? { ...notification, read: true }
+            : notification
+        )
+      );
+    },
+    []
+  );
+
+  const markAllNotificationsRead = useCallback(
+    () => {
+      setNotifications((prev) =>
+        prev.map((notification) => ({
+          ...notification,
+          read: true,
+        }))
+      );
+    },
+    []
+  );
+
   const getDaysOpen = useCallback((r: Report) => r.status === "closed" ? 0 : Math.floor((Date.now() - new Date(r.createdDate).getTime()) / 86400000), []);
   const isRedFlagged = useCallback((r: Report) => r.severity === "non_conformance" && r.status === "open" && getDaysOpen(r) > 30, [getDaysOpen]);
   const isOverdue = useCallback((r: Report) => r.status !== "closed" && !!r.dueDate && new Date(r.dueDate) < new Date(), []);
 
+  /*
+   * Do not expose AppContext until the backend has resolved
+   * the authenticated identity.
+   *
+   * Consumers therefore continue receiving a guaranteed
+   * non-null CurrentUser.
+   */
+  if (!authenticationReady || !currentUser) {
+    return null;
+  }
+
   return (
     <AppContext.Provider value={{
-      currentUser, setCurrentUser, refreshLiveData: loadLiveData,
+      currentUser, refreshLiveData: loadLiveData,
       users, auditorUsers, coordinatorUsers, auditors,
       leadAuditorProfiles, updateLeadAuditorProfile,
       rolePermissions, updateRolePermission,
       auditPlans, scheduledAudits, reports, notifications,
+      markNotificationRead, markAllNotificationsRead,
       getDaysOpen, isRedFlagged, isOverdue,
     }}>
       {children}

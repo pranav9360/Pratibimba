@@ -16,7 +16,6 @@ interface ScheduledAudit {
   auditPlan?: string;
   iqaNumber: string;
   prakalpa: string;
-  prakalpa?: string;
   location: string;
   sublocation?: string;
   startDate?: string;

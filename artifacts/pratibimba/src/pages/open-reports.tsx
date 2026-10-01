@@ -7,9 +7,17 @@ import {
 import {
   getReports,
   downloadReportPDF,
-  closeReport,
+  submitPrakalpaCorrectiveAction,
 } from "../services/reportService";
-import SendReportEmailModal from "../components/send-report-email-modal";
+import {
+  getScheduledAudits,
+} from "../services/scheduledAuditService";
+
+import SendScheduledAuditEmailModal from "../components/send-scheduled-audit-email-modal";
+import {
+  getPrakalpas,
+  type Prakalpa,
+} from "../services/prakalpaService";
 
 interface Report {
   _id: string;
@@ -81,17 +89,32 @@ export default function OpenReportsPage() {
   const { currentUser } = useApp();
   const [reports, setReports] = useState<Report[]>([]);
   const [detailTarget, setDetailTarget] = useState<Report | null>(null);
-  const [mailTarget, setMailTarget] = useState<Report | null>(null);
 
-  // Close Report Form State
-  const [closeTarget, setCloseTarget] = useState<Report | null>(null);
+  // IQA grouping / expansion state
+  const [expandedIQAs, setExpandedIQAs] = useState<Record<string, boolean>>({});
+
+  // IQA-level email state. Email belongs to ScheduledAudit, not an individual IQR.
+  const [scheduledAudits, setScheduledAudits] = useState<any[]>([]);
+  const [prakalpas, setPrakalpas] = useState<Prakalpa[]>([]);
+  const [iqaMailTarget, setIqaMailTarget] = useState<any | null>(null);
+
+  const [iqaMailDraft, setIqaMailDraft] = useState<{
+    to: string;
+    cc: string;
+    subject: string;
+    message: string;
+    attachments: { name: string; reportId: string }[];
+  } | null>(null);
+
+  // Corrective Action Form State
+  const [actionTarget, setActionTarget] = useState<Report | null>(null);
   const [actionTaken, setActionTaken] = useState("");
   const [completionRemarks, setCompletionRemarks] = useState("");
   const [closing, setClosing] = useState(false);
 
   // In-App Success Modal State
   const [successOpen, setSuccessOpen] = useState(false);
-  const [lastClosedNumber, setLastClosedNumber] = useState<string>("");
+  const [lastSubmittedNumber, setLastSubmittedNumber] = useState<string>("");
 
   const [filterReportId, setFilterReportId] = useState("");
   const [filterPrakalpa, setFilterPrakalpa] = useState("All");
@@ -102,6 +125,8 @@ export default function OpenReportsPage() {
 
   useEffect(() => {
     loadReports();
+    loadScheduledAudits();
+    loadPrakalpas();
   }, []);
 
   const loadReports = async () => {
@@ -112,6 +137,155 @@ export default function OpenReportsPage() {
     } catch (err) {
       console.error("Error loading open reports:", err);
     }
+  };
+
+  const loadPrakalpas = async () => {
+    try {
+      const data = await getPrakalpas();
+      setPrakalpas(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error loading Prakalpa master data:", error);
+    }
+  };
+
+  const loadScheduledAudits = async () => {
+    try {
+      const data = await getScheduledAudits();
+      setScheduledAudits(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Error loading scheduled audits:", error);
+    }
+  };
+
+  const handleSendIQAEmail = (iqaNumber: string) => {
+    const audit = scheduledAudits.find(
+      (item) => item.iqaNumber === iqaNumber
+    );
+
+    if (!audit) {
+      alert(
+        `Unable to prepare email because scheduled audit ${iqaNumber} was not found.`
+      );
+      return;
+    }
+
+    const auditId = audit._id || audit.id;
+
+    if (!auditId) {
+      alert("Unable to identify the scheduled audit.");
+      return;
+    }
+
+    const groupReports = reports.filter(
+      (report) => report.iqaNumber === iqaNumber
+    );
+
+    const openIQRs = groupReports.filter(
+      (report) =>
+        !report.status ||
+        report.status.toLowerCase() === "open"
+    );
+
+    const normalize = (value: unknown) =>
+      String(value ?? "")
+        .trim()
+        .toLowerCase();
+
+    const prakalpaMaster = prakalpas.find(
+      (item) =>
+        normalize(item.name) === normalize(audit.prakalpa)
+    );
+
+    if (!prakalpaMaster) {
+      alert(
+        `Cannot prepare ${iqaNumber}. Prakalpa "${audit.prakalpa}" was not found in Prakalpa master data.`
+      );
+      return;
+    }
+
+    const pramukhEmail =
+      prakalpaMaster.prakalpaPramukhEmail?.trim();
+
+    if (!pramukhEmail) {
+      alert(
+        `Cannot prepare ${iqaNumber}. Prakalpa Pramukh email is not configured for "${prakalpaMaster.name}". Please configure it in Prakalpa Management first.`
+      );
+      return;
+    }
+
+    const ncCount = openIQRs.filter(
+      (report) =>
+        report.severity === "non_conformance"
+    ).length;
+
+    const ofiCount = openIQRs.filter(
+      (report) =>
+        report.severity === "open_for_improvement"
+    ).length;
+
+    const iqrLines =
+      openIQRs.length > 0
+        ? openIQRs
+            .map(
+              (report) =>
+                `- ${report.iqrNumber}: ${
+                  report.severity === "non_conformance"
+                    ? "NC"
+                    : "OFI"
+                } — ${
+                  report.findings ||
+                  "No finding description"
+                }`
+            )
+            .join("\n")
+        : "- No open IQRs.";
+
+    const subject =
+      `Internal Quality Audit Report: ${iqaNumber} — ${audit.prakalpa || ""}`.trim();
+
+    const message = [
+      prakalpaMaster.prakalpaPramukh
+        ? `Dear ${prakalpaMaster.prakalpaPramukh},`
+        : "Dear Prakalpa Pramukh,",
+      "",
+      `Please find the Internal Quality Audit report for ${iqaNumber}.`,
+      "",
+      `IQA Reference: ${iqaNumber}`,
+      `Prakalpa: ${audit.prakalpa || "—"}`,
+      `Location: ${audit.location || "—"}${
+        audit.sublocation
+          ? ` / ${audit.sublocation}`
+          : ""
+      }`,
+      `Audit Coordinator: ${
+        audit.auditCoordinator || "—"
+      }`,
+      "",
+      `Open IQRs: ${openIQRs.length}`,
+      `Non-Conformances: ${ncCount}`,
+      `Open for Improvement: ${ofiCount}`,
+      "",
+      "Open IQR Details:",
+      iqrLines,
+      "",
+      "Please find the corresponding IQR reports attached.",
+      "",
+      "Regards,",
+      "Pratibimba Audit Management System",
+    ].join("\n");
+
+    setIqaMailDraft({
+      to: pramukhEmail,
+      cc: prakalpaMaster.seniorEmail?.trim() || "",
+      subject,
+      message,
+      attachments: openIQRs.map((report) => ({
+        name: `${report.iqrNumber}.pdf`,
+        reportId: report._id,
+      })),
+    });
+
+    setIqaMailTarget(audit);
   };
 
   const handleViewReport = (report: Report) => {
@@ -126,28 +300,30 @@ export default function OpenReportsPage() {
     }
   };
 
-  const handleOpenCloseDialog = (report: Report) => {
-    setCloseTarget(report);
+  const handleOpenActionDialog = (report: Report) => {
+    setActionTarget(report);
     setActionTaken("");
     setCompletionRemarks("");
   };
 
-  const handleConfirmCloseReport = async () => {
-    if (!closeTarget || !actionTaken.trim()) return;
+  const handleSubmitCorrectiveAction = async () => {
+    if (!actionTarget || !actionTaken.trim()) return;
 
     setClosing(true);
-    const iqrNum = closeTarget.iqrNumber;
+    const iqrNum = actionTarget.iqrNumber;
 
     try {
-      await closeReport(closeTarget._id, {
-        actionTaken: actionTaken.trim(),
-        completionRemarks: completionRemarks.trim(),
-        closedBy: currentUser.name || "User",
-        closedAt: new Date().toISOString(),
-      });
+      await submitPrakalpaCorrectiveAction(
+        actionTarget._id,
+        {
+          actionTaken: actionTaken.trim(),
+          completionRemarks:
+            completionRemarks.trim(),
+        }
+      );
 
-      setLastClosedNumber(iqrNum);
-      setCloseTarget(null);
+      setLastSubmittedNumber(iqrNum);
+      setActionTarget(null);
       setDetailTarget(null);
       setActionTaken("");
       setCompletionRemarks("");
@@ -156,8 +332,13 @@ export default function OpenReportsPage() {
 
       setSuccessOpen(true);
     } catch (error) {
-      console.error("Error closing report:", error);
-      alert("Unable to close report. Please try again.");
+      console.error(
+        "Error submitting corrective action:",
+        error
+      );
+      alert(
+        "Unable to submit corrective action. Please try again."
+      );
     } finally {
       setClosing(false);
     }
@@ -234,6 +415,38 @@ export default function OpenReportsPage() {
     isAuditor,
     currentUser,
   ]);
+
+  const groupedOpenReports = useMemo(() => {
+    const groups = new Map<string, Report[]>();
+
+    filtered.forEach((report) => {
+      const key = report.iqaNumber || "Unassigned IQA";
+
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+
+      groups.get(key)!.push(report);
+    });
+
+    return Array.from(groups.entries())
+      .map(([iqaNumber, groupReports]) => ({
+        iqaNumber,
+        reports: [...groupReports].sort((a, b) =>
+          (a.iqrNumber || "").localeCompare(b.iqrNumber || "")
+        ),
+      }))
+      .sort((a, b) =>
+        (b.iqaNumber || "").localeCompare(a.iqaNumber || "")
+      );
+  }, [filtered]);
+
+  const toggleIQA = (iqaNumber: string) => {
+    setExpandedIQAs((previous) => ({
+      ...previous,
+      [iqaNumber]: !previous[iqaNumber],
+    }));
+  };
 
   const clearFilters = () => {
     setSearch("");
@@ -419,251 +632,395 @@ export default function OpenReportsPage() {
         )}
       </div>
 
-      {/* Table */}
+      {/* Open Reports grouped by IQA */}
       {filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-outline-variant/10 shadow-soft p-16 flex flex-col items-center justify-center gap-4 text-center">
           <span className="material-symbols-outlined text-[48px] text-secondary/40">
             check_circle
           </span>
+
           <p className="font-headline-sm text-on-surface-variant/40">
             No open reports found
           </p>
-          <p className="font-body-md text-on-surface-variant/30">All clear!</p>
+
+          <p className="font-body-md text-on-surface-variant/30">
+            All clear!
+          </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
-          <div className="overflow-x-auto max-h-[600px]">
-            <table className="w-full min-w-[1100px] text-left">
-              <thead className="sticky top-0 z-10 bg-white shadow-sm border-b border-outline-variant/20">
-                <tr>
-                  {[
-                    "Report ID",
-                    "IQA Ref",
-                    "Prakalpa",
-                    "Location",
-                    "Auditor",
-                    "Audit Date",
-                    "Finding",
-                    "NC",
-                    "OFI",
-                    "Status",
-                    "Days Open",
-                    "Actions",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-3 font-label-md text-on-surface-variant uppercase tracking-wider whitespace-nowrap text-[11px]"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/10">
-                {filtered.map((report, idx) => {
-                  const days = Math.floor(
+        <div className="space-y-4">
+          {groupedOpenReports.map((group) => {
+            const first = group.reports[0];
+
+            const ncInGroup = group.reports.filter(
+              (report) => report.severity === "non_conformance"
+            ).length;
+
+            const ofiInGroup = group.reports.filter(
+              (report) => report.severity === "open_for_improvement"
+            ).length;
+
+            const oldestDays = Math.max(
+              ...group.reports.map((report) =>
+                Math.max(
+                  0,
+                  Math.floor(
                     (Date.now() - new Date(report.createdAt).getTime()) /
                       86400000
-                  );
+                  )
+                )
+              )
+            );
 
-                  const ncObs = report.severity === "non_conformance" ? 1 : 0;
-                  const ofiObs =
-                    report.severity === "open_for_improvement" ? 1 : 0;
+            const expanded = !!expandedIQAs[group.iqaNumber];
 
-                  const assignedAuditors =
-                    report.auditors && report.auditors.length > 0
-                      ? report.auditors.join(", ")
-                      : report.auditor || "—";
+            return (
+              <div
+                key={group.iqaNumber}
+                className={`bg-white rounded-xl border shadow-soft overflow-hidden ${
+                  oldestDays > 30
+                    ? "border-error/30"
+                    : "border-outline-variant/10"
+                }`}
+              >
+                {/* IQA Summary Row */}
+                <button
+                  type="button"
+                  onClick={() => toggleIQA(group.iqaNumber)}
+                  className="w-full p-4 sm:p-5 text-left hover:bg-surface-container-lowest transition-colors"
+                >
+                  <div className="flex flex-col xl:flex-row xl:items-center gap-4">
+                    <div className="flex items-start gap-3 min-w-[230px]">
+                      <span className="material-symbols-outlined text-primary mt-0.5">
+                        {expanded
+                          ? "keyboard_arrow_down"
+                          : "keyboard_arrow_right"}
+                      </span>
 
-                  return (
-                    <tr
-                      key={report._id || idx}
-                      className={`
-                        transition-all
-                        duration-200
-                        cursor-pointer
-                        hover:bg-surface-container-low
-                        hover:shadow-md
-                        ${
-                          days > 30
-                            ? "bg-error/5"
-                            : idx % 2 === 1
-                            ? "bg-surface-container-lowest/50"
-                            : ""
-                        }
-                      `}
-                      onClick={() => handleViewReport(report)}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {days > 30 && (
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-data-mono font-bold text-primary text-sm">
+                            {group.iqaNumber}
+                          </span>
+
+                          {oldestDays > 30 && (
                             <span
-                              className="material-symbols-outlined text-error text-[16px]"
-                              title="Open for more than 30 days"
+                              className="material-symbols-outlined text-error text-[17px]"
+                              title="Contains report open for more than 30 days"
                             >
                               flag
                             </span>
                           )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleViewReport(report);
-                            }}
-                            className="font-data-mono text-primary font-bold text-[12px] hover:underline text-left"
-                          >
-                            {report.iqrNumber}
-                          </button>
                         </div>
-                      </td>
-                      <td className="px-4 py-3 font-data-mono text-[11px] text-on-surface-variant">
-                        {report.iqaNumber || "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-primary/10 text-primary font-bold text-[10px] tracking-wide whitespace-nowrap">
-                          {report.prakalpa}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-body-md text-on-surface-variant text-[12px] whitespace-nowrap">
-                        {report.location || "—"}
-                      </td>
-                      <td className="px-4 py-3 font-body-md text-on-surface-variant text-[12px] whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-[17px] text-secondary">
-                            badge
-                          </span>
-                          <span>{assignedAuditors}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-data-mono text-[11px] whitespace-nowrap">
-                        {report.visitDate
-                          ? new Date(report.visitDate).toLocaleDateString(
-                              "en-IN",
-                              { day: "2-digit", month: "short", year: "numeric" }
-                            )
-                          : "—"}
-                      </td>
-                      <td className="px-4 py-3 max-w-[240px]">
-                        <p className="font-body-md text-[12px] text-on-surface truncate">
-                          {report.findings}
+
+                        <p className="font-body-sm text-on-surface-variant mt-1">
+                          {group.reports.length} open IQR
+                          {group.reports.length !== 1 ? "s" : ""}
                         </p>
-                      </td>
-                      <td className="px-4 py-3 text-center font-data-mono font-bold text-[13px]">
-                        {ncObs > 0 ? (
-                          <span className="px-2 py-1 rounded-full bg-error/10 text-error font-bold text-[10px]">
-                            NC
+                      </div>
+                    </div>
+
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-on-surface-variant/60 font-label-md">
+                          Prakalpa
+                        </p>
+                        <p className="font-label-md font-semibold text-on-surface mt-1">
+                          {first?.prakalpa || "—"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-on-surface-variant/60 font-label-md">
+                          Location
+                        </p>
+                        <p className="font-label-md font-semibold text-on-surface mt-1">
+                          {first?.location || "—"}
+                          {first?.sublocation
+                            ? ` / ${first.sublocation}`
+                            : ""}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-on-surface-variant/60 font-label-md">
+                          Coordinator
+                        </p>
+                        <p className="font-label-md font-semibold text-on-surface mt-1">
+                          {first?.auditCoordinator || "—"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-on-surface-variant/60 font-label-md">
+                          Open Findings
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <span className="px-2 py-0.5 rounded-full bg-error/10 text-error text-[10px] font-bold">
+                            {ncInGroup} NC
                           </span>
-                        ) : (
-                          <span className="text-on-surface-variant/30">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-center font-data-mono font-bold text-[13px]">
-                        {ofiObs > 0 ? (
-                          <span className="px-2 py-1 rounded-full bg-primary/10 text-primary font-bold text-[10px]">
-                            OFI
+
+                          <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+                            {ofiInGroup} OFI
                           </span>
-                        ) : (
-                          <span className="text-on-surface-variant/30">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                            (report.status ?? "open") === "open"
-                              ? "bg-primary/10 text-primary"
-                              : "bg-secondary/10 text-secondary"
-                          }`}
-                        >
-                          {report.status ?? "open"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`font-data-mono text-[12px] ${
-                            days > 30
-                              ? "text-error font-bold"
-                              : days > 14
-                              ? "text-error/60"
-                              : "text-on-surface-variant"
-                          }`}
-                        >
-                          {days}d
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          {/* Primary Action: Close Report */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenCloseDialog(report);
-                            }}
-                            className="p-2 rounded-lg transition-all hover:scale-110 hover:bg-error/10 text-error"
-                            title="Close Report"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              task_alt
-                            </span>
-                          </button>
-
-                          {/* View */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleViewReport(report);
-                            }}
-                            className="p-2 rounded-lg transition-all hover:scale-110 hover:bg-primary/10 text-primary"
-                            title="View Report Details"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              open_in_new
-                            </span>
-                          </button>
-
-                          {/* Mail */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMailTarget(report);
-                            }}
-                            className="p-2 rounded-lg transition-all hover:scale-110 hover:bg-secondary/10 text-secondary relative"
-                            title={report.mailSent ? "Resend Report Email" : "Send Report Email"}
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              {report.mailSent ? "mark_email_read" : "mail"}
-                            </span>
-                          </button>
-
-                          {/* Download */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownload(report);
-                            }}
-                            className="p-2 rounded-lg transition-all hover:scale-110 hover:bg-primary/10 text-primary"
-                            title="Download PDF"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              download
-                            </span>
-                          </button>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="p-4 border-t border-outline-variant/10 flex justify-between items-center font-label-md text-on-surface-variant flex-wrap gap-2">
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 xl:justify-end">
+                      <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase whitespace-nowrap">
+                        Open
+                      </span>
+
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleSendIQAEmail(group.iqaNumber);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            handleSendIQAEmail(group.iqaNumber);
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-white text-[11px] font-bold hover:brightness-110 transition-all cursor-pointer whitespace-nowrap"
+                        title={
+                          scheduledAudits.find(
+                            (audit) => audit.iqaNumber === group.iqaNumber
+                          )?.mailSent
+                            ? "Resend IQA Email"
+                            : "Send IQA Email"
+                        }
+                      >
+                        <span className="material-symbols-outlined text-[16px]">
+                          {scheduledAudits.find(
+                            (audit) => audit.iqaNumber === group.iqaNumber
+                          )?.mailSent
+                            ? "mark_email_read"
+                            : "mail"}
+                        </span>
+
+                        {scheduledAudits.find(
+                          (audit) =>
+                            audit.iqaNumber === group.iqaNumber
+                        )?.mailSent
+                          ? "Resend Email"
+                          : "Send Email"}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Child IQRs */}
+                {expanded && (
+                  <div className="border-t border-outline-variant/10 bg-surface-container-lowest">
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[1050px] text-left">
+                        <thead className="bg-surface-container-low">
+                          <tr>
+                            {[
+                              "IQR Number",
+                              "Auditor",
+                              "Audit Date",
+                              "Finding",
+                              "Type",
+                              "Days Open",
+                              "Actions",
+                            ].map((heading) => (
+                              <th
+                                key={heading}
+                                className="px-4 py-3 font-label-md text-on-surface-variant uppercase tracking-wider whitespace-nowrap text-[10px]"
+                              >
+                                {heading}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-outline-variant/10">
+                          {group.reports.map((report) => {
+                            const days = Math.max(
+                              0,
+                              Math.floor(
+                                (Date.now() -
+                                  new Date(report.createdAt).getTime()) /
+                                  86400000
+                              )
+                            );
+
+                            const assignedAuditors =
+                              report.auditors &&
+                              report.auditors.length > 0
+                                ? report.auditors.join(", ")
+                                : report.auditor || "—";
+
+                            return (
+                              <tr
+                                key={report._id}
+                                onClick={() => handleViewReport(report)}
+                                className={`cursor-pointer transition-colors hover:bg-white ${
+                                  days > 30 ? "bg-error/5" : "bg-white/70"
+                                }`}
+                              >
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    {days > 30 && (
+                                      <span
+                                        className="material-symbols-outlined text-error text-[15px]"
+                                        title="Open for more than 30 days"
+                                      >
+                                        flag
+                                      </span>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleViewReport(report);
+                                      }}
+                                      className="font-data-mono text-primary font-bold text-[12px] hover:underline"
+                                    >
+                                      {report.iqrNumber}
+                                    </button>
+                                  </div>
+                                </td>
+
+                                <td className="px-4 py-3 font-body-md text-on-surface-variant text-[12px]">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined text-[16px] text-secondary">
+                                      badge
+                                    </span>
+                                    {assignedAuditors}
+                                  </div>
+                                </td>
+
+                                <td className="px-4 py-3 font-data-mono text-[11px] whitespace-nowrap">
+                                  {report.visitDate
+                                    ? new Date(
+                                        report.visitDate
+                                      ).toLocaleDateString("en-IN", {
+                                        day: "2-digit",
+                                        month: "short",
+                                        year: "numeric",
+                                      })
+                                    : "—"}
+                                </td>
+
+                                <td className="px-4 py-3 max-w-[300px]">
+                                  <p
+                                    className="font-body-md text-[12px] text-on-surface truncate"
+                                    title={report.findings}
+                                  >
+                                    {report.findings || "—"}
+                                  </p>
+                                </td>
+
+                                <td className="px-4 py-3">
+                                  {report.severity ===
+                                  "non_conformance" ? (
+                                    <span className="px-2.5 py-1 rounded-full bg-error/10 text-error font-bold text-[10px]">
+                                      NC
+                                    </span>
+                                  ) : (
+                                    <span className="px-2.5 py-1 rounded-full bg-primary/10 text-primary font-bold text-[10px]">
+                                      OFI
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="px-4 py-3">
+                                  <span
+                                    className={`font-data-mono text-[12px] ${
+                                      days > 30
+                                        ? "text-error font-bold"
+                                        : days > 14
+                                        ? "text-error/60"
+                                        : "text-on-surface-variant"
+                                    }`}
+                                  >
+                                    {days}d
+                                  </span>
+                                </td>
+
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-1">
+                                    {/* Close */}
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleOpenActionDialog(report);
+                                      }}
+                                      className="p-2 rounded-lg transition-all hover:scale-110 hover:bg-error/10 text-error"
+                                      title="Submit Corrective Action"
+                                    >
+                                      <span className="material-symbols-outlined text-[18px]">
+                                        task_alt
+                                      </span>
+                                    </button>
+
+                                    {/* View */}
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleViewReport(report);
+                                      }}
+                                      className="p-2 rounded-lg transition-all hover:scale-110 hover:bg-primary/10 text-primary"
+                                      title="View Report Details"
+                                    >
+                                      <span className="material-symbols-outlined text-[18px]">
+                                        open_in_new
+                                      </span>
+                                    </button>
+
+                                    {/* PDF */}
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleDownload(report);
+                                      }}
+                                      className="p-2 rounded-lg transition-all hover:scale-110 hover:bg-primary/10 text-primary"
+                                      title="Download PDF"
+                                    >
+                                      <span className="material-symbols-outlined text-[18px]">
+                                        download
+                                      </span>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <div className="bg-white rounded-xl border border-outline-variant/10 shadow-soft p-4 flex flex-wrap justify-between items-center gap-3 font-label-md text-on-surface-variant">
             <span>
-              Showing <strong>{filtered.length}</strong> of{" "}
-              <strong>{openReports.length}</strong> open reports
+              Showing <strong>{groupedOpenReports.length}</strong> IQA
+              {groupedOpenReports.length !== 1 ? "s" : ""} containing{" "}
+              <strong>{filtered.length}</strong> open IQR
+              {filtered.length !== 1 ? "s" : ""}
             </span>
+
             <div className="flex gap-3 text-[12px]">
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-error/60" />
                 NC: {ncCount}
               </span>
+
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-primary/40" />
                 OFI: {ofiCount}
@@ -886,15 +1243,6 @@ export default function OpenReportsPage() {
             <div className="p-4 border-t border-outline-variant/10 shrink-0 flex justify-between items-center">
               <div className="flex gap-2">
                 <button
-                  onClick={() => setMailTarget(detailTarget)}
-                  className="px-4 py-2 rounded-lg border border-outline-variant hover:bg-surface-container-low transition-colors flex items-center gap-1.5"
-                  title="Send Email"
-                >
-                  <span className="material-symbols-outlined text-[18px]">
-                    mail
-                  </span>
-                </button>
-                <button
                   onClick={() => handleDownload(detailTarget)}
                   className="px-4 py-2 rounded-lg border border-outline-variant hover:bg-surface-container-low transition-colors flex items-center gap-1.5"
                   title="Download PDF"
@@ -908,10 +1256,10 @@ export default function OpenReportsPage() {
               <div className="flex gap-2">
                 {detailTarget.status !== "closed" && (
                   <button
-                    onClick={() => handleOpenCloseDialog(detailTarget)}
+                    onClick={() => handleOpenActionDialog(detailTarget)}
                     className="px-5 py-2 bg-error text-white rounded-lg font-bold hover:brightness-110 transition-all font-label-md"
                   >
-                    Close Report
+                    Submit Corrective Action
                   </button>
                 )}
                 <button
@@ -926,20 +1274,20 @@ export default function OpenReportsPage() {
         </div>
       )}
 
-      {/* Interactive 2-Step Close Report Form Dialog */}
-      {closeTarget && (
+      {/* Corrective Action Submission Dialog */}
+      {actionTarget && (
         <div className="fixed inset-0 flex items-center justify-center z-[60] p-4">
           <div
             className="absolute inset-0 bg-black/50"
-            onClick={() => setCloseTarget(null)}
+            onClick={() => setActionTarget(null)}
           />
           <div className="relative bg-white rounded-2xl shadow-floating w-full max-w-lg z-10 p-6 space-y-4">
             <div className="border-b border-outline-variant/10 pb-3">
               <h3 className="font-headline-sm text-on-surface">
-                Close Report — {closeTarget.iqrNumber}
+                Submit Corrective Action — {actionTarget.iqrNumber}
               </h3>
               <p className="text-xs text-on-surface-variant mt-1 font-body-md">
-                Please enter the corrective action details to complete report closure.
+                Please enter the corrective action taken for this audit finding.
               </p>
             </div>
 
@@ -949,7 +1297,7 @@ export default function OpenReportsPage() {
                 Audit Finding
               </p>
               <p className="text-sm whitespace-pre-wrap font-body-md text-on-surface-variant leading-relaxed">
-                {closeTarget.findings}
+                {actionTarget.findings}
               </p>
             </div>
 
@@ -989,10 +1337,10 @@ export default function OpenReportsPage() {
                 </span>
                 <div>
                   <p className="font-semibold text-error text-xs font-label-md">
-                    Confirm Report Closure
+                    Submit Corrective Action
                   </p>
                   <p className="text-[11px] text-on-surface-variant mt-0.5 leading-normal font-body-md">
-                    Once confirmed, this report will be marked as closed, removed from Open Reports, and the corrective action will become part of the permanent audit record.
+                    Once submitted, the corrective action will be sent for verification. The IQR will remain open until it is verified and formally closed.
                   </p>
                 </div>
               </div>
@@ -1001,7 +1349,7 @@ export default function OpenReportsPage() {
             <div className="flex justify-end gap-3 pt-3 border-t border-outline-variant/10">
               <button
                 type="button"
-                onClick={() => setCloseTarget(null)}
+                onClick={() => setActionTarget(null)}
                 className="px-4 py-2 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low transition-colors text-sm"
               >
                 Cancel
@@ -1009,13 +1357,13 @@ export default function OpenReportsPage() {
               <button
                 type="button"
                 disabled={!actionTaken.trim() || closing}
-                onClick={handleConfirmCloseReport}
+                onClick={handleSubmitCorrectiveAction}
                 className="px-5 py-2 rounded-lg bg-error text-white font-bold hover:brightness-110 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-sm flex items-center gap-2 font-label-md"
               >
                 <span className="material-symbols-outlined text-[18px]">
                   task_alt
                 </span>
-                {closing ? "Closing..." : "Confirm Closure"}
+                {closing ? "Submitting..." : "Submit Action"}
               </button>
             </div>
           </div>
@@ -1043,7 +1391,7 @@ export default function OpenReportsPage() {
             </h3>
 
             <p className="text-on-surface-variant text-sm font-body-md mb-6 leading-relaxed">
-              {lastClosedNumber ? `${lastClosedNumber} has been closed. ` : ""}
+              {lastSubmittedNumber ? `${lastSubmittedNumber} has been closed. ` : ""}
               The report has been marked as closed and moved to All Reports.
             </p>
 
@@ -1056,14 +1404,47 @@ export default function OpenReportsPage() {
           </div>
         </div>
       )}
-
-      {mailTarget && (
-        <SendReportEmailModal
-          report={mailTarget}
-          onClose={() => setMailTarget(null)}
-          onSent={loadReports}
+      {iqaMailTarget && iqaMailDraft && (
+        <SendScheduledAuditEmailModal
+          audit={{
+            _id:
+              iqaMailTarget._id ||
+              iqaMailTarget.id,
+            id: iqaMailTarget.id,
+            iqaNumber:
+              iqaMailTarget.iqaNumber,
+            prakalpa:
+              iqaMailTarget.prakalpa,
+            location:
+              iqaMailTarget.location,
+            sublocation:
+              iqaMailTarget.sublocation,
+            startDate:
+              iqaMailTarget.startDate,
+            endDate:
+              iqaMailTarget.endDate,
+            auditCoordinator:
+              iqaMailTarget.auditCoordinator,
+          }}
+          mode="iqa-report"
+          initialTo={iqaMailDraft.to}
+          initialCc={iqaMailDraft.cc}
+          initialSubject={iqaMailDraft.subject}
+          initialMessage={iqaMailDraft.message}
+          attachments={iqaMailDraft.attachments}
+          onClose={() => {
+            setIqaMailTarget(null);
+            setIqaMailDraft(null);
+          }}
+          onSent={async () => {
+            await Promise.all([
+              loadScheduledAudits(),
+              loadReports(),
+            ]);
+          }}
         />
       )}
+
     </div>
   );
 }

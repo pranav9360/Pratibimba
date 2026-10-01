@@ -10,7 +10,8 @@ export const getScheduledAudits =
   asyncHandler(async (req, res) => {
     const audits =
       await scheduledAuditService.getScheduledAudits(
-        req.query
+        req.query,
+        req.user
       );
 
     res.json(
@@ -26,7 +27,8 @@ export const getScheduledAuditById =
   asyncHandler(async (req, res) => {
     const audit =
       await scheduledAuditService.getScheduledAuditById(
-        req.params.id
+        req.params.id,
+        req.user
       );
 
     res.json(
@@ -53,7 +55,8 @@ export const updateScheduledAudit =
     const audit =
       await scheduledAuditService.updateScheduledAudit(
         req.params.id,
-        req.body
+        req.body,
+        req.user
       );
 
     res.json(
@@ -69,7 +72,8 @@ export const completeScheduledAudit =
   asyncHandler(async (req, res) => {
     const audit =
       await scheduledAuditService.completeScheduledAudit(
-        req.params.id
+        req.params.id,
+        req.user
       );
 
     res.json(
@@ -84,7 +88,8 @@ export const completeScheduledAudit =
 export const deleteScheduledAudit =
   asyncHandler(async (req, res) => {
     await scheduledAuditService.deleteScheduledAudit(
-      req.params.id
+      req.params.id,
+      req.user
     );
 
     res.json(
@@ -101,7 +106,8 @@ export const sendScheduledAuditEmail =
     const audit =
       await scheduledAuditService.sendScheduledAuditEmail(
         req.params.id,
-        req.body
+        req.body,
+        req.user
       );
 
     res.json(
@@ -117,7 +123,8 @@ export const markMailSent =
   asyncHandler(async (req, res) => {
     const audit =
       await scheduledAuditService.markMailSent(
-        req.params.id
+        req.params.id,
+        req.user
       );
 
     res.json(

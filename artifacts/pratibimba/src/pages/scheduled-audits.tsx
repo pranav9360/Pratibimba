@@ -120,7 +120,7 @@ export default function ScheduledAuditsPage() {
   };
 
   const canManage =
-    currentUser.role === "lead_auditor" ||
+    currentUser.role === "audit_coordinator" ||
     currentUser.role === "admin";
 
   const isAuditor =
@@ -128,10 +128,25 @@ export default function ScheduledAuditsPage() {
 
   const getStatus = (
     s: ScheduledAudit
-  ) => {
-    return s.status === "completed"
-      ? "completed"
-      : "upcoming";
+  ): "completed" | "ongoing" | "upcoming" => {
+    if (s.status === "completed") {
+      return "completed";
+    }
+
+    const now = new Date();
+    const startDate = new Date(s.startDate);
+    const endDate = new Date(s.endDate);
+
+    if (
+      !Number.isNaN(startDate.getTime()) &&
+      !Number.isNaN(endDate.getTime()) &&
+      now >= startDate &&
+      now <= endDate
+    ) {
+      return "ongoing";
+    }
+
+    return "upcoming";
   };
 
   const canMarkCompleted = (

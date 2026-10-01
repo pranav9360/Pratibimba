@@ -53,8 +53,78 @@ const getNextIqaNumber = async () => {
   return `IQA-${currentYear}-${String(nextNumber).padStart(4, "0")}`;
 };
 
-export const getAuditPlans = async () => {
-  return await AuditPlan.find()
+/*
+ * ============================================================
+ * Audit Plan jurisdiction
+ * ============================================================
+ *
+ * Planning and operational execution are separate concerns.
+ *
+ * Super Admin / Admin:
+ *   application-wide Audit Plan access.
+ *
+ * Audit Coordinator:
+ *   may read only Audit Plans explicitly assigned to them.
+ *
+ * Lead Auditor / Auditor:
+ *   operational visibility comes from ScheduledAudit.
+ *
+ * Prakalpa Manager:
+ *   visibility belongs to the Report workflow.
+ */
+
+const normalizeUserValue = (value) =>
+  String(value || "").trim();
+
+
+const getAuditPlanReadJurisdiction = (user) => {
+  if (!user) {
+    throw new AppError(
+      "Authentication required",
+      401
+    );
+  }
+
+  const role =
+    normalizeUserValue(user.role);
+
+  const name =
+    normalizeUserValue(user.name);
+
+  if (
+    role === "super_admin" ||
+    role === "admin"
+  ) {
+    return {};
+  }
+
+  if (role === "audit_coordinator") {
+    if (!name) {
+      throw new AppError(
+        "Authenticated user has no valid identity.",
+        403
+      );
+    }
+
+    return {
+      auditCoordinator: name,
+    };
+  }
+
+  /*
+   * No Audit Plan visibility for operational/report roles.
+   */
+  return {
+    _id: null,
+  };
+};
+
+
+export const getAuditPlans = async (user) => {
+  const jurisdiction =
+    getAuditPlanReadJurisdiction(user);
+
+  return await AuditPlan.find(jurisdiction)
     .collation({
       locale: "en",
       numericOrdering: true,
@@ -64,11 +134,129 @@ export const getAuditPlans = async () => {
     });
 };
 
-export const getAuditPlanById = async (id) => {
-  const plan = await AuditPlan.findById(id);
+
+export const getAuditPlanById = async (
+  id,
+  user
+) => {
+  const jurisdiction =
+    getAuditPlanReadJurisdiction(user);
+
+  const plan = await AuditPlan.findOne({
+    _id: id,
+    ...jurisdiction,
+  });
 
   if (!plan) {
-    throw new AppError("Audit Plan not found", 404);
+    throw new AppError(
+      "Audit Plan not found",
+      404
+    );
+  }
+
+  return plan;
+};
+
+
+/*
+ * ============================================================
+ * Planning management
+ * ============================================================
+ *
+ * Only Admin/Super Admin may create/edit/delete planning data.
+ *
+ * Route authorization also enforces this, but service-level
+ * enforcement prevents future route changes from accidentally
+ * bypassing the workflow.
+ */
+const assertPlanningAdministrator = (user) => {
+  if (!user) {
+    throw new AppError(
+      "Authentication required",
+      401
+    );
+  }
+
+  const role =
+    normalizeUserValue(user.role);
+
+  if (
+    role !== "super_admin" &&
+    role !== "admin"
+  ) {
+    throw new AppError(
+      "You are not authorized to manage Audit Plans.",
+      403
+    );
+  }
+};
+
+
+/*
+ * ============================================================
+ * Scheduling ownership
+ * ============================================================
+ *
+ * Admin/Super Admin retain oversight.
+ *
+ * Audit Coordinator may schedule/unschedule only plans
+ * explicitly assigned to their authenticated identity.
+ */
+const getSchedulableAuditPlan = async (
+  id,
+  user
+) => {
+  if (!user) {
+    throw new AppError(
+      "Authentication required",
+      401
+    );
+  }
+
+  const role =
+    normalizeUserValue(user.role);
+
+  const name =
+    normalizeUserValue(user.name);
+
+  const filter = {
+    _id: id,
+  };
+
+  if (
+    role === "super_admin" ||
+    role === "admin"
+  ) {
+    // Administrative oversight.
+  } else if (
+    role === "audit_coordinator"
+  ) {
+    if (!name) {
+      throw new AppError(
+        "Authenticated user has no valid identity.",
+        403
+      );
+    }
+
+    filter.auditCoordinator = name;
+  } else {
+    throw new AppError(
+      "You are not authorized to schedule this Audit Plan.",
+      403
+    );
+  }
+
+  const plan =
+    await AuditPlan.findOne(filter);
+
+  if (!plan) {
+    /*
+     * Do not reveal whether another user's plan exists.
+     */
+    throw new AppError(
+      "Audit Plan not found",
+      404
+    );
   }
 
   return plan;
@@ -234,7 +422,12 @@ const resolvePlanningMasterData = async (data) => {
 };
 
 
-export const createAuditPlan = async (data) => {
+export const createAuditPlan = async (
+  data,
+  user
+) => {
+  assertPlanningAdministrator(user);
+
   const masterData =
     await resolvePlanningMasterData(data);
 
@@ -269,7 +462,13 @@ export const createAuditPlan = async (data) => {
   return await AuditPlan.findById(auditPlan._id);
 };
 
-export const updateAuditPlan = async (id, data) => {
+export const updateAuditPlan = async (
+  id,
+  data,
+  user
+) => {
+  assertPlanningAdministrator(user);
+
   const plan = await AuditPlan.findById(id);
 
   if (!plan) {
@@ -369,7 +568,12 @@ export const updateAuditPlan = async (id, data) => {
   return await AuditPlan.findById(plan._id);
 };
 
-export const deleteAuditPlan = async (id) => {
+export const deleteAuditPlan = async (
+  id,
+  user
+) => {
+  assertPlanningAdministrator(user);
+
   const plan = await AuditPlan.findById(id);
 
   if (!plan) {
@@ -399,12 +603,16 @@ export const deleteAuditPlan = async (id) => {
   return;
 };
 
-export const scheduleAuditPlan = async (id, scheduleData) => {
-  const plan = await AuditPlan.findById(id);
-
-  if (!plan) {
-    throw new AppError("Audit Plan not found", 404);
-  }
+export const scheduleAuditPlan = async (
+  id,
+  scheduleData,
+  user
+) => {
+  const plan =
+    await getSchedulableAuditPlan(
+      id,
+      user
+    );
 
   if (plan.status === "completed") {
     throw new AppError(
@@ -421,15 +629,14 @@ export const scheduleAuditPlan = async (id, scheduleData) => {
   }
 
   /*
-   * Coordinator was selected during planning.
-   * Scheduling may receive it, but if it is omitted
-   * we retain the coordinator already on AuditPlan.
+   * Coordinator ownership is planning data.
+   *
+   * The coordinator was assigned by Admin/Super Admin when the
+   * Audit Plan was created/edited.
+   *
+   * Scheduling MUST NOT transfer plan ownership based on
+   * client-supplied auditCoordinator data.
    */
-  if (scheduleData.auditCoordinator) {
-    plan.auditCoordinator =
-      scheduleData.auditCoordinator;
-  }
-
   /*
    * Auditors are assigned during scheduling.
    */
@@ -444,6 +651,32 @@ export const scheduleAuditPlan = async (id, scheduleData) => {
   }
 
   plan.auditors = scheduleData.auditors;
+
+  /*
+   * Lead Auditor is an explicit workflow assignment.
+   *
+   * leadAuditor is the canonical workflow field.
+   *
+   * Never automatically promote auditors[0].
+   */
+  const requestedLeadAuditor = String(
+    scheduleData.leadAuditor ||
+    ""
+  ).trim();
+
+  if (!requestedLeadAuditor) {
+    throw new AppError(
+      "Please select a Lead Auditor before scheduling.",
+      400
+    );
+  }
+
+  if (!plan.auditors.includes(requestedLeadAuditor)) {
+    throw new AppError(
+      "Lead Auditor must be one of the assigned auditors.",
+      400
+    );
+  }
 
   /*
    * The scheduled start date becomes the current
@@ -506,11 +739,7 @@ export const scheduleAuditPlan = async (id, scheduleData) => {
     auditAreas: plan.auditAreas,
     purpose: plan.purpose || "",
     auditors: plan.auditors,
-    finalAuditor:
-      scheduleData.finalAuditor ||
-      (plan.auditors.length > 0
-        ? plan.auditors[0]
-        : ""),
+    leadAuditor: requestedLeadAuditor,
     startDate,
     endDate,
     status: "upcoming",
@@ -548,12 +777,15 @@ export const scheduleAuditPlan = async (id, scheduleData) => {
  * Auditors are cleared because they belong to the
  * scheduling phase.
  */
-export const unscheduleAuditPlan = async (id) => {
-  const plan = await AuditPlan.findById(id);
-
-  if (!plan) {
-    throw new AppError("Audit plan not found", 404);
-  }
+export const unscheduleAuditPlan = async (
+  id,
+  user
+) => {
+  const plan =
+    await getSchedulableAuditPlan(
+      id,
+      user
+    );
 
   if (plan.status === "completed") {
     throw new AppError(

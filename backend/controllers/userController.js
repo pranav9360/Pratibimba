@@ -44,7 +44,7 @@ export const createUser = asyncHandler(async (req, res) => {
     throw new AppError(errors.array()[0].msg, 400);
   }
 
-  const user = await userService.createUser(req.body);
+  const user = await userService.createUser(req.body, req.user);
 
   res.status(201).json(
     new ApiResponse(
@@ -66,7 +66,8 @@ export const updateUser = asyncHandler(async (req, res) => {
 
   const user = await userService.updateUser(
     req.params.id,
-    req.body
+    req.body,
+    req.user
   );
 
   res.json(
@@ -81,7 +82,7 @@ export const updateUser = asyncHandler(async (req, res) => {
 
 export const deleteUser = asyncHandler(async (req, res) => {
 
-  await userService.deleteUser(req.params.id);
+  await userService.deleteUser(req.params.id, req.user);
 
   res.json(
     new ApiResponse(

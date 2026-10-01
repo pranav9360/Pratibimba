@@ -34,6 +34,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       enum: [
+        "super_admin",
         "admin",
         "lead_auditor",
         "audit_coordinator",

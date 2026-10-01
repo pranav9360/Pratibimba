@@ -6,8 +6,8 @@ import {
 } from "../services/scheduledAuditService";
 
 import {
-  createReport,
-} from "../services/reportService";
+  submitAuditFinding,
+} from "../services/auditFindingService";
 
 interface ObservationItem {
   findings: string;
@@ -130,30 +130,46 @@ export default function CreateReportPage() {
     try {
       const auditId = audit._id || audit.id;
 
-      const report = await createReport({
-        scheduledAuditId: auditId,
-        scheduledAudit: auditId,
-        visitDate: new Date(),
-        visitTime,
-        hasChecklist,
-        observations,
-      });
+      /*
+       * Each observation becomes an independent AuditFinding.
+       *
+       * The backend remains authoritative for:
+       *   - scheduled audit jurisdiction
+       *   - original auditor identity
+       *   - Lead Auditor assignment
+       *   - workflow status
+       *
+       * No official Report/IQR is created here.
+       */
+      const submittedFindings = [];
 
-      // Handled array / single response from backend
-      const count = Array.isArray(report)
-        ? report.length
-        : Array.isArray(report?.data)
-        ? report.data.length
-        : observations.length;
+      for (const observation of observations) {
+        const finding = await submitAuditFinding({
+          scheduledAuditId: auditId,
+          scheduledAudit: auditId,
+          visitDate: new Date(),
+          visitTime,
+          hasChecklist,
+          severity: observation.severity,
+          findings: observation.findings,
+          proofFiles: observation.proofFiles,
+        });
 
-      setSuccess(`${count} reports generated`);
+        submittedFindings.push(finding);
+      }
+
+      setSuccess(
+        `${submittedFindings.length} finding${
+          submittedFindings.length === 1 ? "" : "s"
+        } submitted to Lead Auditor`
+      );
 
       setTimeout(() => {
-        navigate("/all-reports");
+        navigate("/scheduled-audits");
       }, 1500);
     } catch (err) {
-      console.error("Error creating report:", err);
-      alert("Failed to submit report. Please try again.");
+      console.error("Error submitting audit finding:", err);
+      alert("Failed to submit finding to Lead Auditor. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -196,27 +212,22 @@ export default function CreateReportPage() {
           </div>
           <div>
             <h2 className="font-headline-md text-on-surface mb-2">
-              Report Created!
+              Finding Submitted!
             </h2>
             <p className="font-body-md text-on-surface-variant">
-              Your audit report(s) have been submitted successfully.
+              Your audit finding(s) have been submitted to the Lead Auditor for review.
             </p>
           </div>
           <div className="bg-secondary/5 border border-secondary/20 rounded-xl p-5">
             <p className="font-label-md text-on-surface-variant/70 mb-1">
-              Reports Generated
+              Submission Status
             </p>
             <p className="font-data-mono text-[20px] font-black text-secondary">
               {success}
             </p>
           </div>
           <div className="flex gap-3">
-            <button
-              onClick={() => navigate("/all-reports")}
-              className="flex-1 py-3 bg-surface-container border border-outline-variant rounded-lg font-label-md font-medium hover:bg-surface-container-high transition-colors"
-            >
-              View All Reports
-            </button>
+
             <button
               onClick={() => navigate("/scheduled-audits")}
               className="flex-1 py-3 bg-primary text-on-primary rounded-lg font-label-md font-bold"
@@ -232,14 +243,14 @@ export default function CreateReportPage() {
   const assignedAuditors =
     audit.auditors && audit.auditors.length > 0
       ? audit.auditors.join(", ")
-      : audit.finalAuditor || audit.auditCoordinator;
+      : audit.leadAuditor || audit.auditCoordinator;
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[800px] mx-auto space-y-6 min-w-0">
       <div>
-        <h2 className="font-headline-md text-on-surface">Create Audit Report</h2>
+        <h2 className="font-headline-md text-on-surface">Submit Audit Findings</h2>
         <p className="font-body-md text-on-surface-variant mt-0.5">
-          Documenting findings for {audit.prakalpa}
+          Document findings for Lead Auditor review — {audit.prakalpa}
         </p>
       </div>
 
@@ -276,7 +287,7 @@ export default function CreateReportPage() {
         className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden"
       >
         <div className="p-4 sm:p-6 border-b border-outline-variant/10 bg-surface-container-lowest">
-          <h3 className="font-headline-sm">Report Details</h3>
+          <h3 className="font-headline-sm">Finding Details</h3>
           <p className="font-body-md text-on-surface-variant mt-0.5">
             All fields marked * are required.
           </p>
@@ -287,7 +298,7 @@ export default function CreateReportPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">
-                Report Date *
+                Finding Date *
               </label>
               <input
                 type="text"
@@ -585,14 +596,14 @@ export default function CreateReportPage() {
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                   />
                 </svg>
-                Submitting Reports...
+                Submitting Findings...
               </>
             ) : (
               <>
                 <span className="material-symbols-outlined text-[18px]">
                   send
                 </span>
-                Submit {observations.length} Report{observations.length > 1 ? "s" : ""}
+                Submit {observations.length} Finding{observations.length > 1 ? "s" : ""} to Lead
               </>
             )}
           </button>

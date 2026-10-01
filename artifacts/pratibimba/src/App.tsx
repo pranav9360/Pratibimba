@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { AppProvider } from "./context/app-context";
 import { SideNav } from "./components/side-nav";
 import { TopNav } from "./components/top-nav";
+import { RoleRouteGuard } from "./components/role-route-guard";
 import { Link } from "wouter";
 import pratibimbaLogo from "./assets/pratibimba-logo.jpeg";
 
@@ -22,7 +23,10 @@ import IQASummaryPage from "./pages/iqa-summary";
 import RoleAccessPage from "./pages/role-access";
 import UserManagementPage from "./pages/user-management";
 import PrakalpaManagementPage from "./pages/prakalpa-management";
+import MyFindingsPage from "./pages/my-findings";
 
+import LeadFindingsPage from "./pages/lead-findings";
+import CoordinatorFindingsPage from "./pages/coordinator-findings";
 function AuthLayout({
   children,
 }: {
@@ -166,77 +170,130 @@ function Router() {
 
       <Route path="/audit-plan">
         <DashboardLayout>
-          <AuditPlanPage />
+            <RoleRouteGuard allowedRoles={["admin", "audit_coordinator"]}>
+            <AuditPlanPage />
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 
       <Route path="/audit-calendar">
         <DashboardLayout>
-          <AuditCalendarPage />
+            <RoleRouteGuard allowedRoles={["lead_auditor", "audit_coordinator", "auditor", "admin"]}>
+            <AuditCalendarPage />
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 
+          <Route path="/my-findings">
+        <DashboardLayout>
+          <RoleRouteGuard allowedRoles={["auditor"]}>
+            <MyFindingsPage />
+          </RoleRouteGuard>
+        </DashboardLayout>
+      </Route>
       <Route path="/scheduled-audits">
         <DashboardLayout>
-          <ScheduledAuditsPage />
+            <RoleRouteGuard allowedRoles={["lead_auditor", "audit_coordinator", "auditor", "admin"]}>
+            <ScheduledAuditsPage />
+          </RoleRouteGuard>
+        </DashboardLayout>
+      </Route>
+        <Route path="/lead-findings">
+        <DashboardLayout>
+            <RoleRouteGuard allowedRoles={["lead_auditor"]}>
+            <LeadFindingsPage />
+          </RoleRouteGuard>
+        </DashboardLayout>
+      </Route>
+
+      <Route path="/coordinator-findings">
+        <DashboardLayout>
+          <RoleRouteGuard allowedRoles={["audit_coordinator"]}>
+            <CoordinatorFindingsPage />
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 
       <Route path="/scheduled-audits/:id/edit">
         <DashboardLayout>
-          <EditScheduledAuditPage />
+            <RoleRouteGuard allowedRoles={["audit_coordinator", "admin"]}>
+            <EditScheduledAuditPage />
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 
       <Route path="/all-reports">
         <DashboardLayout>
-          <AllReportsPage />
+            <RoleRouteGuard allowedRoles={["lead_auditor", "audit_coordinator", "prakalpa_manager", "admin"]}>
+            <AllReportsPage />
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 
       <Route path="/open-reports">
         <DashboardLayout>
-          <OpenReportsPage />
+          <RoleRouteGuard allowedRoles={["lead_auditor", "audit_coordinator", "prakalpa_manager", "auditor", "admin"]}>
+            <OpenReportsPage />
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 
       <Route path="/create-report/:id">
         <DashboardLayout>
-          <CreateReportPage />
+            <RoleRouteGuard allowedRoles={["auditor", "lead_auditor", "audit_coordinator", "admin"]}>
+            <CreateReportPage />
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 
       <Route path="/iqa-summary">
         <DashboardLayout>
-          <IQASummaryPage />
+          <RoleRouteGuard allowedRoles={["lead_auditor", "audit_coordinator", "admin"]}>
+            <IQASummaryPage />
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 
       <Route path="/role-access">
         <DashboardLayout>
-          <RoleAccessPage />
+            <RoleRouteGuard allowedRoles={["lead_auditor", "admin"]}>
+            <RoleAccessPage />
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 
       <Route path="/user-management">
         <DashboardLayout>
-          <UserManagementPage />
+            <RoleRouteGuard allowedRoles={["super_admin", "admin"]}>
+            <UserManagementPage />
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 
       <Route path="/prakalpa-management">
         <DashboardLayout>
-          <PrakalpaManagementPage />
+          <RoleRouteGuard allowedRoles={["super_admin", "admin"]}>
+            <PrakalpaManagementPage />
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 
       <Route path="/checklist">
         <DashboardLayout>
+          <RoleRouteGuard
+            allowedRoles={[
+              "lead_auditor",
+              "audit_coordinator",
+              "auditor",
+              "admin",
+            ]}
+          >
           <div className="p-8">
             <h2 className="font-headline-md">
               Checklist — Coming Soon
             </h2>
           </div>
+          </RoleRouteGuard>
         </DashboardLayout>
       </Route>
 

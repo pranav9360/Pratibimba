@@ -36,7 +36,7 @@ router.put(
   authenticate,
   authorize(
     "admin",
-    "lead_auditor"
+    "audit_coordinator"
   ),
   updateScheduledAuditValidator,
   updateScheduledAudit
@@ -50,7 +50,7 @@ router.patch(
   authenticate,
   authorize(
     "admin",
-    "lead_auditor"
+    "audit_coordinator"
   ),
   completeScheduledAudit
 );
@@ -60,7 +60,7 @@ router.post(
   authenticate,
   authorize(
     "admin",
-    "lead_auditor"
+    "audit_coordinator"
   ),
   sendScheduledAuditEmail
 );
@@ -70,7 +70,7 @@ router.patch(
   authenticate,
   authorize(
     "admin",
-    "lead_auditor"
+    "audit_coordinator"
   ),
   markMailSent
 );
@@ -80,7 +80,7 @@ router.delete(
   authenticate,
   authorize(
     "admin",
-    "lead_auditor"
+    "audit_coordinator"
   ),
   deleteScheduledAudit
 );

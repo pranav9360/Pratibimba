@@ -52,6 +52,15 @@ const scheduledAuditSchema =
         default: [],
       },
 
+      // Canonical Lead Auditor assignment.
+      // Stored separately from auditors[] because the Lead Auditor
+      // has different workflow permissions and responsibilities.
+      leadAuditor: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
       auditAreas: {
         type: [String],
         default: [],

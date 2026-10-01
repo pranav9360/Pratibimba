@@ -41,6 +41,7 @@ export default function EditScheduledAuditPage() {
 
   const {
     auditors,
+    leadAuditorProfiles,
   } = useApp();
 
   const id =
@@ -73,6 +74,11 @@ export default function EditScheduledAuditPage() {
     selectedAuditors,
     setSelectedAuditors,
   ] = useState<string[]>([]);
+
+  const [
+    leadAuditor,
+    setLeadAuditor,
+  ] = useState("");
 
   const [
     loading,
@@ -126,6 +132,10 @@ export default function EditScheduledAuditPage() {
 
         setSelectedAuditors(
           data.auditors || []
+        );
+
+        setLeadAuditor(
+          data.leadAuditor || ""
         );
       } catch (err: any) {
         setError(
@@ -206,6 +216,13 @@ export default function EditScheduledAuditPage() {
         return;
       }
 
+      if (!leadAuditor.trim()) {
+        setError(
+          "Please select a Lead Auditor."
+        );
+        return;
+      }
+
       if (!audit.auditPlan) {
         setError(
           "The linked Audit Plan is missing."
@@ -240,7 +257,13 @@ export default function EditScheduledAuditPage() {
         await updateScheduledAudit(
           id,
           {
+            startDate,
             endDate,
+            auditCoordinator:
+              coordinator,
+            auditors:
+              selectedAuditors,
+            leadAuditor,
           }
         );
 
@@ -583,7 +606,50 @@ export default function EditScheduledAuditPage() {
 
           </div>
 
-          <div>
+          
+            <div>
+              <label
+                htmlFor="lead-auditor"
+                className="font-label-md block mb-2 text-on-surface-variant"
+              >
+                Lead Auditor
+              </label>
+
+              <select
+                id="lead-auditor"
+                value={leadAuditor}
+                onChange={(e) =>
+                  setLeadAuditor(
+                    e.target.value
+                  )
+                }
+                disabled={
+                  saving
+                }
+                className="w-full border border-outline-variant rounded-lg px-3 py-2.5 bg-white text-on-surface disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <option value="">
+                  Select Lead Auditor
+                </option>
+
+                {leadAuditorProfiles.map(
+                  (profile) => (
+                    <option
+                      key={profile.name}
+                      value={profile.name}
+                    >
+                      {profile.name}
+                    </option>
+                  )
+                )}
+              </select>
+
+              <p className="text-xs text-on-surface-variant mt-2">
+                Lead Auditor is assigned independently from the Auditor team.
+              </p>
+            </div>
+
+<div>
 
             <p className="font-label-md block mb-2 text-on-surface-variant">
               Audit Areas

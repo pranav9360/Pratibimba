@@ -9,6 +9,7 @@ import {
 
 import api from "../services/api";
 
+import { sendIQAReportsEmail } from "../services/reportService";
 export interface MailableScheduledAudit {
   _id?: string;
   id?: string;
@@ -16,6 +17,7 @@ export interface MailableScheduledAudit {
   iqaNumber: string;
   prakalpa: string;
   location: string;
+  sublocation?: string;
 
   startDate?: string;
   endDate?: string;
@@ -23,10 +25,23 @@ export interface MailableScheduledAudit {
   auditCoordinator?: string;
 }
 
+interface EmailAttachmentPreview {
+  name: string;
+  reportId?: string;
+}
+
 interface Props {
   audit: MailableScheduledAudit | null;
   onClose: () => void;
   onSent: () => void | Promise<void>;
+
+  // Optional overrides used by IQA Report email flow.
+  mode?: "scheduled-audit" | "iqa-report";
+  initialTo?: string;
+  initialCc?: string;
+  initialSubject?: string;
+  initialMessage?: string;
+  attachments?: EmailAttachmentPreview[];
 }
 
 function splitEmails(
@@ -68,6 +83,12 @@ export default function SendScheduledAuditEmailModal({
   audit,
   onClose,
   onSent,
+  mode = "scheduled-audit",
+  initialTo,
+  initialCc,
+  initialSubject,
+  initialMessage,
+  attachments = [],
 }: Props) {
   const [to, setTo] =
     useState("");
@@ -109,21 +130,27 @@ export default function SendScheduledAuditEmailModal({
       );
 
     setTo(
-      details?.praMukhEmail ||
-        ""
+      initialTo !== undefined
+        ? initialTo
+        : details?.praMukhEmail || ""
     );
 
     setCc(
-      details?.seniorEmail ||
-        ""
+      initialCc !== undefined
+        ? initialCc
+        : details?.seniorEmail || ""
     );
 
     setSubject(
-      `Upcoming Internal Quality Audit: ${audit.iqaNumber} — ${audit.prakalpa}`
+      initialSubject !== undefined
+        ? initialSubject
+        : `Upcoming Internal Quality Audit: ${audit.iqaNumber} — ${audit.prakalpa}`
     );
 
     setMessage(
-      [
+      initialMessage !== undefined
+        ? initialMessage
+        : [
         "Dear Coordinator / Team,",
         "",
         "This is a notification regarding the upcoming scheduled internal quality audit.",
@@ -145,7 +172,13 @@ export default function SendScheduledAuditEmailModal({
     setError("");
     setSending(false);
     setSent(false);
-  }, [audit]);
+  }, [
+    audit,
+    initialTo,
+    initialCc,
+    initialSubject,
+    initialMessage,
+  ]);
 
   if (!audit) {
     return null;
@@ -180,15 +213,34 @@ export default function SendScheduledAuditEmailModal({
       setError("");
 
       try {
-        await api.post(
-          `/scheduled-audits/${auditId}/send-email`,
-          {
-            to: toList,
-            cc: splitEmails(cc),
-            subject,
-            message,
-          }
-        );
+        if (mode === "iqa-report") {
+          // Open Reports:
+          // send ALL IQR PDFs belonging to this IQA.
+          await sendIQAReportsEmail(
+            audit.iqaNumber,
+            {
+              to: toList,
+              cc: splitEmails(cc),
+              subject,
+              message,
+              reportIds: attachments
+                .map((attachment) => attachment.reportId)
+                .filter((id): id is string => Boolean(id)),
+            }
+          );
+        } else {
+          // Scheduled Audits:
+          // notification email only — NO attachments.
+          await api.post(
+            `/scheduled-audits/${auditId}/send-email`,
+            {
+              to: toList,
+              cc: splitEmails(cc),
+              subject,
+              message,
+            }
+          );
+        }
 
         setSent(true);
 
@@ -222,7 +274,9 @@ export default function SendScheduledAuditEmailModal({
           <div>
 
             <h3 className="font-headline-sm font-bold text-on-surface">
-              Send Audit Notification Email
+              {mode === "iqa-report"
+                ? "Send IQA Report Email"
+                : "Send Audit Notification Email"}
             </h3>
 
             <p className="text-[11px] text-on-surface-variant mt-0.5">
@@ -345,6 +399,35 @@ export default function SendScheduledAuditEmailModal({
                 />
 
               </div>
+
+              {mode === "iqa-report" && attachments.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-on-surface-variant mb-1">
+                    Attachments
+                  </label>
+
+                  <div className="space-y-1.5">
+                    {attachments.map((attachment) => (
+                      <div
+                        key={attachment.name}
+                        className="flex items-center gap-2 rounded-lg border border-outline-variant/20 bg-surface-container-low px-3 py-2"
+                      >
+                        <span className="material-symbols-outlined text-[18px] text-primary">
+                          picture_as_pdf
+                        </span>
+
+                        <span className="text-xs font-medium text-on-surface">
+                          {attachment.name}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-[10px] text-on-surface-variant mt-1.5">
+                    These report PDFs will be generated from the stored IQR data when the email is sent.
+                  </p>
+                </div>
+              )}
 
               {error && (
                 <p className="text-[11px] text-error bg-error/5 border border-error/20 rounded-lg px-3 py-2">

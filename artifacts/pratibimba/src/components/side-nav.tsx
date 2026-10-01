@@ -4,6 +4,8 @@ import { clsx } from "clsx";
 import { useApp } from "../context/app-context";
 import pratibimbaLogo from "../assets/pratibimba-logo.jpeg";
 
+import { clearAuthenticatedSession } from "../services/authService";
+
 interface NavItem {
   label: string;
   href: string;
@@ -22,13 +24,14 @@ const navItems: NavItem[] = [
       "auditor",
       "prakalpa_manager",
       "admin",
+      "super_admin",
     ],
   },
   {
     label: "Audit Plan",
     href: "/audit-plan",
     icon: "event_note",
-    roles: ["lead_auditor", "admin"],
+    roles: ["admin", "audit_coordinator"],
   },
   {
     label: "Audit Calendar",
@@ -51,6 +54,24 @@ const navItems: NavItem[] = [
       "auditor",
       "admin",
     ],
+  },
+  {
+    label: "My Findings",
+    href: "/my-findings",
+    icon: "assignment",
+    roles: ["auditor"],
+  },
+  {
+    label: "Review Findings",
+    href: "/lead-findings",
+    icon: "assignment",
+    roles: ["lead_auditor"],
+  },
+  {
+    label: "Generate IQR",
+    href: "/coordinator-findings",
+    icon: "post_add",
+    roles: ["audit_coordinator"],
   },
   {
     label: "All Reports",
@@ -100,13 +121,13 @@ const navItems: NavItem[] = [
     label: "Prakalpa Management",
     href: "/prakalpa-management",
     icon: "account_tree",
-    roles: ["admin"],
+    roles: ["super_admin", "admin"],
   },
   {
     label: "User Management",
     href: "/user-management",
     icon: "manage_accounts",
-    roles: ["admin"],
+    roles: ["super_admin", "admin"],
   },
   {
     label: "Role Access",
@@ -117,6 +138,7 @@ const navItems: NavItem[] = [
 ];
 
 export const ROLE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
   admin: "Admin",
   lead_auditor: "Lead Auditor",
   audit_coordinator: "Audit Coordinator",
@@ -138,8 +160,7 @@ export function SideNav() {
     setIsLoggingOut(true);
 
     setTimeout(() => {
-      localStorage.clear();
-      sessionStorage.clear();
+      clearAuthenticatedSession();
 
       setIsLoggingOut(false);
       setShowLogoutConfirm(false);

@@ -44,11 +44,12 @@ const emptyForm = (): UserFormData => ({
 interface UserFormProps {
   initial: UserFormData;
   onSave: (data: UserFormData) => void;
+  currentUserRole: Role;
   onCancel: () => void;
   isEdit?: boolean;
 }
 
-function UserForm({ initial, onSave, onCancel, isEdit }: UserFormProps) {
+function UserForm({ initial, onSave, currentUserRole, onCancel, isEdit }: UserFormProps) {
   const [form, setForm] = useState(initial);
   const set = (k: keyof typeof form, v: string | boolean) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -112,7 +113,13 @@ function UserForm({ initial, onSave, onCancel, isEdit }: UserFormProps) {
           <div>
             <label className="font-label-md text-on-surface-variant block mb-2">Role <span className="text-error">*</span></label>
             <div className="grid grid-cols-1 gap-2">
-              {ROLE_OPTIONS.map((r) => (
+              {ROLE_OPTIONS
+              .filter(
+                (r) =>
+                  r.value !== "admin" ||
+                  currentUserRole === "super_admin"
+              )
+              .map((r) => (
                 <button
                   key={r.value}
                   type="button"
@@ -213,7 +220,7 @@ export default function UserManagement() {
 
     loadUsers();
   }, []);
-  if (currentUser.role !== "admin") {
+  if (currentUser.role !== "super_admin" && currentUser.role !== "admin") {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-on-surface-variant">
         <span className="material-symbols-outlined text-5xl mb-3">lock</span>
@@ -222,6 +229,18 @@ export default function UserManagement() {
       </div>
     );
   }
+
+  const canManageUser = (targetRole: Role) => {
+    if (targetRole === "super_admin") {
+      return false;
+    }
+
+    if (currentUser.role === "super_admin") {
+      return true;
+    }
+
+    return targetRole !== "admin";
+  };
 
   const filtered = users.filter((u) => {
     const matchRole = filterRole === "all" || u.role === filterRole;
@@ -343,16 +362,25 @@ export default function UserManagement() {
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1 justify-end">
                       <button
-                        onClick={() => { setEditUser(u); setShowForm(true); }}
+                        onClick={() => {
+                          if (!canManageUser(u.role)) return;
+                          setEditUser(u);
+                          setShowForm(true);
+                        }}
+                        disabled={!canManageUser(u.role)}
                         className="p-1.5 rounded-lg hover:bg-surface-container text-on-surface-variant/60 hover:text-primary transition-colors"
                         title="Edit user"
                       >
                         <span className="material-symbols-outlined text-[17px]">edit</span>
                       </button>
                       <button
-                        onClick={() => setConfirmDelete(u)}
+                        onClick={() => {
+                          if (!canManageUser(u.role)) return;
+                          setConfirmDelete(u);
+                        }}
+                        disabled={!canManageUser(u.role)}
                         className="p-1.5 rounded-lg hover:bg-error/10 text-on-surface-variant/60 hover:text-error transition-colors"
-                        title="Remove user"
+                        title="Deactivate user"
                       >
                         <span className="material-symbols-outlined text-[17px]">person_remove</span>
                       </button>
@@ -369,6 +397,7 @@ export default function UserManagement() {
       {/* Add / Edit form modal */}
       {showForm && (
         <UserForm
+          currentUserRole={currentUser.role}
           initial={
             editUser
               ? {
@@ -417,12 +446,12 @@ export default function UserManagement() {
                 <span className="material-symbols-outlined text-error text-[22px]">warning</span>
               </div>
               <div>
-                <p className="font-label-md font-bold text-on-surface">Remove User</p>
+                <p className="font-label-md font-bold text-on-surface">Deactivate User</p>
                 <p className="text-[12px] text-on-surface-variant">{confirmDelete.name}</p>
               </div>
             </div>
             <p className="font-body-md text-on-surface-variant mb-5">
-              This will permanently remove <strong>{confirmDelete.name}</strong> from the platform. This action cannot be undone.
+              This will deactivate <strong>{confirmDelete.name}</strong>. The user will no longer be able to access the platform.
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
               <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
@@ -444,7 +473,7 @@ export default function UserManagement() {
                 }}
                 className="flex-1 py-2.5 bg-error text-white rounded-lg font-label-md font-bold hover:brightness-110"
               >
-                Remove
+                Deactivate
               </button>
             </div>
           </div>

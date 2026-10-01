@@ -77,13 +77,7 @@ export default function LoginPage() {
         "token",
         data.data.token
       );
-
-      localStorage.setItem(
-        "user",
-        JSON.stringify(data.data.user)
-      );
-
-      window.location.href = "/dashboard";
+window.location.href = "/dashboard";
     } catch (err) {
       console.error("LOGIN ERROR:", err);
 

@@ -39,12 +39,19 @@ interface ScheduleModalProps {
     startDate: string;
     endDate: string;
     auditors: string[];
-    finalAuditor: string;
+    leadAuditor: string;
     auditCoordinator: string;
   }) => void;
   auditors: string[];
+  leadAuditors: string[];
 }
-function ScheduleModal({ plan, onClose, onSchedule, auditors }: ScheduleModalProps) {
+function ScheduleModal({
+  plan,
+  onClose,
+  onSchedule,
+  auditors,
+  leadAuditors,
+}: ScheduleModalProps) {
   const [startDate, setStartDate] = useState(
     plan.auditPlannedDate
       ? new Date(plan.auditPlannedDate).toISOString().split("T")[0]
@@ -56,7 +63,7 @@ function ScheduleModal({ plan, onClose, onSchedule, auditors }: ScheduleModalPro
       : ""
   );
   const [selectedAuditors, setSelectedAuditors] = useState<string[]>(plan.auditors || []);
-  const [finalAuditor, setFinalAuditor] = useState(plan.auditors?.[0] || auditors[0]);
+  const [leadAuditor, setLeadAuditor] = useState("");
 
   const toggleAuditor = (a: string) =>
     setSelectedAuditors((prev) => prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]);
@@ -119,20 +126,28 @@ function ScheduleModal({ plan, onClose, onSchedule, auditors }: ScheduleModalPro
             </div>
           </div>
           <div>
-            <label className="font-label-md text-on-surface-variant block mb-1">Lead / Final Auditor</label>
-            <select value={finalAuditor} onChange={(e) => setFinalAuditor(e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-              {(selectedAuditors.length > 0 ? selectedAuditors : auditors).map((a, idx) => <option key={`${a}-${idx}`}>{a}</option>)}
+            <label className="font-label-md text-on-surface-variant block mb-1">Lead Auditor</label>
+            <select value={leadAuditor} onChange={(e) => setLeadAuditor(e.target.value)} className="w-full border border-outline-variant rounded-lg p-3 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
+              <option value="">Select Lead Auditor</option>
+              {leadAuditors.map((name) => (
+                <option
+                  key={name}
+                  value={name}
+                >
+                  {name}
+                </option>
+              ))}
             </select>
           </div>
         </div>
         <div className="p-6 pt-0 flex gap-3">
           <button onClick={onClose} className="flex-1 py-3 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
-          <button disabled={!startDate || !endDate || selectedAuditors.length === 0} onClick={() =>
+          <button disabled={!startDate || !endDate || selectedAuditors.length === 0 || !leadAuditor} onClick={() =>
             onSchedule({
               startDate,
               endDate,
               auditors: selectedAuditors,
-              finalAuditor,
+              leadAuditor,
               auditCoordinator: plan.auditCoordinator,
             })
           } className="flex-1 py-3 bg-primary text-on-primary rounded-lg font-label-md font-bold hover:brightness-110 disabled:opacity-40">Schedule Audit</button>
@@ -414,6 +429,7 @@ export default function AuditPlanPage() {
     currentUser,
     auditors,
     coordinatorUsers,
+    leadAuditorProfiles,
     refreshLiveData
   } = useApp();
   const [auditPlans, setAuditPlans] = useState<AuditPlan[]>([]);
@@ -804,6 +820,11 @@ export default function AuditPlanPage() {
             }
           }}
           auditors={auditors}
+          leadAuditors={
+            leadAuditorProfiles.map(
+              (profile) => profile.name
+            )
+          }
         />
       )}
       {editTarget && (

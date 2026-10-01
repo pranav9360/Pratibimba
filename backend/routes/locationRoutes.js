@@ -34,7 +34,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("admin"),
+  authorize("super_admin", "admin"),
   createLocationValidator,
   createLocation
 );
@@ -42,7 +42,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("admin"),
+  authorize("super_admin", "admin"),
   updateLocationValidator,
   updateLocation
 );
@@ -50,7 +50,7 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("admin"),
+  authorize("super_admin", "admin"),
   deleteLocation
 );
 

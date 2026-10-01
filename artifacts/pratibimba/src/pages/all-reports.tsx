@@ -1,4 +1,8 @@
-import { useState, useMemo, useEffect } from "react";
+import {
+  useState,
+  useMemo,
+  useEffect,
+} from "react";
 import {
   useApp,
   PRAKALPAS,
@@ -8,8 +12,10 @@ import {
   getReports,
   downloadReportPDF,
   updateReport,
+  returnReportToPrakalpa,
+  verifyAndCloseReport,
+  sendReportToPrakalpa,
 } from "../services/reportService";
-import SendReportEmailModal from "../components/send-report-email-modal";
 
 // Step 5: Updated Report Interface
 interface Report {
@@ -41,6 +47,14 @@ interface Report {
   mailSent?: boolean;
   mailSentAt?: string;
   mailSentTo?: string[];
+
+  // Corrective-action workflow
+  workflowStatus?: string;
+  coordinatorVerificationRemarks?: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  actionSubmittedBy?: string;
+  actionSubmittedAt?: string;
 }
 
 function downloadCSV(reports: Report[]) {
@@ -82,15 +96,21 @@ export default function AllReportsPage() {
   const { currentUser } = useApp();
   const [reports, setReports] = useState<Report[]>([]);
   const [detailTarget, setDetailTarget] = useState<Report | null>(null);
-  const [mailTarget, setMailTarget] = useState<Report | null>(null);
+
+  // Coordinator corrective-action review
+  const [verificationRemarks, setVerificationRemarks] = useState("");
+  const [processingVerification, setProcessingVerification] = useState(false);
+  const [
+    sendingToPrakalpa,
+    setSendingToPrakalpa,
+  ] = useState(false);
+
+
 
   // Edit State
   const [editTarget, setEditTarget] = useState<Report | null>(null);
   const [editFindings, setEditFindings] = useState("");
   const [editSeverity, setEditSeverity] = useState<string>("open_for_improvement");
-  const [editStatus, setEditStatus] = useState("open");
-  const [editActionTaken, setEditActionTaken] = useState("");
-  const [editCompletionRemarks, setEditCompletionRemarks] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [filterAuditId, setFilterAuditId] = useState("");
@@ -125,15 +145,15 @@ export default function AllReportsPage() {
 
   const handleViewReport = (report: Report) => {
     setDetailTarget(report);
+    setVerificationRemarks(
+      report.coordinatorVerificationRemarks || ""
+    );
   };
 
   const handleEditReport = (report: Report) => {
     setEditTarget(report);
     setEditFindings(report.findings || "");
     setEditSeverity(report.severity || "open_for_improvement");
-    setEditStatus(report.status ?? "open");
-    setEditActionTaken(report.actionTaken || "");
-    setEditCompletionRemarks(report.completionRemarks || "");
   };
 
   const handleSaveEdit = async () => {
@@ -144,9 +164,6 @@ export default function AllReportsPage() {
       await updateReport(editTarget._id, {
         findings: editFindings,
         severity: editSeverity,
-        status: editStatus,
-        actionTaken: editActionTaken,
-        completionRemarks: editCompletionRemarks,
       });
 
       await loadReports();
@@ -161,6 +178,146 @@ export default function AllReportsPage() {
 
   const isAuditor = currentUser.role === "auditor";
   const isManager = currentUser.role === "prakalpa_manager";
+  const isCoordinator =
+    currentUser.role === "audit_coordinator";
+
+  const handleSendToPrakalpa = async () => {
+    if (!detailTarget) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Send ${detailTarget.iqrNumber} to the Prakalpa for corrective action?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setSendingToPrakalpa(true);
+
+    try {
+      await sendReportToPrakalpa(
+        detailTarget._id
+      );
+
+      await loadReports();
+
+      setDetailTarget(null);
+
+      alert(
+        "Official IQR sent to Prakalpa successfully."
+      );
+    } catch (err) {
+      console.error(
+        "Unable to send IQR to Prakalpa:",
+        err
+      );
+
+      alert(
+        "Unable to send the IQR to Prakalpa."
+      );
+    } finally {
+      setSendingToPrakalpa(false);
+    }
+  };
+
+
+
+  const handleReturnToPrakalpa = async () => {
+    if (!detailTarget) {
+      return;
+    }
+
+    const remarks =
+      verificationRemarks.trim();
+
+    if (!remarks) {
+      alert(
+        "Return remarks are required."
+      );
+      return;
+    }
+
+    setProcessingVerification(true);
+
+    try {
+      await returnReportToPrakalpa(
+        detailTarget._id,
+        {
+          coordinatorVerificationRemarks:
+            remarks,
+        }
+      );
+
+      await loadReports();
+
+      setDetailTarget(null);
+      setVerificationRemarks("");
+
+      alert(
+        "Corrective action returned to Prakalpa successfully."
+      );
+    } catch (err) {
+      console.error(
+        "Unable to return corrective action:",
+        err
+      );
+
+      alert(
+        "Unable to return corrective action to Prakalpa."
+      );
+    } finally {
+      setProcessingVerification(false);
+    }
+  };
+
+  const handleVerifyAndClose = async () => {
+    if (!detailTarget) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Verify the corrective action and close ${detailTarget.iqrNumber}?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setProcessingVerification(true);
+
+    try {
+      await verifyAndCloseReport(
+        detailTarget._id,
+        {
+          coordinatorVerificationRemarks:
+            verificationRemarks.trim(),
+        }
+      );
+
+      await loadReports();
+
+      setDetailTarget(null);
+      setVerificationRemarks("");
+
+      alert(
+        "Corrective action verified and IQR closed successfully."
+      );
+    } catch (err) {
+      console.error(
+        "Unable to verify corrective action:",
+        err
+      );
+
+      alert(
+        "Unable to verify corrective action and close the IQR."
+      );
+    } finally {
+      setProcessingVerification(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     return reports.filter((r) => {
@@ -657,20 +814,6 @@ export default function AllReportsPage() {
                             </span>
                           </button>
 
-                          {/* Mail */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMailTarget(report);
-                            }}
-                            className="p-2 rounded-lg transition-all hover:scale-110 hover:bg-secondary/10 text-secondary"
-                            title={report.mailSent ? "Resend Report Email" : "Send Report Email"}
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              {report.mailSent ? "mark_email_read" : "mail"}
-                            </span>
-                          </button>
-
                           {/* Download */}
                           <button
                             onClick={(e) => {
@@ -955,6 +1098,116 @@ export default function AllReportsPage() {
                   </div>
                 </div>
 
+                
+                  {/* Coordinator → Prakalpa Release */}
+                  {isCoordinator &&
+                    detailTarget.workflowStatus ===
+                      "coordinator_generated" && (
+                      <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-primary">
+                              send
+                            </span>
+
+                            <p className="font-semibold text-on-surface">
+                              Release Official IQR
+                            </p>
+                          </div>
+
+                          <p className="text-sm text-on-surface-variant mt-1">
+                            Send this coordinator-generated official IQR
+                            to the Prakalpa for corrective action.
+                          </p>
+                        </div>
+
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleSendToPrakalpa}
+                            disabled={sendingToPrakalpa}
+                            className="px-5 py-2.5 bg-primary text-on-primary rounded-lg font-label-md font-bold hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">
+                              send
+                            </span>
+
+                            {sendingToPrakalpa
+                              ? "Sending..."
+                              : "Send to Prakalpa"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Coordinator Corrective-Action Verification */}
+                {isCoordinator &&
+                  detailTarget.workflowStatus === "action_submitted" && (
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-primary">
+                            fact_check
+                          </span>
+
+                          <p className="font-semibold text-on-surface">
+                            Coordinator Verification
+                          </p>
+                        </div>
+
+                        <p className="text-sm text-on-surface-variant mt-1">
+                          Review the Prakalpa corrective action before
+                          returning it for correction or closing the IQR.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="coordinator-verification-remarks"
+                          className="font-semibold block text-sm text-on-surface mb-1"
+                        >
+                          Verification Remarks
+                        </label>
+
+                        <textarea
+                          id="coordinator-verification-remarks"
+                          rows={4}
+                          value={verificationRemarks}
+                          onChange={(e) =>
+                            setVerificationRemarks(e.target.value)
+                          }
+                          disabled={processingVerification}
+                          className="w-full border border-outline-variant/40 rounded-xl p-3 font-body-md text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none bg-white disabled:opacity-60"
+                          placeholder="Add verification remarks. Remarks are required when returning the action to Prakalpa."
+                        />
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={handleReturnToPrakalpa}
+                          disabled={processingVerification}
+                          className="px-5 py-2.5 border border-error/40 text-error rounded-lg font-label-md font-bold hover:bg-error/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {processingVerification
+                            ? "Processing..."
+                            : "Return to Prakalpa"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleVerifyAndClose}
+                          disabled={processingVerification}
+                          className="px-5 py-2.5 bg-primary text-on-primary rounded-lg font-label-md font-bold hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {processingVerification
+                            ? "Processing..."
+                            : "Verify & Close IQR"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                 {/* Evidence Files Section */}
                 {detailTarget.proofFiles && detailTarget.proofFiles.length > 0 && (
                   <div>
@@ -1035,57 +1288,6 @@ export default function AllReportsPage() {
                 </select>
               </div>
 
-              {/* Action */}
-              <div>
-                <label className="font-semibold block text-sm text-on-surface mb-1">
-                  Action Taken
-                </label>
-                <textarea
-                  rows={4}
-                  value={editActionTaken}
-                  onChange={(e) => setEditActionTaken(e.target.value)}
-                  className="w-full border border-outline-variant/40 rounded-xl p-3 font-body-md text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-                  placeholder="Record or update actions taken..."
-                />
-              </div>
-
-              {/* Completion */}
-              <div>
-                <label className="font-semibold block text-sm text-on-surface mb-1">
-                  Completion Remarks
-                </label>
-                <textarea
-                  rows={4}
-                  value={editCompletionRemarks}
-                  onChange={(e) => setEditCompletionRemarks(e.target.value)}
-                  className="w-full border border-outline-variant/40 rounded-xl p-3 font-body-md text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-                  placeholder="Record or update completion remarks..."
-                />
-              </div>
-
-              {/* Status */}
-              <div>
-                <label className="font-semibold block text-sm text-on-surface mb-1">
-                  Status
-                </label>
-
-                {editTarget.status === "closed" ? (
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
-                    className="w-full border border-outline-variant/40 rounded-xl p-3 font-body-md text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
-                  >
-                    <option value="closed">Closed</option>
-                    <option value="open">Reopen Report</option>
-                  </select>
-                ) : (
-                  <input
-                    readOnly
-                    value="Open"
-                    className="w-full border border-outline-variant/40 rounded-xl p-3 font-body-md text-sm bg-surface-container-low text-on-surface-variant cursor-not-allowed outline-none"
-                  />
-                )}
-              </div>
             </div>
 
             <div className="border-t border-outline-variant/10 p-5 flex justify-end gap-3 shrink-0">
@@ -1108,14 +1310,6 @@ export default function AllReportsPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {mailTarget && (
-        <SendReportEmailModal
-          report={mailTarget}
-          onClose={() => setMailTarget(null)}
-          onSent={loadReports}
-        />
       )}
     </div>
   );
