@@ -81,10 +81,11 @@ export async function updateUserRole(id: string, role: string) {
   return handleResponse(res);
 }
 
-export async function deleteUser(id: string) {
+export async function deleteUser(id: string, replacementManagerId?: string) {
   const res = await fetch(`${BASE_URL}/${id}`, {
     method: "DELETE",
     headers: authHeaders(),
+    body: JSON.stringify({ ...(replacementManagerId ? { replacementManagerId } : {}) }),
   });
 
   return handleResponse(res);

@@ -9,6 +9,8 @@ import {
   approveAuditFinding,
   getLeadBatchStatus,
   submitLeadBatch,
+  confirmConsolidatedHandover,
+  type LeadHandoverRequest,
   type LeadBatchStatus,
   saveLeadFindingCopy,
   createConsolidatedFinding,
@@ -420,6 +422,7 @@ function ConsolidatedFindingsView({
       return;
     }
 
+    const request = await confirmConsolidatedHandover(drafts);
     if (!window.confirm(
       `Approve and send all ${drafts.length} consolidated findings for ${audit.iqaNumber} to the Audit Coordinator? This cannot be undone.`
     )) return;
@@ -427,11 +430,11 @@ function ConsolidatedFindingsView({
     setOperation("submitting");
 
     try {
-      await submitAllConsolidatedFindingsForAudit(audit._id);
+      await submitAllConsolidatedFindingsForAudit(audit._id, request);
       resetForm();
       await loadFindings();
       setSuccessMessage(
-        "All consolidated findings for this IQA were submitted to the Coordinator."
+        "The confirmed consolidated findings were submitted. Earlier handovers remain unchanged."
       );
     } catch (requestError: any) {
       console.error("Failed to submit IQA findings:", requestError);
@@ -1011,6 +1014,7 @@ function LegacyLeadFindingsPage({
 
   // data-iqa-review-grouping: UI-only grouping for global legacy review.
   const [batchStatus, setBatchStatus] = useState<LeadBatchStatus | null>(null);
+  const [batchRequest, setBatchRequest] = useState<LeadHandoverRequest | null>(null);
   const [batchConfirm, setBatchConfirm] = useState(false);
   const [batchAcknowledged, setBatchAcknowledged] = useState(false);
   const [expandedAuditKey, setExpandedAuditKey] = useState<string | null>(null);
@@ -1175,10 +1179,10 @@ function LegacyLeadFindingsPage({
   }, [activeAuditId, findings]);
 
   const finalizeBatch = async () => {
-    if (!activeAuditId || !batchAcknowledged || processing) return;
+    if (!activeAuditId || !batchAcknowledged || !batchRequest || processing) return;
     setProcessing(true); setError("");
     try {
-      const result = await submitLeadBatch(activeAuditId);
+      const result = await submitLeadBatch(activeAuditId, batchRequest);
       setSuccess(`Batch submitted: ${result.approved} approved, ${result.discarded} discarded.`);
       setBatchConfirm(false); setBatchAcknowledged(false);
       await loadFindings();
@@ -1428,18 +1432,18 @@ function LegacyLeadFindingsPage({
           auditGroups.some(group => group.key === expandedAuditKey)
         )) && (
           <>
-{activeAuditId && batchStatus && !batchStatus.submitted && (
+{activeAuditId && batchStatus && !batchStatus.finalized && (
         <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4 flex flex-col gap-3">
-          <p className="font-label-md">Lead Auditor final handover · {batchStatus.approved} approved · {batchStatus.discarded} discarded</p>
-          {batchStatus.missingAuditors.length > 0 && <p className="text-error text-sm">Waiting for Auditors: {batchStatus.missingAuditors.join(", ")}</p>}
-          <button type="button" disabled={processing || batchStatus.pending > 0 || batchStatus.missingAuditors.length > 0}
-            onClick={() => { setBatchAcknowledged(false); setBatchConfirm(true); }}
+          <p className="font-label-md">{batchStatus.submitted ? "Supplemental handover" : "Initial handover"} · {batchStatus.approved} approved · {batchStatus.discarded} discarded</p>
+          {batchStatus.missingAuditors.length > 0 && <p className="text-on-surface-variant text-sm">Pending Auditors (does not block handover): {batchStatus.missingAuditors.join(", ")}</p>}
+          <button type="button" disabled={processing || batchStatus.pending > 0 || (batchStatus.submitted && batchStatus.findingIds.length === 0)}
+            onClick={() => { setBatchRequest({ requestId: crypto.randomUUID(), findingIds: [...batchStatus.findingIds], confirmation: batchStatus.confirmation }); setBatchAcknowledged(false); setBatchConfirm(true); }}
             className="self-start rounded-lg bg-primary text-on-primary px-5 py-2.5 font-bold disabled:opacity-40">
             Confirm & Send All to Coordinator
           </button>
         </div>
       )}
-      {batchStatus?.submitted && <p className="rounded-lg border p-3 text-sm">This IQA batch was submitted to the Coordinator. Lead review is locked.</p>}
+      {batchStatus?.submitted && <p className="rounded-lg border p-3 text-sm">{batchStatus.handoverCount} handover(s) sent. Previously forwarded findings remain locked. {batchStatus.finalized ? "The Coordinator has finalized this audit; further submissions are closed." : "Later submissions require separate review and an explicit supplemental handover."}</p>}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="rounded-xl border border-outline-variant bg-surface-container-low p-5">
           <p className="font-label-md text-on-surface-variant">
@@ -1642,7 +1646,7 @@ function LegacyLeadFindingsPage({
                       )}
 
 
-                    <FindingEvidence findingId={finding._id} files={finding.proofFiles} leadFiles={finding.leadEvidenceFiles} reviews={finding.evidenceReviews} stage="lead" canUpload={!batchStatus?.submitted} onUploaded={loadFindings} />
+                    <FindingEvidence findingId={finding._id} files={finding.proofFiles} leadFiles={finding.leadEvidenceFiles} reviews={finding.evidenceReviews} stage="lead" canUpload={batchStatus?.finalized === false && finding.workflowStatus === "submitted_to_lead"} onUploaded={loadFindings} />
                     {finding.leadEditedCopy?.findings && (
                       <div className="rounded-lg bg-primary/5 border border-primary/20 p-4">
                         <p className="font-label-md mb-2">Lead Auditor Review Copy</p>
@@ -1655,7 +1659,7 @@ function LegacyLeadFindingsPage({
                         {(finding.leadEditedCopy?.severity || finding.severity) === "non_conformance" ? "NC · Non-Conformance" : "OFI · Open for Improvement"}
                       </span>
                     </div>
-                    {!batchStatus?.submitted && (
+                    {batchStatus?.finalized === false && finding.workflowStatus === "submitted_to_lead" && (
                     <div className="flex flex-col sm:flex-row justify-end gap-3 pt-1">
                       <button type="button" onClick={() => {
                         setEditing(finding);
@@ -1777,7 +1781,7 @@ function LegacyLeadFindingsPage({
 {batchConfirm && (
   <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4">
     <div role="dialog" aria-modal="true" className="w-full max-w-lg rounded-2xl bg-surface border border-outline-variant shadow-xl p-6 space-y-4">
-      <h3 className="font-headline-sm">Confirm final Lead Auditor handover</h3>
+      <h3 className="font-headline-sm">Confirm Lead Auditor handover</h3>
       <p>Please review all findings carefully. Once confirmed, submitted findings cannot be edited, recalled or unsent.</p>
       <label className="flex gap-3 items-start text-sm"><input type="checkbox" checked={batchAcknowledged}
         onChange={e => setBatchAcknowledged(e.target.checked)} /> I understand this handover is permanent.</label>

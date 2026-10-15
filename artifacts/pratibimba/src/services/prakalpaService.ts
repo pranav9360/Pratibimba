@@ -19,12 +19,15 @@ export interface PrakalpaPayload {
   prakalpaPramukhEmail?: string;
   seniorEmail?: string;
   active?: boolean;
+  managerId?: string;
+  newManager?: { name: string; email: string; password: string };
 }
 
 export const getPrakalpas =
-  async (): Promise<Prakalpa[]> => {
-    const res = await api.get("/prakalpas");
-    return res.data?.data || [];
+  async (includeInactive = false): Promise<Prakalpa[]> => {
+    const res = await api.get(includeInactive ? "/prakalpas?includeInactive=true" : "/prakalpas");
+    if (!Array.isArray(res.data?.data)) throw new Error("Invalid Prakalpa response.");
+    return res.data.data;
   };
 
 export const createPrakalpa =

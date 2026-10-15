@@ -34,7 +34,7 @@ const contextFor = (name, override = {}) => {
       ...override,
     });
   }
-  return vm.createContext({ ...environment,
+  return vm.createContext({ ...environment, managerPrakalpas: [environment.currentUser?.prakalpa].filter(Boolean),
     matchesDateFilter: (start, end, filter) => {
       if (filter.mode === "all" || !filter.start) return true;
       const first = String(start || "").slice(0, 10);
@@ -95,7 +95,10 @@ for (const [name, page] of Object.entries(baseline.pages)) {
         assert.ok(current[key].includes("filterAuditArea"), `${name}: audit-area predicate exists`);
         assert.ok(current[key].includes("filterPramukh"), `${name}: Pramukh predicate exists`);
       } else {
-        assert.equal(current[key], text, key);
+        const expected = text.replaceAll("r.prakalpa === currentUser.prakalpa", "managerPrakalpas.includes(r.prakalpa)")
+          .replace("[reports, isManager, isAuditor, currentUser]", "[reports, isManager, isAuditor, currentUser, managerPrakalpas]")
+          .replace("    currentUser,\n  ])", "    currentUser,\n    managerPrakalpas,\n  ])");
+        assert.equal(current[key], expected, key);
       }
     }
   });

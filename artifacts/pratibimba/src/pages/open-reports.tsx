@@ -1,3 +1,4 @@
+import { useManagerPrakalpas } from "../components/management/use-manager-prakalpas";
 import { FilterToolbar } from "../components/filters/filter-toolbar";
 import { FilterSelect } from "../components/filters/filter-select";
 import { FilterText } from "../components/filters/filter-text";
@@ -121,6 +122,7 @@ function reportDaysOpen(start?: string | null, end?: string | null): number | nu
 
 export default function OpenReportsPage() {
   const { currentUser } = useApp();
+  const managerPrakalpas = useManagerPrakalpas(currentUser);
   const [reports, setReports] = useState<Report[]>([]);
   const [detailTarget, setDetailTarget] = useState<Report | null>(null);
 
@@ -436,8 +438,8 @@ export default function OpenReportsPage() {
   }, [reports]);
 
   const filterReports = useMemo(() => reports.filter(r =>
-    (!r.status || r.status.toLowerCase() === "open") && (isManager ? r.prakalpa === currentUser.prakalpa : isAuditor ? (r.auditors || []).includes(currentUser.name || "") || r.auditor === currentUser.name : true)
-  ), [reports, isManager, isAuditor, currentUser]);
+    (!r.status || r.status.toLowerCase() === "open") && (isManager ? managerPrakalpas.includes(r.prakalpa) : isAuditor ? (r.auditors || []).includes(currentUser.name || "") || r.auditor === currentUser.name : true)
+  ), [reports, isManager, isAuditor, currentUser, managerPrakalpas]);
   const filterPrakalpaOptions = useMemo(() => [...new Set(filterReports.map(r => r.prakalpa).filter(Boolean))], [filterReports]);
   const filterCoordinatorOptions = useMemo(() => [...new Set(filterReports.map(r => r.auditCoordinator).filter(Boolean))], [filterReports]);
 
@@ -476,7 +478,7 @@ export default function OpenReportsPage() {
         r.auditCoordinator === filterCoordinator;
 
       const matchUser = isManager
-        ? r.prakalpa === currentUser.prakalpa
+        ? managerPrakalpas.includes(r.prakalpa)
         : isAuditor
         ? (r.auditors || []).includes(currentUser.name || "") ||
           r.auditor === currentUser.name
@@ -501,6 +503,7 @@ export default function OpenReportsPage() {
     isManager,
     isAuditor,
     currentUser,
+    managerPrakalpas,
   ]);
 
   const groupedOpenReports = useMemo(() => {
@@ -568,7 +571,7 @@ export default function OpenReportsPage() {
           <h2 className="font-headline-md text-on-surface">Open Reports</h2>
           <p className="font-body-md text-on-surface-variant mt-0.5">
             {filtered.length} active reports
-            {isManager ? ` — ${currentUser.prakalpa}` : ""}
+            {isManager ? ` — ${managerPrakalpas.join(", ")}` : ""}
           </p>
         </div>
 

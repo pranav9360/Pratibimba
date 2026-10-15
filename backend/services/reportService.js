@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import { authorizedManagerPrakalpas } from "./managerAssignments.js";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import Report from "../models/Report.js";
@@ -339,21 +340,8 @@ const getScheduledAuditIdsForUser = async (
 
 
     case "prakalpa_manager": {
-      const prakalpa =
-        normalizeIdentity(
-          currentUser.prakalpa
-        );
-
-      if (!prakalpa) {
-        throw new AppError(
-          "No Prakalpa is assigned to this Prakalpa Manager.",
-          403
-        );
-      }
-
-      auditFilter = {
-        prakalpa,
-      };
+      const prakalpas = await authorizedManagerPrakalpas(currentUser);
+      auditFilter = { prakalpa: { $in: prakalpas } };
 
       break;
     }
@@ -1278,21 +1266,9 @@ const getPrakalpaActionReport = async (
     );
   }
 
-  const userPrakalpa =
-    normalizeIdentity(
-      currentUser.prakalpa
-    );
-
-  const auditPrakalpa =
-    normalizeIdentity(
-      audit.prakalpa
-    );
-
-  if (
-    !userPrakalpa ||
-    !auditPrakalpa ||
-    userPrakalpa !== auditPrakalpa
-  ) {
+  const prakalpas = await authorizedManagerPrakalpas(currentUser);
+  const auditPrakalpa = normalizeIdentity(audit.prakalpa);
+  if (!auditPrakalpa || !prakalpas.includes(auditPrakalpa)) {
     /*
      * Use 404 so cross-Prakalpa report existence is not exposed.
      */

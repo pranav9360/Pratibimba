@@ -213,10 +213,12 @@ export async function updateConsolidatedFinding(
 }
 
 export async function submitAllConsolidatedFindingsForAudit(
-  scheduledAuditId: string
+  scheduledAuditId: string,
+  request: LeadHandoverRequest
 ): Promise<ConsolidatedFinding[]> {
   const response = await api.post(
-    `/audit-findings/scheduled-audits/${scheduledAuditId}/consolidated-findings/submit-all`
+    `/audit-findings/scheduled-audits/${scheduledAuditId}/consolidated-findings/submit-all`,
+    request
   );
 
   return unwrap<ConsolidatedFinding[]>(response);
@@ -524,9 +526,31 @@ export async function submitAllAuditorFindings(scheduledAuditId: string): Promis
   return unwrap(response);
 }
 
+export interface LeadHandoverRequest {
+  requestId: string;
+  findingIds: string[];
+  confirmation: string;
+}
+
+// Same canonical snapshot as the backend; populated sources are reduced to their IDs.
+export async function confirmConsolidatedHandover(findings: ConsolidatedFinding[]): Promise<LeadHandoverRequest> {
+  const rows = findings.map(f => [String(f._id), f.workflowStatus, f.status, f.classification, undefined,
+    0, null, f.updatedAt || null, f.title || "",
+    f.sourceFindings.map(source => typeof source === "string" ? source : source._id).sort()
+  ]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const bytes = new TextEncoder().encode(JSON.stringify(rows));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return { requestId: crypto.randomUUID(), findingIds: findings.map(f => f._id).sort(),
+    confirmation: Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, "0")).join("") };
+}
+
 export interface LeadBatchStatus {
   submitted: boolean;
   submittedAt: string | null;
+  finalized: boolean;
+  handoverCount: number;
+  findingIds: string[];
+  confirmation: string;
   missingAuditors: string[];
   pending: number;
   approved: number;
@@ -536,8 +560,8 @@ export async function getLeadBatchStatus(auditId: string): Promise<LeadBatchStat
   const response = await api.get(`/audit-findings/scheduled-audits/${auditId}/lead-batch`);
   return unwrap<LeadBatchStatus>(response);
 }
-export async function submitLeadBatch(auditId: string): Promise<{ approved: number; discarded: number }> {
-  const response = await api.post(`/audit-findings/scheduled-audits/${auditId}/lead-batch/submit`, {});
+export async function submitLeadBatch(auditId: string, request: LeadHandoverRequest): Promise<{ approved: number; discarded: number }> {
+  const response = await api.post(`/audit-findings/scheduled-audits/${auditId}/lead-batch/submit`, request);
   return unwrap<{ approved: number; discarded: number }>(response);
 }
 

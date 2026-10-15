@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import User from "../models/User.js";
 import Prakalpa from "../models/Prakalpa.js";
 import Location from "../models/Location.js";
+import ActivityLog from "../models/ActivityLog.js";
 import Guard from "../models/SuperAdminMutationGuard.js";
 import prakalpaRoutes from "../routes/prakalpaRoutes.js";
 import locationRoutes from "../routes/locationRoutes.js";
@@ -14,15 +15,15 @@ import * as prakalpas from "../services/prakalpaService.js";
 import * as locations from "../services/locationService.js";
 
 // All persistence is mocked. This suite never loads dotenv or connects to MongoDB.
-const original = { startSession: mongoose.startSession, user: User.findById, guard: Guard.updateOne,
+const original = { startSession: mongoose.startSession, user: User.findById, userFind: User.find, logCreate: ActivityLog.create, guard: Guard.updateOne,
   prakalpa: { find: Prakalpa.find, findOne: Prakalpa.findOne, findById: Prakalpa.findById, create: Prakalpa.create },
   location: { find: Location.find, findOne: Location.findOne, findById: Location.findById, create: Location.create },
   secret: process.env.JWT_SECRET };
 const actors = Object.fromEntries(["super_admin", "admin", "audit_coordinator", "auditor", "prakalpa_manager"]
   .map(role => [role, { _id: role, name: role, role, active: true }]));
-const query = value => ({ session() { return this; }, sort() { return this; }, select() { return this; },
+const query = value => ({ session() { return this; }, sort() { return this; }, select() { return this; }, lean() { return this; },
   then(resolve, reject) { return Promise.resolve(value).then(resolve, reject); } });
-let prakalpa, location, freshActor, writes, session, server, baseUrl;
+let manager, createdPrakalpas, prakalpa, location, freshActor, writes, session, server, baseUrl;
 beforeEach(() => {
   writes = []; freshActor = actors.super_admin;
   session = { withTransaction: async operation => {
@@ -38,15 +39,20 @@ beforeEach(() => {
     if (!options?.upsert) assert.equal(options.session, session);
     return { matchedCount: 1 };
   };
+  createdPrakalpas = [];
+  manager = { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", name: "Manager", role: "prakalpa_manager", active: true,
+    prakalpa: "Test Prakalpa", assignedPrakalpas: ["Test Prakalpa", "Retained Prakalpa"], save: async () => {} };
+  User.find = () => query([manager]);
+  ActivityLog.create = async records => records;
   let actorReads = 0;
-  User.findById = id => query(id === "super_admin" && ++actorReads > 1 ? freshActor : actors[id]);
-  Prakalpa.find = () => query([prakalpa]);
+  User.findById = id => query(id === "super_admin" && ++actorReads > 1 ? freshActor : id === manager._id ? manager : actors[id]);
+  Prakalpa.find = () => query([prakalpa, ...createdPrakalpas, { name: "Retained Prakalpa", active: true }]);
   Location.find = () => query([location]);
   Prakalpa.findById = () => query(prakalpa);
   Location.findById = () => query(location);
   Prakalpa.findOne = filter => query(filter.active ? prakalpa : null);
   Location.findOne = () => query(null);
-  Prakalpa.create = async ([data], options) => { assert.equal(options.session, session); writes.push("prakalpa-created"); return [{ _id: "created-prakalpa", ...data }]; };
+  Prakalpa.create = async ([data], options) => { assert.equal(options.session, session); writes.push("prakalpa-created"); const created = { _id: "created-prakalpa", active: true, ...data }; createdPrakalpas.push(created); return [created]; };
   Location.create = async ([data], options) => { assert.equal(options.session, session); writes.push("location-created"); return [{ _id: "created-location", ...data }]; };
 });
 before(async () => {
@@ -59,7 +65,7 @@ before(async () => {
 });
 after(async () => {
   if (server?.listening) await new Promise(resolve => server.close(resolve));
-  mongoose.startSession = original.startSession; User.findById = original.user; Guard.updateOne = original.guard;
+  mongoose.startSession = original.startSession; User.findById = original.user; User.find = original.userFind; ActivityLog.create = original.logCreate; Guard.updateOne = original.guard;
   Object.assign(Prakalpa, original.prakalpa); Object.assign(Location, original.location);
   if (original.secret === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = original.secret;
 });
@@ -70,7 +76,7 @@ const request = (role, path, method = "GET", body) => fetch(`${baseUrl}${path}`,
 
 test("Superadmin can create, edit and deactivate Prakalpas, locations and sublocations", async () => {
   for (const [path, method, body, status] of [
-    ["/prakalpas", "POST", { name: "New Prakalpa", initialLocation: "Office", auditAreas: ["Finance"] }, 201],
+    ["/prakalpas", "POST", { name: "New Prakalpa", managerId: "aaaaaaaaaaaaaaaaaaaaaaaa", initialLocation: "Office", auditAreas: ["Finance"] }, 201],
     ["/prakalpas/prakalpa", "PUT", { prakalpaPramukh: "Updated", auditAreas: ["Finance", "Safety"] }, 200],
     ["/locations", "POST", { name: "Annex", prakalpa: "Test Prakalpa", sublocations: ["Room"] }, 201],
     ["/locations/location", "PUT", { sublocations: ["Updated Room"], name: "Updated Office" }, 200],
@@ -97,7 +103,7 @@ test("all existing roles retain read-only Prakalpa, location and sublocation loo
   for (const role of Object.keys(actors)) {
     for (const path of ["/prakalpas", "/locations", "/locations/prakalpa/Test%20Prakalpa"]) {
       const response = await request(role, path); assert.equal(response.status, 200);
-      assert.equal((await response.json()).data.length, 1);
+      assert.equal((await response.json()).data.length, path === "/prakalpas" ? 2 : 1);
     }
   }
   assert.equal(writes.length, 0);
@@ -152,7 +158,7 @@ test("stale Superadmin requests are rejected using authority read after guard ac
 
 test("initial Prakalpa and location creation remain atomic on location failure", async () => {
   Location.create = async () => { throw new Error("Location unavailable"); };
-  await assert.rejects(prakalpas.createPrakalpa({ name: "New", initialLocation: "Office" }, actors.super_admin), /Location unavailable/);
+  await assert.rejects(prakalpas.createPrakalpa({ name: "New", initialLocation: "Office", managerId: manager._id }, actors.super_admin), /Location unavailable/);
   assert.equal(writes.length, 0);
 });
 
@@ -175,4 +181,11 @@ test("operational lookups project only master-data fields required for planning 
   fields = undefined;
   await locations.getLocations(actors.super_admin);
   assert.equal(fields, undefined, "Superadmin keeps complete management responses");
+});
+
+
+test("inactive Prakalpa inspection remains Superadmin-only", async () => {
+  for (const role of ["admin", "auditor", "audit_coordinator", "prakalpa_manager"]) {
+    assert.equal((await request(role, "/prakalpas?includeInactive=true")).status, 403);
+  }
 });

@@ -536,7 +536,7 @@ export const getLeadBatchStatusController = asyncHandler(async (req, res) => {
 });
 export const submitLeadBatchController = asyncHandler(async (req, res) => {
   const { submitLeadBatchToCoordinator } = await import("../services/auditFindingService.js");
-  res.json(new ApiResponse(200, "Lead batch submitted to Coordinator", await submitLeadBatchToCoordinator(req.params.scheduledAuditId, req.user)));
+  res.json(new ApiResponse(200, "Lead batch submitted to Coordinator", await submitLeadBatchToCoordinator(req.params.scheduledAuditId, req.user, req.body || {})));
 });
 
 export const discardCoordinatorFindingController = asyncHandler(async(req,res)=>{

@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
+import { createHash, randomUUID } from "node:crypto";
+import LeadBatchSubmission from "../models/LeadBatchSubmission.js";
 
 import AuditFinding from "../models/AuditFinding.js";
 import ConsolidatedFinding from "../models/ConsolidatedFinding.js";
@@ -12,7 +14,23 @@ import {
   createConsolidatedFinding,
   updateConsolidatedFindingDraft,
   submitConsolidatedFinding,
+  submitAllConsolidatedFindingsForAudit,
 } from "../services/auditFindingService.js";
+
+const queryResult = value => ({ then: (ok, fail) => Promise.resolve(value).then(ok, fail),
+  session() { return this; }, select() { return this; } });
+const originalHandoverFind = LeadBatchSubmission.findOne;
+const originalHandoverCreate = LeadBatchSubmission.create;
+const originalHandoverUpdate = LeadBatchSubmission.updateOne;
+let currentHandover;
+const batchRequest = () => {
+  const drafts = currentConsolidateds.filter(f => f.status === "DRAFT" && f.workflowStatus === "consolidated_draft");
+  const rows = drafts.map(f => [String(f._id), f.workflowStatus, f.status, f.classification, f.severity,
+    f.leadEditedCopy?.revision || 0, f.leadReviewedAt || null, f.updatedAt || null, f.title || "",
+    f.sourceFindings.map(String).sort()]).sort((a, b) => a[0].localeCompare(b[0]));
+  return { requestId: randomUUID(), findingIds: drafts.map(f => f._id).sort(),
+    confirmation: createHash("sha256").update(JSON.stringify(rows)).digest("hex") };
+};
 
 const originalAuditFind = AuditFinding.find;
 const originalAuditFindById = AuditFinding.findById;
@@ -102,6 +120,9 @@ let indexEnsureCount;
 let sourceIndexAvailable;
 
 const restoreMocks = () => {
+  LeadBatchSubmission.findOne = originalHandoverFind;
+  LeadBatchSubmission.create = originalHandoverCreate;
+  LeadBatchSubmission.updateOne = originalHandoverUpdate;
   AuditFinding.find = originalAuditFind;
   AuditFinding.findById = originalAuditFindById;
   ScheduledAudit.findById = originalScheduledFindById;
@@ -140,6 +161,13 @@ const resetState = () => {
     }),
   ];
   currentConsolidateds = [];
+  currentHandover = null;
+  LeadBatchSubmission.findOne = () => queryResult(currentHandover);
+  LeadBatchSubmission.create = async records => { currentHandover = { _id: new mongoose.Types.ObjectId(), ...records[0] }; return [currentHandover]; };
+  LeadBatchSubmission.updateOne = async (filter, update) => {
+    (currentHandover.supplementalHandovers ||= []).push(update.$push.supplementalHandovers);
+    return { modifiedCount: 1 };
+  };
   currentClaims = [];
   failNextConsolidatedSave = false;
   failNextClaim = false;
@@ -229,7 +257,7 @@ const resetState = () => {
 
     return currentAudit;
   };
-  AuditFinding.find = async (query) => {
+  AuditFinding.find = (query) => {
     let records = currentFindings;
 
     if (query && query.scheduledAudit) {
@@ -264,14 +292,14 @@ const resetState = () => {
       );
     }
 
-    return records;
+    return queryResult(records);
   };
   AuditFinding.findById = async (id) =>
     currentFindings.find((finding) => String(finding._id) === String(id)) || null;
 
-  ConsolidatedFinding.find = async (query) => {
+  ConsolidatedFinding.find = (query) => {
     if (query && query.sourceFindings && query.sourceFindings.$in) {
-      return currentConsolidateds.filter((finding) => {
+      return queryResult(currentConsolidateds.filter((finding) => {
         const excludedId = query._id && query._id.$ne;
         return (
           (!excludedId ||
@@ -282,25 +310,26 @@ const resetState = () => {
             )
           )
         );
-      });
+      }));
     }
 
     if (query && query.scheduledAudit) {
-      return currentConsolidateds.filter(
-        (finding) => String(finding.scheduledAudit) === String(query.scheduledAudit)
-      );
+      return queryResult(currentConsolidateds.filter(
+        (finding) => String(finding.scheduledAudit) === String(query.scheduledAudit) &&
+          (!query._id?.$in || query._id.$in.some(id => String(id) === String(finding._id)))
+      ));
     }
 
-    return currentConsolidateds;
+    return queryResult(currentConsolidateds);
   };
 
-  ConsolidatedFinding.findById = async (id) => {
+  ConsolidatedFinding.findById = (id) => {
     const stored = currentConsolidateds.find(
       (finding) => String(finding._id) === String(id)
     );
-    if (!stored) return null;
+    if (!stored) return queryResult(null);
 
-    return {
+    return queryResult({
       ...stored,
       sourceFindings: [...stored.sourceFindings],
       workflowHistory: [...stored.workflowHistory],
@@ -316,7 +345,7 @@ const resetState = () => {
         currentConsolidateds[index] = this;
         return this;
       },
-    };
+    });
   };
 
   ConsolidatedFinding.create = async (payload) => {
@@ -827,6 +856,7 @@ test("Submitted consolidated findings cannot be edited", async () => {
 });
 
 test("Lead Auditor can submit without every auditor having submitted", async () => {
+  currentFindings = [currentFindings[0]];
   const leadUser = makeUser({ name: "Assigned Lead" });
   const sourceId = currentFindings[0]._id;
 
@@ -874,4 +904,53 @@ test("Ordinary Auditor cannot submit consolidated findings as Lead Auditor", asy
     submitConsolidatedFinding(draft._id, user),
     { statusCode: 403 }
   );
+});
+
+
+test("consolidated partial and supplemental batches preserve earlier sources and are idempotent", async () => {
+  const lead = makeUser();
+  // Only sources submitted so far must be represented; pending Auditors are irrelevant.
+  currentFindings = [currentFindings[0]];
+  const first = await createConsolidatedFinding(currentAudit._id, {
+    title: "Initial NC", classification: "NC", sourceFindings: [currentFindings[0]._id],
+  }, lead);
+  const originalSource = JSON.stringify(currentFindings[0]);
+  const initialRequest = batchRequest();
+  await submitAllConsolidatedFindingsForAudit(currentAudit._id, lead, initialRequest);
+  const firstSnapshot = JSON.stringify(first);
+  currentFindings.push(makeSubmittedFinding(currentAudit._id));
+  const second = await createConsolidatedFinding(currentAudit._id, {
+    title: "Later OFI", classification: "OFI", sourceFindings: [currentFindings[1]._id],
+  }, lead);
+  const supplementalRequest = batchRequest();
+  const sent = await submitAllConsolidatedFindingsForAudit(currentAudit._id, lead, supplementalRequest);
+  assert.equal(sent.length, 1); assert.equal(sent[0]._id, second._id);
+  assert.equal(JSON.stringify(first), firstSnapshot); assert.equal(JSON.stringify(currentFindings[0]), originalSource);
+  await submitAllConsolidatedFindingsForAudit(currentAudit._id, lead, supplementalRequest);
+  assert.equal(currentHandover.supplementalHandovers.length, 1);
+  assert.equal(currentClaims.length, 2);
+});
+
+test("new ungrouped submitted sources block consolidated handover without silently incorporating them", async () => {
+  currentFindings = [currentFindings[0]];
+  await createConsolidatedFinding(currentAudit._id, { title: "NC", classification: "NC", sourceFindings: [currentFindings[0]._id] }, makeUser());
+  const confirmed = batchRequest(); currentFindings.push(makeSubmittedFinding(currentAudit._id));
+  await assert.rejects(submitAllConsolidatedFindingsForAudit(currentAudit._id, makeUser(), confirmed), { statusCode: 409 });
+  assert.equal(currentConsolidateds[0].workflowStatus, "consolidated_draft"); assert.equal(currentHandover, null);
+});
+
+test("a new consolidated draft makes a previously confirmed batch stale", async () => {
+  await createConsolidatedFinding(currentAudit._id, { title: "NC", classification: "NC", sourceFindings: [currentFindings[0]._id] }, makeUser());
+  const confirmed = batchRequest();
+  await createConsolidatedFinding(currentAudit._id, { title: "OFI", classification: "OFI", sourceFindings: [currentFindings[1]._id] }, makeUser());
+  await assert.rejects(submitAllConsolidatedFindingsForAudit(currentAudit._id, makeUser(), confirmed), { statusCode: 409 });
+  assert.equal(currentHandover, null);
+});
+
+
+test("the individual consolidated endpoint also rejects unreviewed submitted sources", async () => {
+  const lead = makeUser();
+  const draft = await createConsolidatedFinding(currentAudit._id, { title: "NC", classification: "NC", sourceFindings: [currentFindings[0]._id] }, lead);
+  await assert.rejects(submitConsolidatedFinding(draft._id, lead), { statusCode: 409 });
+  assert.equal(currentConsolidateds[0].workflowStatus, "consolidated_draft");
 });

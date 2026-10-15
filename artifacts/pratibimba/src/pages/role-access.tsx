@@ -1,10 +1,10 @@
+import { PrakalpaAssignments, assignmentNames } from "../components/management/prakalpa-assignments";
 import { FilterToolbar } from "../components/filters/filter-toolbar";
 import { FilterSelect } from "../components/filters/filter-select";
 import { useEffect, useMemo, useState } from "react";
 import { useApp, type AppUser, type Role } from "../context/app-context";
 import { getAdministrativeActivity, type AdministrativeActivity } from "../services/activityLogService";
 import { getUsers, updateUserRole, updateUser } from "../services/userService";
-import { getPrakalpas, type Prakalpa } from "../services/prakalpaService";
 import { getRoles, updateRole, createRole, deleteRole, type StoredRole } from "../services/roleService";
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -115,8 +115,9 @@ export default function RoleAccessPage() {
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
   const [target, setTarget] = useState<AppUser | null>(null);
   const [nextRole, setNextRole] = useState<Role>("auditor");
-  const [selectedPrakalpa, setSelectedPrakalpa] = useState("");
-  const [prakalpas, setPrakalpas] = useState<Prakalpa[]>([]);
+  const [selectedPrakalpas, setSelectedPrakalpas] = useState<string[]>([]);
+  const [replacementManagerId, setReplacementManagerId] = useState("");
+  const [assignmentsReady, setAssignmentsReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pageError, setPageError] = useState("");
   const [logError, setLogError] = useState("");
@@ -156,7 +157,6 @@ export default function RoleAccessPage() {
     if (!canAccess) return;
     void loadUsers();
     void loadRoles();
-    void getPrakalpas().then(setPrakalpas).catch(() => setPageError("Unable to load Prakalpas for role assignment."));
     if (isSuperAdmin) void loadLogs();
   }, [currentUser.role]);
 
@@ -184,8 +184,10 @@ export default function RoleAccessPage() {
     setPageError("");
     try {
       if (nextRole === "prakalpa_manager") {
-        if (!selectedPrakalpa) throw new Error("Select a Prakalpa for the Manager.");
-        await updateUser(target.id, { role: nextRole, prakalpa: selectedPrakalpa });
+        if (target.active && !selectedPrakalpas.length) throw new Error("Select a Prakalpa for the Manager.");
+        await updateUser(target.id, { role: nextRole, assignedPrakalpas: selectedPrakalpas, ...(replacementManagerId ? { replacementManagerId } : {}) });
+      } else if (replacementManagerId) {
+        await updateUser(target.id, { role: nextRole, replacementManagerId });
       } else {
         await updateUserRole(target.id, nextRole);
       }
@@ -341,7 +343,7 @@ export default function RoleAccessPage() {
                   <td className="px-4 py-3 text-right">
                     <button
                       type="button"
-                      onClick={() => { setTarget(user); setNextRole(user.role); setSelectedPrakalpa(user.prakalpa ?? ""); }}
+                      onClick={() => { setReplacementManagerId(""); setTarget(user); setNextRole(user.role); setSelectedPrakalpas(user.role === "prakalpa_manager" ? assignmentNames(user) : []); }}
                       disabled={saving || (!isSuperAdmin && user.role === "super_admin")}
                       className="rounded-lg border border-outline-variant px-3 py-1.5 text-xs font-bold text-primary enabled:hover:bg-primary/5 disabled:opacity-40"
                     >
@@ -406,13 +408,14 @@ export default function RoleAccessPage() {
             >
               {ROLE_OPTIONS.filter((role) => role !== "super_admin" || isSuperAdmin).map((role) => <option key={role} value={role}>{ROLE_META[role].label}</option>)}
             </select>
-            {nextRole === "prakalpa_manager" && <select aria-label="Manager Prakalpa" value={selectedPrakalpa} onChange={(event) => setSelectedPrakalpa(event.target.value)} className="mt-3 w-full rounded-lg border bg-white px-3 py-2">
-              <option value="">Select Prakalpa…</option>
-              {prakalpas.map((prakalpa) => <option key={prakalpa._id ?? prakalpa.name} value={prakalpa.name}>{prakalpa.name}</option>)}
+            {nextRole === "prakalpa_manager" && <PrakalpaAssignments managers={users} userId={target.id} key={target.id} value={selectedPrakalpas} onChange={setSelectedPrakalpas} onReady={setAssignmentsReady} />}
+            {target.role === "prakalpa_manager" && target.active && <select aria-label="Role change replacement Manager" value={replacementManagerId} onChange={event => setReplacementManagerId(event.target.value)} className="mt-3 w-full rounded-lg border px-3 py-2">
+              <option value="">No transfer — preserve current coverage</option>
+              {users.filter(user => user.active && user.role === "prakalpa_manager" && user.id !== target.id).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
             </select>}
             <div className="mt-5 flex justify-end gap-3">
               <button type="button" onClick={() => setTarget(null)} disabled={saving} className="rounded-lg border border-outline-variant px-4 py-2 text-sm">Cancel</button>
-              <button type="button" onClick={() => void saveRole()} disabled={saving || (nextRole === target.role && (nextRole !== "prakalpa_manager" || selectedPrakalpa === target.prakalpa)) || (nextRole === "prakalpa_manager" && !selectedPrakalpa)} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50">
+              <button type="button" onClick={() => void saveRole()} disabled={saving || (nextRole === target.role && (nextRole !== "prakalpa_manager" || JSON.stringify(selectedPrakalpas) === JSON.stringify(assignmentNames(target)))) || (nextRole === "prakalpa_manager" && (!assignmentsReady || (target.active && !selectedPrakalpas.length)))} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50">
                 {saving ? "Saving…" : "Confirm change"}
               </button>
             </div>

@@ -15,6 +15,8 @@ const originalMethods = {
   startSession: mongoose.startSession,
   findById: User.findById,
   userFindOne: User.findOne,
+  userFind: User.find,
+  prakalpaFind: Prakalpa.find,
   createUser: User.create,
   countDocuments: User.countDocuments,
   roleFindOne: Role.findOne,
@@ -71,6 +73,9 @@ beforeEach(() => {
   Role.findOne = ({ name }) => makeUserQuery({ name, active: true });
   User.findOne = () => makeUserQuery(null);
   Prakalpa.findOne = () => makeUserQuery({ name: "Valid" });
+  const query = value => ({ select() { return this; }, session() { return this; }, lean: async () => value });
+  User.find = () => query(target.role === "prakalpa_manager" ? [target] : []);
+  Prakalpa.find = () => query([{ name: "Valid", active: true }]);
   ActivityLog.create = async (event) => {
     activityLogs.push(...event);
     return event;
@@ -81,6 +86,8 @@ afterEach(() => {
   mongoose.startSession = originalMethods.startSession;
   User.findById = originalMethods.findById;
   User.findOne = originalMethods.userFindOne;
+  User.find = originalMethods.userFind;
+  Prakalpa.find = originalMethods.prakalpaFind;
   User.create = originalMethods.createUser;
   User.countDocuments = originalMethods.countDocuments;
   Role.findOne = originalMethods.roleFindOne;
@@ -159,7 +166,7 @@ test("Prakalpa Manager assignment requires an existing Prakalpa", async () => {
   target.prakalpa = "";
   await assert.rejects(
     changeUserRole("target-id", "prakalpa_manager", actor),
-    { statusCode: 400, message: "Prakalpa Manager must have a prakalpa" }
+    { statusCode: 400, message: "Select Prakalpas for the new Manager." }
   );
 });
 
@@ -292,9 +299,9 @@ test("PUT validates resulting manager assignment and role availability", async (
   await assert.rejects(updateUser("target-id", { role: "prakalpa_manager" }, actor), { statusCode: 400 });
   target.role = "prakalpa_manager";
   target.prakalpa = "Valid";
-  await assert.rejects(updateUser("target-id", { prakalpa: "" }, actor), { statusCode: 400 });
+  await assert.rejects(updateUser("target-id", { prakalpa: "" }, actor), { statusCode: 409 });
   Prakalpa.findOne = () => makeUserQuery(null);
-  await assert.rejects(updateUser("target-id", { prakalpa: "Missing" }, actor), { statusCode: 400 });
+  await assert.rejects(updateUser("target-id", { prakalpa: "Missing" }, actor), { statusCode: 409 });
   Role.findOne = () => makeUserQuery(null);
   await assert.rejects(updateUser("target-id", { role: "auditor" }, actor), { statusCode: 400 });
 });

@@ -1,7 +1,8 @@
+import { PrakalpaAssignments, assignmentNames } from "../components/management/prakalpa-assignments";
 import { FilterToolbar } from "../components/filters/filter-toolbar";
 import { FilterSelect } from "../components/filters/filter-select";
 import { useState } from "react";
-import { useApp, type AppUser, type Role, PRAKALPAS } from "../context/app-context";
+import { useApp, type AppUser, type Role } from "../context/app-context";
 import { useEffect } from "react";
 
 import {
@@ -31,6 +32,8 @@ type UserFormData = {
   active: boolean;
   phone: string;
   prakalpa: string;
+  assignedPrakalpas: string[];
+  replacementManagerId?: string;
 };
 
 const emptyForm = (): UserFormData => ({
@@ -41,22 +44,29 @@ const emptyForm = (): UserFormData => ({
   active: true,
   phone: "",
   prakalpa: "",
+  assignedPrakalpas: [],
 });
 
 interface UserFormProps {
   initial: UserFormData;
   onSave: (data: UserFormData) => void;
   currentUserRole: Role;
+  managers: AppUser[];
+  userId?: string;
   error?: string;
   onCancel: () => void;
   isEdit?: boolean;
 }
 
-function UserForm({ initial, onSave, currentUserRole, error, onCancel, isEdit }: UserFormProps) {
+function UserForm({ initial, onSave, currentUserRole, error, onCancel, isEdit, managers, userId }: UserFormProps) {
   const [form, setForm] = useState(initial);
-  const set = (k: keyof typeof form, v: string | boolean) => setForm((f) => ({ ...f, [k]: v }));
+  const [assignmentsReady, setAssignmentsReady] = useState(false);
+  const set = (k: keyof typeof form, v: string | boolean) => setForm((f) => ({ ...f, [k]: v, ...(k === "role" && v === "prakalpa_manager" && f.role !== "prakalpa_manager" ? { assignedPrakalpas: [] } : {}) }));
 
+  const unchangedManagerAssignment = isEdit && initial.role === "prakalpa_manager" && form.role === initial.role && form.active === initial.active && JSON.stringify(form.assignedPrakalpas) === JSON.stringify(initial.assignedPrakalpas);
   const valid =
+  (form.role !== "prakalpa_manager" || !form.active || form.assignedPrakalpas.length > 0 || unchangedManagerAssignment) &&
+  (form.role !== "prakalpa_manager" || assignmentsReady || (isEdit && initial.role === form.role && JSON.stringify(form.assignedPrakalpas) === JSON.stringify(initial.assignedPrakalpas))) &&
   form.name.trim() !== "" &&
   form.email.trim() !== "" &&
   form.email.includes("@") &&
@@ -127,19 +137,16 @@ function UserForm({ initial, onSave, currentUserRole, error, onCancel, isEdit }:
           </div>
 
           {form.role === "prakalpa_manager" && (
-            <div>
-              <label className="font-label-md text-on-surface-variant block mb-1">Prakalpa</label>
-              <select
-                value={form.prakalpa ?? ""}
-                onChange={(e) => set("prakalpa", e.target.value)}
-                className="w-full border border-outline-variant rounded-lg px-3 py-2.5 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              >
-                <option value="">Select prakalpa…</option>
-                {PRAKALPAS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
+            <PrakalpaAssignments managers={managers} userId={userId} value={form.assignedPrakalpas} onReady={setAssignmentsReady}
+              onChange={names => setForm(previous => ({ ...previous, assignedPrakalpas: names }))} />
           )}
 
+          {initial.role === "prakalpa_manager" && initial.active && <label className="block text-sm">Replacement Manager for released active Prakalpas
+            <select aria-label="Replacement Manager" value={form.replacementManagerId || ""} onChange={event => set("replacementManagerId", event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2">
+              <option value="">No transfer — preserve current coverage</option>
+              {managers.filter(manager => manager.active && manager.role === "prakalpa_manager" && manager.id !== userId).map(manager => <option key={manager.id} value={manager.id}>{manager.name}</option>)}
+            </select>
+          </label>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Phone (optional)</label>
@@ -181,6 +188,7 @@ export default function UserManagement() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editUser, setEditUser] = useState<AppUser | null>(null);
+  const [replacementManagerId, setReplacementManagerId] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<AppUser | null>(null);
   const [filterRole, setFilterRole] = useState<Role | "all">("all");
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
@@ -202,7 +210,9 @@ export default function UserManagement() {
       }
     }
 
-    loadUsers();
+    void loadUsers();
+    window.addEventListener("focus", loadUsers);
+    return () => window.removeEventListener("focus", loadUsers);
   }, [currentUser.role]);
   if (currentUser.role !== "super_admin") {
     return (
@@ -316,7 +326,7 @@ export default function UserManagement() {
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${meta.color}`}>{meta.label}</span>
                   </td>
                   <td className="px-5 py-3.5">
-                    <span className="font-body-md text-on-surface-variant text-[12px]">{u.prakalpa || "—"}</span>
+                    <span className="font-body-md text-on-surface-variant text-[12px]">{(u.role === "prakalpa_manager" && !u.active && assignmentNames(u).length ? "Historical: " : "") + (assignmentNames(u).join(", ") || (u.role === "prakalpa_manager" ? "Assignments require reconciliation" : "—"))}</span>
                   </td>
                   <td className="px-5 py-3.5">
                     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${u.active ? "bg-primary/10 text-primary" : "bg-error/10 text-error"}`}>
@@ -348,7 +358,7 @@ export default function UserManagement() {
                         onClick={() => {
                           if (!canManageUser(u.role)) return;
                           setFormError("");
-                          setConfirmDelete(u);
+                          setReplacementManagerId(""); setFormError(""); setConfirmDelete(u);
                         }}
                         disabled={!canManageUser(u.role)}
                         className="p-1.5 rounded-lg hover:bg-error/10 text-on-surface-variant/60 hover:text-error transition-colors"
@@ -369,6 +379,7 @@ export default function UserManagement() {
       {/* Add / Edit form modal */}
       {showForm && (
         <UserForm
+          managers={users} userId={editUser?.id}
           currentUserRole={currentUser.role}
           error={formError}
           initial={
@@ -380,6 +391,7 @@ export default function UserManagement() {
                   role: editUser.role,
                   phone: editUser.phone ?? "",
                   prakalpa: editUser.prakalpa ?? "",
+                  assignedPrakalpas: assignmentNames(editUser),
                   active: editUser.active,
                 }
               : emptyForm()
@@ -390,10 +402,12 @@ export default function UserManagement() {
             setFormError("");
             try {
               if (editUser) {
-                const { password: _password, ...profile } = data;
-                await updateUser(editUser.id, profile);
+                const { password: _password, prakalpa: _legacy, assignedPrakalpas, ...profile } = data;
+                const unchanged = profile.role === editUser.role && JSON.stringify(assignedPrakalpas) === JSON.stringify(assignmentNames(editUser));
+                await updateUser(editUser.id, { ...profile, ...(unchanged ? {} : { assignedPrakalpas }) });
               } else {
-                await createUser(data);
+                const { prakalpa: _legacy, ...creation } = data;
+                await createUser(creation);
               }
 
               await refreshLiveData();
@@ -430,12 +444,16 @@ export default function UserManagement() {
               This will deactivate <strong>{confirmDelete.name}</strong>. The user will no longer be able to access the platform.
             </p>
             {formError && <p role="alert" className="mb-4 text-sm text-error">{formError}</p>}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
+            {confirmDelete.role === "prakalpa_manager" && <select aria-label="Deactivation replacement Manager" value={replacementManagerId} onChange={event => setReplacementManagerId(event.target.value)} className="w-full rounded-lg border px-3 py-2">
+            <option value="">Select replacement Manager for active Prakalpas…</option>
+            {users.filter(user => user.active && user.role === "prakalpa_manager" && user.id !== confirmDelete.id).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+          </select>}
+            <div className="mt-3 flex flex-col sm:flex-row gap-3">
+          <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
               <button
                 onClick={async () => {
                   try {
-                    await deleteUser(confirmDelete.id);
+                    await deleteUser(confirmDelete.id, replacementManagerId || undefined);
                     await refreshLiveData();
 
                     const response = await getUsers().catch(() => null);

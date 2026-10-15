@@ -3,6 +3,7 @@ import multer from "multer";
 import { Readable } from "node:stream";
 import AuditFinding from "../models/AuditFinding.js";
 import AuditorSubmission from "../models/AuditorSubmission.js";
+import CoordinatorBatchClosure from "../models/CoordinatorBatchClosure.js";
 import ScheduledAudit from "../models/ScheduledAudit.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../middleware/asyncHandler.js";
@@ -25,7 +26,7 @@ const getContext = async (req) => {
   const audit = await ScheduledAudit.findById(finding.scheduledAudit);
   if (!audit) throw new AppError("Scheduled audit not found",409);
   const role = req.user.role, name = String(req.user.name || "").trim();
-  const isAuditor = role === "auditor" && String(finding.submittedBy) === String(req.user._id) && (audit.auditors || []).includes(name);
+  const isAuditor = role === "auditor" && String(finding.submittedBy) === String(req.user._id) && ((audit.auditors || []).includes(name) || String(audit.leadAuditor || "").trim() === name);
   const isLead = role === "auditor" && audit.leadAuditor === name;
   const isCoordinator = role === "audit_coordinator" && audit.auditCoordinator === name;
   const isAdmin = role === "admin" || role === "super_admin";
@@ -38,6 +39,9 @@ export const uploadFindingEvidence = asyncHandler(async (req,res) => {
   if (!req.file || !allowed.has(req.file.mimetype) || !validSignature(req.file.buffer,req.file.mimetype)) throw new AppError("Upload a valid JPEG, PNG, WebP or PDF",400);
   const originalName = String(req.file.originalname || "evidence").replace(/[\\/\x00-\x1f]/g,"_").slice(0,140);
   const isDraft = isAuditor && finding.workflowStatus === "auditor_draft";
+  if ((isDraft || isLead) && await CoordinatorBatchClosure.exists({ scheduledAudit: audit._id })) {
+    throw new AppError("The Coordinator has finalized this audit; evidence is locked.", 409);
+  }
   if (isDraft && await AuditorSubmission.exists({ scheduledAudit: audit._id, auditor: req.user._id })) {
     throw new AppError("Final batch already submitted; Auditor evidence is locked.", 409);
   }

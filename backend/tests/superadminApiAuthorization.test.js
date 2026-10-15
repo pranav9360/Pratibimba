@@ -24,6 +24,7 @@ const originalRoleFindOne = Role.findOne;
 const originalRoleFindById = Role.findById;
 const originalRoleCreate = Role.create;
 const originalPrakalpaFindOne = Prakalpa.findOne;
+const originalPrakalpaFind = Prakalpa.find;
 const originalUserCreate = User.create;
 const originalUserFindOne = User.findOne;
 const originalActivityLogFind = ActivityLog.find;
@@ -102,15 +103,16 @@ before(async () => {
   User.find = (filter = {}) => {
     let projection;
     const selected = () => Object.values(users).filter(user =>
-      (!filter.active || user.active === true) && (!filter.role?.$in || filter.role.$in.includes(user.role))
+      (!filter.active || user.active === true) && (typeof filter.role === "string" ? filter.role === user.role : !filter.role?.$in || filter.role.$in.includes(user.role))
     ).map(user => projection === "_id name role" ? { _id: user._id, name: user.name, role: user.role } : user);
-    return { select(fields) { projection = fields; return this; }, sort() { return this; },
+    return { session() { return this; }, select(fields) { projection = fields; return this; }, sort() { return this; },
       lean: async () => selected(), then(resolve, reject) { return Promise.resolve(selected()).then(resolve, reject); } };
   };
   Role.find = () => ({
     sort: async () => [{ name: "auditor" }],
   });
   Role.findOne = ({ name, active }) => userQuery(active ? { name, active: true } : null);
+  Prakalpa.find = () => ({ select() { return this; }, session() { return this; }, lean: async () => [{ name: "Valid Prakalpa", active: true }] });
   Prakalpa.findOne = ({ name }) => userQuery(name === "Valid Prakalpa" ? { name } : null);
   Role.findById = (id) => {
     const definition = new Role({ name: id === "role-superadmin" ? "super_admin" : "admin" });
@@ -159,6 +161,7 @@ after(async () => {
   Role.findById = originalRoleFindById;
   Role.create = originalRoleCreate;
   Prakalpa.findOne = originalPrakalpaFindOne;
+  Prakalpa.find = originalPrakalpaFind;
   User.create = originalUserCreate;
   User.findOne = originalUserFindOne;
   ActivityLog.find = originalActivityLogFind;
@@ -377,4 +380,19 @@ test("audit-person directory preserves Admin selectors and exposes only eligible
     }
     assert.equal((await request("admin", "/users/audit-directory", { method: "PUT", body: JSON.stringify({ name: "Forbidden" }) })).status, 403);
   } finally { Object.assign(users.target, originalTarget); }
+});
+
+
+test("DELETE forwards the explicitly selected replacement Manager to the atomic service", async () => {
+  const previousTarget = users.target, previousManager = users.manager, previousLookup = User.findById;
+  const replacementId = "aaaaaaaaaaaaaaaaaaaaaaaa";
+  users.target = { ...previousTarget, role: "prakalpa_manager", prakalpa: "Valid Prakalpa", assignedPrakalpas: ["Valid Prakalpa"], active: true };
+  users.manager = { ...previousManager, _id: replacementId, assignedPrakalpas: [], prakalpa: "", save: async () => {} };
+  User.findById = value => value === replacementId ? userQuery(users.manager) : previousLookup(value);
+  try {
+    const result = await request("superadmin", "/users/target", { method: "DELETE", body: JSON.stringify({ replacementManagerId: replacementId }) });
+    assert.equal(result.status, 200);
+    assert.equal(users.target.active, false);
+    assert.deepEqual(users.manager.assignedPrakalpas, ["Valid Prakalpa"]);
+  } finally { users.target = previousTarget; users.manager = previousManager; User.findById = previousLookup; }
 });

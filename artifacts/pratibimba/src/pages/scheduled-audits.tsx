@@ -158,7 +158,7 @@ const [editAuditors, setEditAuditors] =
       );
       if (currentUser.role === "auditor") {
         const assigned = (Array.isArray(data) ? data : []).filter(
-          (audit) => (audit.auditors || []).includes(currentUser.name || "")
+          (audit) => (audit.auditors || []).includes(currentUser.name || "") || audit.leadAuditor === currentUser.name
         );
         const statuses = await Promise.all(
           assigned.map(async (audit) => {
@@ -272,9 +272,9 @@ const [editAuditors, setEditAuditors] =
     }
 
     if (
-      (audit.auditors || []).includes(
+      !(audit.auditors || []).includes(
         currentUser.name || ""
-      ) === false
+      ) && audit.leadAuditor !== currentUser.name
     ) {
       return false;
     }

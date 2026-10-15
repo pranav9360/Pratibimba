@@ -8,7 +8,7 @@ import * as prakalpaService from "../services/prakalpaService.js";
 export const getPrakalpas =
   asyncHandler(async (req, res) => {
     const prakalpas =
-      await prakalpaService.getPrakalpas(req.user);
+      await prakalpaService.getPrakalpas(req.user, req.query.includeInactive === "true");
 
     res.status(200).json(
       new ApiResponse(

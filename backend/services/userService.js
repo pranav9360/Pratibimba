@@ -1,6 +1,5 @@
 import User from "../models/User.js";
 import Role from "../models/Role.js";
-import Prakalpa from "../models/Prakalpa.js";
 import AppError from "../utils/AppError.js";
 import { recordActivity, userActivityTarget } from "./activityLogService.js";
 import {
@@ -8,6 +7,7 @@ import {
   assertSupportedRole,
 } from "./userRolePolicy.js";
 import { assertSuperAdmin, withAdministrativeMutation as withAccountMutation } from "./administrativeMutation.js";
+import { prepareManagerAssignments, managerMutationRequested, validateManagerMutation, transferReleasedAssignments } from "./managerAssignments.js";
 import { markPasswordChanged } from "../utils/passwordSessions.js";
 
 const EDITABLE_FIELDS = new Set([
@@ -43,15 +43,10 @@ const editableData = (data) => {
   }
   return Object.fromEntries(Object.entries(data).filter(([key]) => EDITABLE_FIELDS.has(key)));
 };
-const validateAssignment = async (roleName, prakalpaName, session) => {
+const validateRole = async (roleName, session) => {
   assertSupportedRole(roleName);
   const role = await Role.findOne({ name: roleName, active: true }).session(session);
   if (!role) throw new AppError("Role is not available", 400);
-  if (roleName === "prakalpa_manager") {
-    if (!prakalpaName) throw new AppError("Prakalpa Manager must have a prakalpa", 400);
-    const prakalpa = await Prakalpa.findOne({ name: prakalpaName }).session(session);
-    if (!prakalpa) throw new AppError("Invalid prakalpa", 400);
-  }
 };
 const accountSnapshot = (user) => ({
   role: user.role,
@@ -140,9 +135,11 @@ export const createUser = async (data, currentUser = null) => {
   return withAccountMutation(currentUser, async (actor, session) => {
     const existing = await User.findOne({ email: fields.email.toLowerCase() }).session(session);
     if (existing) throw new AppError("Email already exists", 409);
-    await validateAssignment(fields.role, fields.prakalpa, session);
+    const assignmentFields = prepareManagerAssignments(fields);
+    await validateRole(fields.role, session);
     if (!fields.phone?.trim()) delete fields.phone;
-    const [user] = await User.create([fields], { session });
+    const [user] = await User.create([assignmentFields], { session });
+    if (user.role === "prakalpa_manager") await validateManagerMutation(null, user, session);
     await recordAdministrativeChange({
       actor, target: user, action: "user_role_changed",
       oldValue: { role: null }, newValue: { role: user.role }, session,
@@ -156,25 +153,35 @@ export const updateUser = async (id, data, currentUser = null) => {
   // The original profile API treats an empty password as "leave unchanged".
   const profile = { ...data };
   if (typeof profile.password === "string" && !profile.password.trim()) delete profile.password;
-  const fields = editableData(profile);
+  const { replacementManagerId, ...userProfile } = profile;
+  if (replacementManagerId !== undefined && typeof replacementManagerId !== "string") throw new AppError("Invalid replacement Manager.", 400);
+  const fields = editableData(userProfile);
   return withAccountMutation(currentUser, async (actor, session) => {
     const target = await User.findById(id).session(session);
     if (!target) throw new AppError("User not found", 404);
+    const assignmentChange = managerMutationRequested(target, fields);
+    const safeFields = assignmentChange ? prepareManagerAssignments(fields, target) : fields;
+    const previousAssignment = { _id: target._id, role: target.role, active: target.active,
+      prakalpa: target.prakalpa, assignedPrakalpas: [...(target.assignedPrakalpas || [])] };
     const nextRole = fields.role ?? target.role;
     const nextActive = fields.active ?? target.active;
     if ((target.role === "super_admin" || nextRole === "super_admin") && actor.role !== "super_admin") {
       throw new AppError("Only a Superadmin can modify or assign a Superadmin account.", 403);
     }
     await assertSuperAdminRemains(target, nextRole, nextActive, session);
-    await validateAssignment(nextRole, fields.prakalpa ?? target.prakalpa, session);
+    await validateRole(nextRole, session);
     if (fields.email && fields.email.toLowerCase() !== target.email) {
       const existing = await User.findOne({ email: fields.email.toLowerCase() }).session(session);
       if (existing) throw new AppError("Email already exists", 409);
     }
     const before = accountSnapshot(target);
-    for (const [key, value] of Object.entries(fields)) target[key] = value;
+    for (const [key, value] of Object.entries(safeFields)) target[key] = value;
     if (fields.password !== undefined) markPasswordChanged(target);
     await target.save({ session });
+    const transfer = await transferReleasedAssignments(previousAssignment, target, replacementManagerId, session);
+    if (assignmentChange || transfer) await validateManagerMutation(previousAssignment, target, session);
+    if (transfer) await recordAdministrativeChange({ actor, target: transfer.replacement, action: "user_account_updated",
+      oldValue: transfer.previous, newValue: accountSnapshot(transfer.replacement), session });
     const after = accountSnapshot(target);
     if (JSON.stringify(before) !== JSON.stringify(after) || fields.password !== undefined) await recordAdministrativeChange({
       actor, target,
@@ -193,7 +200,8 @@ export const changeUserRole = async (id, nextRole, currentUser = null) => {
   return updateUser(id, { role: nextRole }, currentUser);
 };
 
-export const deleteUser = async (id, currentUser = null) => {
+export const deleteUser = async (id, currentUser = null, replacementManagerId = undefined) => {
+  if (replacementManagerId !== undefined && typeof replacementManagerId !== "string") throw new AppError("Invalid replacement Manager.", 400);
   return withAccountMutation(currentUser, async (actor, session) => {
     const target = await User.findById(id).session(session);
     if (!target) throw new AppError("User not found", 404);
@@ -203,8 +211,14 @@ export const deleteUser = async (id, currentUser = null) => {
     if (target.active === false) return publicUser(target);
     await assertSuperAdminRemains(target, target.role, false, session);
     const before = accountSnapshot(target);
+    const previousAssignment = { _id: target._id, role: target.role, active: target.active,
+      prakalpa: target.prakalpa, assignedPrakalpas: [...(target.assignedPrakalpas || [])] };
     target.active = false;
     await target.save({ session });
+    const transfer = await transferReleasedAssignments(previousAssignment, target, replacementManagerId, session);
+    if (target.role === "prakalpa_manager") await validateManagerMutation(previousAssignment, target, session);
+    if (transfer) await recordAdministrativeChange({ actor, target: transfer.replacement, action: "user_account_updated",
+      oldValue: transfer.previous, newValue: accountSnapshot(transfer.replacement), session });
     await recordAdministrativeChange({
       actor, target, session,
       action: target.role === "super_admin" ? "superadmin_account_updated" : "user_account_updated",

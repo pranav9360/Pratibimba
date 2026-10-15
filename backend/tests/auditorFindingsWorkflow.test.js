@@ -6,6 +6,7 @@ import AuditFinding from "../models/AuditFinding.js";
 import ScheduledAudit from "../models/ScheduledAudit.js";
 import Report from "../models/Report.js";
 import AuditorSubmission from "../models/AuditorSubmission.js";
+import CoordinatorBatchClosure from "../models/CoordinatorBatchClosure.js";
 import auditFindingRoutes from "../routes/auditFindingRoutes.js";
 
 import {
@@ -24,6 +25,11 @@ const originalReportFindOne = Report.findOne;
 const originalReportExists = Report.exists;
 const originalReportCreate = Report.create;
 const originalSubmissionExists = AuditorSubmission.exists;
+
+const query = value => ({ then: (resolve, reject) => Promise.resolve(value).then(resolve, reject), session: async () => value });
+const originalStartSessionDefault = mongoose.startSession;
+const originalAuditUpdateOne = ScheduledAudit.updateOne;
+const originalClosureExists = CoordinatorBatchClosure.exists;
 
 const makeUser = (
   over = {}
@@ -63,6 +69,9 @@ const restoreMocks = () => {
   Report.exists = originalReportExists;
   Report.create = originalReportCreate;
   AuditorSubmission.exists = originalSubmissionExists;
+  mongoose.startSession = originalStartSessionDefault;
+  ScheduledAudit.updateOne = originalAuditUpdateOne;
+  CoordinatorBatchClosure.exists = originalClosureExists;
 };
 
 test.after(() => {
@@ -71,7 +80,10 @@ test.after(() => {
 
 test.beforeEach(() => {
   restoreMocks();
-  AuditorSubmission.exists = async () => null;
+  AuditorSubmission.exists = () => query(null);
+  CoordinatorBatchClosure.exists = () => query(null);
+  ScheduledAudit.updateOne = async () => ({ modifiedCount: 1 });
+  mongoose.startSession = async () => ({ withTransaction: async fn => fn(), endSession: async () => {} });
 });
 
 test("Assigned Auditor can create a draft", async () => {
@@ -86,7 +98,7 @@ test("Assigned Auditor can create a draft", async () => {
     ...payload,
     _id: new mongoose.Types.ObjectId().toString(),
   });
-  ScheduledAudit.findById = async () => audit;
+  ScheduledAudit.findById = () => query(audit);
 
   const result = await createAuditFindingDraft(
     audit._id,
@@ -111,7 +123,7 @@ test("Completed consolidated audit rejects Auditor draft creation", async () => 
   const user = makeUser();
   let created = false;
 
-  ScheduledAudit.findById = async () => audit;
+  ScheduledAudit.findById = () => query(audit);
   AuditFinding.create = async () => {
     created = true;
     throw new Error("Creation must not be reached");
@@ -147,8 +159,8 @@ test("Completed consolidated audit rejects Auditor draft editing", async () => {
     async save() { saved = true; },
   };
 
-  ScheduledAudit.findById = async () => audit;
-  AuditFinding.findById = async () => finding;
+  ScheduledAudit.findById = () => query(audit);
+  AuditFinding.findById = () => query(finding);
 
   await assert.rejects(
     updateAuditFindingDraft(
@@ -180,8 +192,8 @@ test("Completed consolidated audit rejects Auditor draft submission", async () =
     async save() { saved = true; },
   };
 
-  ScheduledAudit.findById = async () => audit;
-  AuditFinding.findById = async () => finding;
+  ScheduledAudit.findById = () => query(audit);
+  AuditFinding.findById = () => query(finding);
 
   await assert.rejects(
     submitAuditFindingDraft(finding._id, user),
@@ -222,7 +234,7 @@ test("Consolidated draft submission uses the transaction barrier", async () => {
   const originalFindOneAndUpdate = ScheduledAudit.findOneAndUpdate;
 
   try {
-    ScheduledAudit.findById = async () => audit;
+    ScheduledAudit.findById = () => query(audit);
 
     let findingReads = 0;
 
@@ -295,8 +307,8 @@ test("Consolidated draft submission rejects completion at the barrier", async ()
   const originalFindOneAndUpdate = ScheduledAudit.findOneAndUpdate;
 
   try {
-    ScheduledAudit.findById = async () => audit;
-    AuditFinding.findById = async () => finding;
+    ScheduledAudit.findById = () => query(audit);
+    AuditFinding.findById = () => query(finding);
 
     ScheduledAudit.findOneAndUpdate = async () => null;
 
@@ -335,7 +347,7 @@ test("Direct consolidated submission uses the transaction barrier", async () => 
   let createdPayload;
 
   try {
-    ScheduledAudit.findById = async () => audit;
+    ScheduledAudit.findById = () => query(audit);
 
     ScheduledAudit.findOneAndUpdate = async (
       filter,
@@ -396,7 +408,7 @@ test("Direct consolidated submission rejects completed audit at barrier", async 
   let created = false;
 
   try {
-    ScheduledAudit.findById = async () => audit;
+    ScheduledAudit.findById = () => query(audit);
     ScheduledAudit.findOneAndUpdate = async () => null;
 
     mongoose.startSession = async () => ({
@@ -439,7 +451,7 @@ test("Unassigned Auditor cannot create a draft", async () => {
     name: "Auditor One",
   });
 
-  ScheduledAudit.findById = async () => audit;
+  ScheduledAudit.findById = () => query(audit);
 
   await assert.rejects(
     createAuditFindingDraft(
@@ -476,8 +488,8 @@ test("Auditor cannot edit another Auditor's draft", async () => {
     async save() {},
   };
 
-  AuditFinding.findById = async () => finding;
-  ScheduledAudit.findById = async () => audit;
+  AuditFinding.findById = () => query(finding);
+  ScheduledAudit.findById = () => query(audit);
 
   await assert.rejects(
     updateAuditFindingDraft(
@@ -507,8 +519,8 @@ test("Submitted findings cannot be edited through draft endpoints", async () => 
     async save() {},
   };
 
-  AuditFinding.findById = async () => finding;
-  ScheduledAudit.findById = async () => audit;
+  AuditFinding.findById = () => query(finding);
+  ScheduledAudit.findById = () => query(audit);
 
   await assert.rejects(
     updateAuditFindingDraft(
@@ -547,8 +559,8 @@ test("Draft submission transitions correctly into Lead Auditor review", async ()
     async save() {},
   };
 
-  AuditFinding.findById = async () => finding;
-  ScheduledAudit.findById = async () => audit;
+  AuditFinding.findById = () => query(finding);
+  ScheduledAudit.findById = () => query(audit);
 
   const result = await submitAuditFindingDraft(
     finding._id,
@@ -592,7 +604,7 @@ test("October 14 versus October 15 boundary in Asia/Kolkata", async () => {
     ...payload,
     _id: new mongoose.Types.ObjectId().toString(),
   });
-  ScheduledAudit.findById = async () => audit;
+  ScheduledAudit.findById = () => query(audit);
 
   try {
     global.Date = makeMockDate("2026-10-14T18:00:00Z");
@@ -655,8 +667,8 @@ test("IQR generation requires a completed IQA and individually completed finding
     async save() {},
   };
 
-  AuditFinding.findById = async () => finding;
-  ScheduledAudit.findById = async () => audit;
+  AuditFinding.findById = () => query(finding);
+  ScheduledAudit.findById = () => query(audit);
   Report.find = () => ({
     lean: async () => [],
   });

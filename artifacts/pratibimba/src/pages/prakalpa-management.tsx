@@ -1,6 +1,8 @@
 import { FilterToolbar } from "../components/filters/filter-toolbar";
 import { useEffect, useMemo, useState } from "react";
-import { useApp } from "../context/app-context";
+import { getUsers } from "../services/userService";
+import { assignmentNames } from "../components/management/prakalpa-assignments";
+import { useApp, type AppUser } from "../context/app-context";
 import {
   createPrakalpa,
   deletePrakalpa,
@@ -22,6 +24,13 @@ function getId(item: { _id?: string; id?: string }) {
 
 export default function PrakalpaManagementPage() {
   const { currentUser } = useApp();
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [managerId, setManagerId] = useState("");
+  const [initialManagerId, setInitialManagerId] = useState("");
+  const [createManager, setCreateManager] = useState(false);
+  const [newManager, setNewManager] = useState({ name: "", email: "", password: "" });
+  const [prakalpaActive, setPrakalpaActive] = useState(true);
+  const managersFor = (name: string) => users.filter(user => user.role === "prakalpa_manager" && user.active && assignmentNames(user).includes(name));
   const [prakalpas, setPrakalpas] = useState<Prakalpa[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,11 +60,14 @@ export default function PrakalpaManagementPage() {
     setError("");
 
     try {
-      const [p, l] = await Promise.all([
-        getPrakalpas(),
+      const [p, l, u] = await Promise.all([
+        getPrakalpas(true),
         getLocations(),
+        getUsers(),
       ]);
 
+      if (!u.success || !Array.isArray(u.data)) throw new Error("Unable to load Manager accounts.");
+      setUsers(u.data);
       setPrakalpas(p);
       setLocations(l);
     } catch (err: any) {
@@ -69,7 +81,10 @@ export default function PrakalpaManagementPage() {
   }
 
   useEffect(() => {
-    if (currentUser.role === "super_admin") void loadData();
+    if (currentUser.role !== "super_admin") return;
+    void loadData();
+    window.addEventListener("focus", loadData);
+    return () => window.removeEventListener("focus", loadData);
   }, [currentUser.role]);
 
   const filteredPrakalpas = useMemo(() => {
@@ -96,6 +111,8 @@ export default function PrakalpaManagementPage() {
   }, [prakalpas, locations, search]);
 
   function openCreatePrakalpa() {
+    void loadData();
+    setManagerId(""); setInitialManagerId(""); setCreateManager(false); setNewManager({ name: "", email: "", password: "" }); setPrakalpaActive(true);
     setEditingPrakalpa(null);
     setPrakalpaName("");
     setInitialLocation("");
@@ -109,6 +126,10 @@ export default function PrakalpaManagementPage() {
   }
 
   function openEditPrakalpa(p: Prakalpa) {
+    void loadData();
+    const currentManagers = managersFor(p.name);
+    const selected = currentManagers.length === 1 ? currentManagers[0].id : "";
+    setManagerId(selected); setInitialManagerId(selected); setCreateManager(false); setNewManager({ name: "", email: "", password: "" }); setPrakalpaActive(p.active !== false);
     setEditingPrakalpa(p);
     setPrakalpaName(p.name);
     setPrakalpaPramukh(p.prakalpaPramukh || "");
@@ -150,9 +171,10 @@ export default function PrakalpaManagementPage() {
       return;
     }
 
+    if (prakalpaActive && !editingPrakalpa && !managerId && !createManager) { setError("Select an active Manager or create one with this Prakalpa."); return; }
     setSaving(true);
     setError("");
-
+    const managerChange = createManager ? { newManager } : managerId && (managerId !== initialManagerId || !editingPrakalpa) ? { managerId } : {};
     try {
       if (editingPrakalpa) {
         await updatePrakalpa(getId(editingPrakalpa), {
@@ -161,7 +183,8 @@ export default function PrakalpaManagementPage() {
           prakalpaPramukhEmail: prakalpaPramukhEmail.trim(),
           seniorEmail: seniorEmail.trim(),
           auditAreas,
-          active: true,
+          active: prakalpaActive,
+          ...managerChange,
         });
       } else {
         await createPrakalpa({
@@ -171,10 +194,12 @@ export default function PrakalpaManagementPage() {
           prakalpaPramukhEmail: prakalpaPramukhEmail.trim(),
           seniorEmail: seniorEmail.trim(),
           auditAreas,
-          active: true,
+          active: prakalpaActive,
+          ...managerChange,
         });
       }
 
+      setNewManager({ name: "", email: "", password: "" });
       setShowPrakalpaModal(false);
       await loadData();
     } catch (err: any) {
@@ -360,6 +385,7 @@ export default function PrakalpaManagementPage() {
 
       <div className="space-y-5">
         {filteredPrakalpas.map((p) => {
+          const ownerNames = managersFor(p.name).map(manager => manager.name);
           const pLocations = locations.filter(
             (l) => l.prakalpa === p.name
           );
@@ -386,8 +412,8 @@ export default function PrakalpaManagementPage() {
 
                       <div>
                         <h2 className="font-headline-sm text-on-surface">
-                          {p.name}
-                        </h2>
+                          {p.name}{p.active === false ? " (inactive)" : ""}
+                        </h2><p className="text-sm text-on-surface-variant">Manager: {ownerNames.length === 1 ? ownerNames[0] : ownerNames.length ? "Multiple Managers — reconciliation required" : "Unassigned"}</p>
 
                         <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-on-surface-variant mt-1">
                           <span>{p.auditAreas?.length || 0} Audit Areas</span>
@@ -580,7 +606,7 @@ export default function PrakalpaManagementPage() {
               </div>
 
               <button
-                onClick={() => setShowPrakalpaModal(false)}
+                onClick={() => { setNewManager({ name: "", email: "", password: "" }); setShowPrakalpaModal(false); }}
                 className="w-9 h-9 rounded-lg hover:bg-surface-container flex items-center justify-center"
               >
                 <span className="material-symbols-outlined">
@@ -625,6 +651,21 @@ export default function PrakalpaManagementPage() {
                 </div>
               )}
 
+              <div className="space-y-3 rounded-xl border p-3">
+                <label className="flex gap-2"><input type="checkbox" checked={prakalpaActive} onChange={event => setPrakalpaActive(event.target.checked)} />Active Prakalpa</label>
+                <label className="block font-label-md">Assigned Manager (separate from Pramukh contact)</label>
+                <select aria-label="Assigned Manager" disabled={loading || createManager} value={managerId} onChange={event => setManagerId(event.target.value)} className="w-full rounded-lg border px-3 py-2">
+                  <option value="">Select active Manager…</option>
+                  {users.filter(user => user.active && user.role === "prakalpa_manager").map(user => <option key={user.id} value={user.id}>{user.name} ({user.email})</option>)}
+                </select>
+                <label className="flex gap-2"><input type="checkbox" checked={createManager} onChange={event => setCreateManager(event.target.checked)} />Create a new Manager in the same transaction</label>
+                {createManager && <div className="grid gap-2">
+                  <input aria-label="New Manager name" placeholder="Manager name" value={newManager.name} onChange={event => setNewManager(previous => ({ ...previous, name: event.target.value }))} className="rounded-lg border px-3 py-2" />
+                  <input aria-label="New Manager email" type="email" placeholder="Manager email" value={newManager.email} onChange={event => setNewManager(previous => ({ ...previous, email: event.target.value }))} className="rounded-lg border px-3 py-2" />
+                  <input aria-label="New Manager password" type="password" autoComplete="new-password" placeholder="Password (at least 8 characters)" value={newManager.password} onChange={event => setNewManager(previous => ({ ...previous, password: event.target.value }))} className="rounded-lg border px-3 py-2" />
+                </div>}
+                <p className="text-xs">Reassignment cannot leave the previous active Manager without another active Prakalpa.</p>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-label-md font-bold mb-2">
@@ -724,14 +765,14 @@ export default function PrakalpaManagementPage() {
 
             <div className="p-5 sm:p-6 border-t border-outline-variant/10 flex flex-col-reverse sm:flex-row justify-end gap-2">
               <button
-                onClick={() => setShowPrakalpaModal(false)}
+                onClick={() => { setNewManager({ name: "", email: "", password: "" }); setShowPrakalpaModal(false); }}
                 className="px-5 py-2.5 rounded-xl border border-outline-variant/30 font-bold"
               >
                 Cancel
               </button>
 
               <button
-                disabled={saving}
+                disabled={saving || loading}
                 onClick={savePrakalpa}
                 className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-bold disabled:opacity-50"
               >
@@ -848,7 +889,7 @@ export default function PrakalpaManagementPage() {
               </button>
 
               <button
-                disabled={saving}
+                disabled={saving || loading}
                 onClick={saveLocation}
                 className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-bold disabled:opacity-50"
               >
