@@ -1,3 +1,4 @@
+import { requestStatus, logRequestError } from "../services/request-errors";
 import {
   createContext,
   useContext,
@@ -508,6 +509,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setScheduledAudits([...freshScheduled]);
       setReports([...freshReports]);
 
+      if (currentUser && ["super_admin", "admin", "audit_coordinator"].includes(currentUser.role)) {
       try {
         const response = await getAuditPersonDirectory();
 
@@ -531,19 +533,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
           "Unable to load active auditors. Refresh and try again."
         );
       }
+      } else {
+        setUsers([]);
+        setDirectoryAuditors([]);
+        setAuditorDirectoryError(null);
+      }
 
     } catch (error) {
       console.warn("Fallback to local dataset");
     }
-  }, []);
+  }, [currentUser?.role]);
 
   const refreshLiveData = useCallback(async () => {
     try {
       // Refresh only the authenticated identity supplied by the server.
       setCurrentUser(await getAuthenticatedUser() as CurrentUser);
-    } catch {
-      clearAuthenticatedSession();
-      window.location.replace("/login");
+    } catch (error) {
+      if ([401, 403].includes(requestStatus(error) ?? 0)) {
+        clearAuthenticatedSession();
+        window.location.replace("/login");
+      } else {
+        logRequestError("Authenticated identity refresh failed", error);
+      }
       return;
     }
     await loadLiveData();

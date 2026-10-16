@@ -1,3 +1,6 @@
+import { withAuditWrite, assertAuditHistoryCanBeRemoved } from './legacyAuditWriteBarrier.js';
+import { assertAuditEndReached, assertScheduledAuditOutcome } from "./scheduledAuditOutcome.js";
+import ZeroFindingDeclaration from "../models/ZeroFindingDeclaration.js";
 import mongoose from "mongoose";
 import ScheduledAudit from "../models/ScheduledAudit.js";
 import AuditFinding from "../models/AuditFinding.js";
@@ -328,11 +331,7 @@ export const updateScheduledAudit = async (
   data,
   user
 ) => {
-  const audit =
-    await getManagedScheduledAudit(
-      id,
-      user
-    );
+  await getManagedScheduledAudit(id, user);
 
   if (
     Object.prototype.hasOwnProperty.call(
@@ -346,6 +345,8 @@ export const updateScheduledAudit = async (
     );
   }
 
+  return withAuditWrite(id, async (audit, session) => {
+  if (user.role === 'audit_coordinator' && audit.auditCoordinator !== user.name) throw new AppError('This audit is outside your assignment.', 403);
   if (
     audit.workflowMode !== undefined &&
     audit.workflowMode !== "legacy" &&
@@ -496,7 +497,7 @@ export const updateScheduledAudit = async (
     auditPlan =
       await AuditPlan.findById(
         audit.auditPlan
-      );
+      ).session(session);
   }
 
   if (!auditPlan) {
@@ -508,7 +509,7 @@ export const updateScheduledAudit = async (
     auditPlan =
       await AuditPlan.findOne({
         iqaNumber: audit.iqaNumber,
-      });
+      }).session(session);
   }
 
   if (!auditPlan) {
@@ -543,7 +544,7 @@ export const updateScheduledAudit = async (
 
   auditPlan.status = "scheduled";
 
-  await auditPlan.save();
+  await auditPlan.save({ session });
 
   /*
    * Now synchronize the ScheduledAudit execution
@@ -574,9 +575,10 @@ export const updateScheduledAudit = async (
   audit.leadAuditor =
     nextLeadAuditor;
 
-  await audit.save();
+  await audit.save({ session });
 
   return audit;
+  });
 };
 
 export const completeScheduledAudit = async (
@@ -590,64 +592,31 @@ export const completeScheduledAudit = async (
     return audit;
   }
 
-  const validateEndDate = (record) => {
-    const endDate = new Date(record.endDate);
-
-    if (Number.isNaN(endDate.getTime())) {
-      throw new AppError(
-        "Scheduled audit has an invalid End Date.",
-        400
-      );
-    }
-
-    if (new Date() < endDate) {
-      throw new AppError(
-        "This audit cannot be marked completed before its End Date.",
-        400
-      );
-    }
-  };
-
-  validateEndDate(audit);
-
-  // Historical legacy completion behavior is unchanged.
-  if (audit.workflowMode !== "consolidated") {
-    await assertConsolidatedAuditReadyForCompletion(audit);
-
-    audit.status = "completed";
-    await audit.save();
-
-    if (audit.auditPlan) {
-      const auditPlan = await AuditPlan.findById(audit.auditPlan);
-
-      if (auditPlan) {
-        auditPlan.status = "completed";
-        await auditPlan.save();
-      }
-    }
-
-    return audit;
-  }
+  assertAuditEndReached(audit);
 
   const session = await mongoose.startSession();
 
   try {
     const completedAudit = await session.withTransaction(async () => {
       // This document write serializes completion with all
-      // consolidated-mode operations using the same barrier.
+      // finding/declaration/lifecycle operations using the same barrier.
       const lockedAudit = await acquireConsolidatedAuditWriteBarrier(
         audit._id,
-        session
+        session,
+        { allowAllClear: true, allowLegacy: audit.workflowMode !== "consolidated" }
       );
+      if (user.role === "audit_coordinator" && String(lockedAudit.auditCoordinator).trim() !== String(user.name).trim()) {
+        throw new AppError("This audit is outside your Coordinator assignment.", 403);
+      }
+      assertAuditEndReached(lockedAudit);
+      const outcome = await assertScheduledAuditOutcome(lockedAudit, session);
+      lockedAudit.outcome = outcome;
+      if (outcome === 'all_clear' && await ScheduledAudit.exists({ auditPlan: lockedAudit.auditPlan, _id: { $ne: lockedAudit._id } }).session(session)) throw new AppError('Multiple Scheduled Audits reference this plan; administrative review is required before completion.', 409);
 
-      validateEndDate(lockedAudit);
-
-      await assertConsolidatedAuditReadyForCompletion(
-        lockedAudit,
-        session
-      );
-
+      if (!lockedAudit.auditPlan) throw new AppError("Linked Audit Plan is missing; review is required before completion.", 409);
       lockedAudit.status = "completed";
+      lockedAudit.completedAt = new Date();
+      lockedAudit.completedBy = user._id;
       await lockedAudit.save({ session });
 
       if (lockedAudit.auditPlan) {
@@ -655,6 +624,7 @@ export const completeScheduledAudit = async (
           lockedAudit.auditPlan
         ).session(session);
 
+        if (!auditPlan) throw new AppError("Linked Audit Plan not found; review is required before completion.", 409);
         if (auditPlan) {
           auditPlan.status = "completed";
           await auditPlan.save({ session });
@@ -683,11 +653,12 @@ export const deleteScheduledAudit = async (
       user
     );
 
-  await ScheduledAudit.deleteOne({
-    _id: audit._id,
+  return withAuditWrite(audit._id, async (locked, session) => {
+    if (user.role === 'audit_coordinator' && locked.auditCoordinator !== user.name) throw new AppError('This audit is outside your assignment.', 403);
+    await assertAuditHistoryCanBeRemoved(locked, session);
+    await ScheduledAudit.deleteOne({ _id: locked._id }, { session });
+    return locked;
   });
-
-  return audit;
 };
 
 const formatDate = (value) => {
@@ -865,4 +836,23 @@ export const markMailSent = async (
   await audit.save();
 
   return audit;
+};
+
+// Read-only presentation eligibility. Mutation always rechecks under the transaction barrier.
+export const getCompletionEligibility = async user => {
+  const audits = await getScheduledAudits({}, user);
+  const result = {};
+  for (const audit of audits) {
+    const id = String(audit._id);
+    try {
+      if (audit.status === "completed") { result[id] = { eligible: false, reason: "Audit already completed." }; continue; }
+      assertAuditEndReached(audit);
+      const outcome = await assertScheduledAuditOutcome(audit);
+      result[id] = { eligible: true, reason: "Approved audit outcome and scheduled end time verified.", outcome };
+    } catch (err) {
+      if (!(err instanceof AppError)) throw err;
+      result[id] = { eligible: false, reason: err.message };
+    }
+  }
+  return result;
 };

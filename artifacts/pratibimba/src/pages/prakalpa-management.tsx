@@ -1,5 +1,8 @@
+import { getRequestErrorMessage } from "../services/request-errors";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "../components/ui/alert-dialog";
+import { useLocation } from "wouter";
 import { FilterToolbar } from "../components/filters/filter-toolbar";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getUsers } from "../services/userService";
 import { assignmentNames } from "../components/management/prakalpa-assignments";
 import { useApp, type AppUser } from "../context/app-context";
@@ -24,11 +27,10 @@ function getId(item: { _id?: string; id?: string }) {
 
 export default function PrakalpaManagementPage() {
   const { currentUser } = useApp();
+  const [, navigate] = useLocation();
   const [users, setUsers] = useState<AppUser[]>([]);
   const [managerId, setManagerId] = useState("");
   const [initialManagerId, setInitialManagerId] = useState("");
-  const [createManager, setCreateManager] = useState(false);
-  const [newManager, setNewManager] = useState({ name: "", email: "", password: "" });
   const [prakalpaActive, setPrakalpaActive] = useState(true);
   const managersFor = (name: string) => users.filter(user => user.role === "prakalpa_manager" && user.active && assignmentNames(user).includes(name));
   const [prakalpas, setPrakalpas] = useState<Prakalpa[]>([]);
@@ -40,8 +42,6 @@ export default function PrakalpaManagementPage() {
   const [editingPrakalpa, setEditingPrakalpa] = useState<Prakalpa | null>(null);
   const [prakalpaName, setPrakalpaName] = useState("");
   const [initialLocation, setInitialLocation] = useState("");
-  const [prakalpaPramukh, setPrakalpaPramukh] = useState("");
-  const [prakalpaPramukhEmail, setPrakalpaPramukhEmail] = useState("");
   const [seniorEmail, setSeniorEmail] = useState("");
   const [auditAreas, setAuditAreas] = useState<string[]>([]);
   const [auditAreaInput, setAuditAreaInput] = useState("");
@@ -54,6 +54,19 @@ export default function PrakalpaManagementPage() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const savingRef = useRef(false);
+  const confirmationTrigger = useRef<HTMLElement | null>(null);
+  const [confirmation, setConfirmation] = useState<{ kind: "manager" } | { kind: "prakalpa"; item: Prakalpa } | { kind: "location"; item: Location } | null>(null);
+  const [confirmationError, setConfirmationError] = useState("");
+  const requestConfirmation = (next: NonNullable<typeof confirmation>, trigger?: HTMLElement) => {
+    confirmationTrigger.current = trigger || document.activeElement as HTMLElement;
+    setConfirmationError(""); setConfirmation(next);
+  };
+  const unchangedPrakalpa = Boolean(editingPrakalpa && prakalpaName.trim() === editingPrakalpa.name &&
+    seniorEmail.trim() === (editingPrakalpa.seniorEmail || "") &&
+    JSON.stringify(auditAreas) === JSON.stringify(editingPrakalpa.auditAreas || []) &&
+    prakalpaActive === (editingPrakalpa.active !== false) && managerId === initialManagerId);
+
 
   async function loadData() {
     setLoading(true);
@@ -72,8 +85,7 @@ export default function PrakalpaManagementPage() {
       setLocations(l);
     } catch (err: any) {
       setError(
-        err?.response?.data?.message ||
-          "Unable to load organizational structure."
+        getRequestErrorMessage(err, "Unable to load organizational structure.")
       );
     } finally {
       setLoading(false);
@@ -81,10 +93,9 @@ export default function PrakalpaManagementPage() {
   }
 
   useEffect(() => {
-    if (currentUser.role !== "super_admin") return;
+    if (!["super_admin", "admin"].includes(currentUser.role)) return;
     void loadData();
-    window.addEventListener("focus", loadData);
-    return () => window.removeEventListener("focus", loadData);
+
   }, [currentUser.role]);
 
   const filteredPrakalpas = useMemo(() => {
@@ -111,13 +122,10 @@ export default function PrakalpaManagementPage() {
   }, [prakalpas, locations, search]);
 
   function openCreatePrakalpa() {
-    void loadData();
-    setManagerId(""); setInitialManagerId(""); setCreateManager(false); setNewManager({ name: "", email: "", password: "" }); setPrakalpaActive(true);
+    setManagerId(""); setInitialManagerId(""); setPrakalpaActive(true);
     setEditingPrakalpa(null);
     setPrakalpaName("");
     setInitialLocation("");
-    setPrakalpaPramukh("");
-    setPrakalpaPramukhEmail("");
     setSeniorEmail("");
     setAuditAreas([]);
     setAuditAreaInput("");
@@ -126,14 +134,11 @@ export default function PrakalpaManagementPage() {
   }
 
   function openEditPrakalpa(p: Prakalpa) {
-    void loadData();
     const currentManagers = managersFor(p.name);
     const selected = currentManagers.length === 1 ? currentManagers[0].id : "";
-    setManagerId(selected); setInitialManagerId(selected); setCreateManager(false); setNewManager({ name: "", email: "", password: "" }); setPrakalpaActive(p.active !== false);
+    setManagerId(selected); setInitialManagerId(selected); setPrakalpaActive(p.active !== false);
     setEditingPrakalpa(p);
     setPrakalpaName(p.name);
-    setPrakalpaPramukh(p.prakalpaPramukh || "");
-    setPrakalpaPramukhEmail(p.prakalpaPramukhEmail || "");
     setSeniorEmail(p.seniorEmail || "");
     setAuditAreas(p.auditAreas || []);
     setAuditAreaInput("");
@@ -159,6 +164,7 @@ export default function PrakalpaManagementPage() {
   }
 
   async function savePrakalpa() {
+    if (savingRef.current || saving || unchangedPrakalpa) return;
     const name = prakalpaName.trim();
 
     if (!name) {
@@ -171,16 +177,15 @@ export default function PrakalpaManagementPage() {
       return;
     }
 
-    if (prakalpaActive && !editingPrakalpa && !managerId && !createManager) { setError("Select an active Manager or create one with this Prakalpa."); return; }
+    if (prakalpaActive && !managerId && (!editingPrakalpa || editingPrakalpa.active === false)) { setError("Select an active Manager. Create accounts in User Management."); return; }
+    savingRef.current = true;
     setSaving(true);
     setError("");
-    const managerChange = createManager ? { newManager } : managerId && (managerId !== initialManagerId || !editingPrakalpa) ? { managerId } : {};
+    const managerChange = managerId && (managerId !== initialManagerId || !editingPrakalpa) ? { managerId } : {};
     try {
       if (editingPrakalpa) {
         await updatePrakalpa(getId(editingPrakalpa), {
           name,
-          prakalpaPramukh: prakalpaPramukh.trim(),
-          prakalpaPramukhEmail: prakalpaPramukhEmail.trim(),
           seniorEmail: seniorEmail.trim(),
           auditAreas,
           active: prakalpaActive,
@@ -190,8 +195,6 @@ export default function PrakalpaManagementPage() {
         await createPrakalpa({
           name,
           initialLocation: initialLocation.trim(),
-          prakalpaPramukh: prakalpaPramukh.trim(),
-          prakalpaPramukhEmail: prakalpaPramukhEmail.trim(),
           seniorEmail: seniorEmail.trim(),
           auditAreas,
           active: prakalpaActive,
@@ -199,39 +202,20 @@ export default function PrakalpaManagementPage() {
         });
       }
 
-      setNewManager({ name: "", email: "", password: "" });
       setShowPrakalpaModal(false);
       await loadData();
     } catch (err: any) {
       setError(
-        err?.response?.data?.message ||
-          "Unable to save Prakalpa."
+        getRequestErrorMessage(err, "Unable to save Prakalpa.")
       );
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
 
-  async function removePrakalpa(p: Prakalpa) {
-    const relatedLocations = locations.filter(
-      (l) => l.prakalpa === p.name
-    );
-
-    const message = relatedLocations.length
-      ? `Deactivate "${p.name}"? It currently has ${relatedLocations.length} active location(s).`
-      : `Deactivate "${p.name}"?`;
-
-    if (!window.confirm(message)) return;
-
-    try {
-      await deletePrakalpa(getId(p));
-      await loadData();
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          "Unable to deactivate Prakalpa."
-      );
-    }
+  function removePrakalpa(p: Prakalpa) {
+    requestConfirmation({ kind: "prakalpa", item: p });
   }
 
   function openCreateLocation(p: Prakalpa) {
@@ -270,6 +254,7 @@ export default function PrakalpaManagementPage() {
   }
 
   async function saveLocation() {
+    if (savingRef.current) return;
     if (!locationPrakalpa) return;
 
     const name = locationName.trim();
@@ -279,6 +264,7 @@ export default function PrakalpaManagementPage() {
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
     setError("");
 
@@ -301,30 +287,34 @@ export default function PrakalpaManagementPage() {
       await loadData();
     } catch (err: any) {
       setError(
-        err?.response?.data?.message ||
-          "Unable to save Location."
+        getRequestErrorMessage(err, "Unable to save Location.")
       );
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
 
-  async function removeLocation(l: Location) {
-    if (!window.confirm(`Deactivate "${l.name}"?`)) return;
-
-    try {
-      await deleteLocation(getId(l));
-      await loadData();
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          "Unable to deactivate Location."
-      );
-    }
+  function removeLocation(item: Location) {
+    requestConfirmation({ kind: "location", item });
   }
 
-  if (currentUser.role !== "super_admin") {
-    return <div className="p-6 text-center">Only Superadmins can manage Prakalpas.</div>;
+  async function continueConfirmation() {
+    if (!confirmation || savingRef.current) return;
+    if (confirmation.kind === "manager") { setConfirmation(null); navigate("/user-management"); return; }
+    savingRef.current = true; setSaving(true); setConfirmationError("");
+    try {
+      if (confirmation.kind === "prakalpa") await deletePrakalpa(getId(confirmation.item));
+      else await deleteLocation(getId(confirmation.item));
+      setConfirmation(null);
+      await loadData();
+    } catch (err) {
+      setConfirmationError(getRequestErrorMessage(err, "Unable to deactivate this record."));
+    } finally { savingRef.current = false; setSaving(false); }
+  }
+
+  if (!["super_admin", "admin"].includes(currentUser.role)) {
+    return <div className="p-6 text-center">Only Admins and Super Admins can manage Prakalpas.</div>;
   }
 
   if (loading) {
@@ -415,6 +405,8 @@ export default function PrakalpaManagementPage() {
                           {p.name}{p.active === false ? " (inactive)" : ""}
                         </h2><p className="text-sm text-on-surface-variant">Manager: {ownerNames.length === 1 ? ownerNames[0] : ownerNames.length ? "Multiple Managers — reconciliation required" : "Unassigned"}</p>
 
+                        {p.historicalContactMismatch && <p role="status" className="text-xs text-amber-700">Historical Pramukh contact differs from the assigned Manager; review required.</p>}
+                        {p.managerAssignmentStatus !== "resolved" && <p role="status" className="text-xs text-amber-700">Manager assignment: {p.managerAssignmentStatus || "missing"}; review required.</p>}
                         <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-on-surface-variant mt-1">
                           <span>{p.auditAreas?.length || 0} Audit Areas</span>
                           <span>•</span>
@@ -425,7 +417,7 @@ export default function PrakalpaManagementPage() {
                       </div>
 
                       <span className="px-2.5 py-1 rounded-full bg-success/10 text-success text-[11px] font-bold uppercase tracking-wider">
-                        Active
+                        {p.active === false ? "Inactive" : "Active"}
                       </span>
                     </div>
                   </div>
@@ -590,10 +582,33 @@ export default function PrakalpaManagementPage() {
         )}
       </div>
 
+      <AlertDialog open={Boolean(confirmation)} onOpenChange={open => { if (!open && !savingRef.current) setConfirmation(null); }}>
+        <AlertDialogContent overlayClassName="z-[150] bg-black/45 backdrop-blur-sm"
+          className="z-[160] w-[calc(100%_-_2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white text-on-surface"
+          onEscapeKeyDown={event => { if (savingRef.current) event.preventDefault(); }}
+          onCloseAutoFocus={event => { event.preventDefault(); confirmationTrigger.current?.focus(); }}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmation?.kind === "manager" ? "Create a New Manager?" : confirmation?.kind === "location" ? "Deactivate Location?" : "Deactivate Prakalpa?"}</AlertDialogTitle>
+            <AlertDialogDescription className="text-on-surface-variant">
+              {confirmation?.kind === "manager"
+                ? "You will be redirected to User Management to create a Manager account. Unsaved Prakalpa changes will be lost. After creating the account, return here and select it."
+                : `Deactivate “${confirmation && "item" in confirmation ? confirmation.item.name : ""}”? Existing assignments and audit history are preserved. Manager coverage rules still apply.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {confirmationError && <p role="alert" className="text-sm text-error">{confirmationError}</p>}
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={saving} onClick={event => { event.preventDefault(); void continueConfirmation(); }} className="bg-primary text-on-primary">
+              {saving ? "Working…" : confirmation?.kind === "manager" ? "Continue to User Management" : "Deactivate"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {showPrakalpaModal && (
         <div className="fixed inset-0 z-[100] bg-black/45 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
-            <div className="p-5 sm:p-6 border-b border-outline-variant/10 flex items-start justify-between gap-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden">
+            <div className="p-5 sm:p-6 border-b border-outline-variant/10 flex items-start justify-between gap-4 shrink-0">
               <div>
                 <h2 className="font-headline-md">
                   {editingPrakalpa
@@ -606,7 +621,7 @@ export default function PrakalpaManagementPage() {
               </div>
 
               <button
-                onClick={() => { setNewManager({ name: "", email: "", password: "" }); setShowPrakalpaModal(false); }}
+                onClick={() => { setShowPrakalpaModal(false); }}
                 className="w-9 h-9 rounded-lg hover:bg-surface-container flex items-center justify-center"
               >
                 <span className="material-symbols-outlined">
@@ -615,19 +630,22 @@ export default function PrakalpaManagementPage() {
               </button>
             </div>
 
-            <div className="p-5 sm:p-6 space-y-5">
+            <div className="p-5 sm:p-6 space-y-5 min-h-0 flex-1 overflow-y-auto">
               <div>
                 <label className="block font-label-md font-bold mb-2">
                   Prakalpa Name
                 </label>
                 <input
                   value={prakalpaName}
+                  readOnly={Boolean(editingPrakalpa)}
+                  aria-describedby={editingPrakalpa ? "prakalpa-name-help" : undefined}
                   onChange={(e) => setPrakalpaName(e.target.value)}
                   placeholder="Enter Prakalpa name"
                   className="w-full border border-outline-variant/30 rounded-xl px-4 py-3 outline-none focus:border-primary"
                 />
               </div>
 
+              {editingPrakalpa && <p id="prakalpa-name-help" className="text-xs text-on-surface-variant">Names are linked to assignments and audit history. Contact your Super Admin to request a reviewed rename.</p>}
               {!editingPrakalpa && (
                 <div>
                   <label
@@ -652,45 +670,26 @@ export default function PrakalpaManagementPage() {
               )}
 
               <div className="space-y-3 rounded-xl border p-3">
-                <label className="flex gap-2"><input type="checkbox" checked={prakalpaActive} onChange={event => setPrakalpaActive(event.target.checked)} />Active Prakalpa</label>
-                <label className="block font-label-md">Assigned Manager (separate from Pramukh contact)</label>
-                <select aria-label="Assigned Manager" disabled={loading || createManager} value={managerId} onChange={event => setManagerId(event.target.value)} className="w-full rounded-lg border px-3 py-2">
+                <label htmlFor="assigned-manager" className="block font-label-md font-bold">Prakalpa Pramukh (Assigned Manager)</label>
+                <select id="assigned-manager" aria-label="Assigned Manager" disabled={loading || saving} value={managerId}
+                  onChange={event => {
+                    if (event.target.value === "__create__") {
+                      requestConfirmation({ kind: "manager" }, event.currentTarget);
+                      return;
+                    }
+                    setManagerId(event.target.value);
+                  }} className="w-full rounded-lg border px-3 py-2">
                   <option value="">Select active Manager…</option>
-                  {users.filter(user => user.active && user.role === "prakalpa_manager").map(user => <option key={user.id} value={user.id}>{user.name} ({user.email})</option>)}
+                  {users.filter(user => user.active && user.role === "prakalpa_manager").map(user => (
+                    <option key={user.id} value={user.id}>{user.name} ({user.email})</option>
+                  ))}
+                  <option value="__create__">+ Create New Manager…</option>
                 </select>
-                <label className="flex gap-2"><input type="checkbox" checked={createManager} onChange={event => setCreateManager(event.target.checked)} />Create a new Manager in the same transaction</label>
-                {createManager && <div className="grid gap-2">
-                  <input aria-label="New Manager name" placeholder="Manager name" value={newManager.name} onChange={event => setNewManager(previous => ({ ...previous, name: event.target.value }))} className="rounded-lg border px-3 py-2" />
-                  <input aria-label="New Manager email" type="email" placeholder="Manager email" value={newManager.email} onChange={event => setNewManager(previous => ({ ...previous, email: event.target.value }))} className="rounded-lg border px-3 py-2" />
-                  <input aria-label="New Manager password" type="password" autoComplete="new-password" placeholder="Password (at least 8 characters)" value={newManager.password} onChange={event => setNewManager(previous => ({ ...previous, password: event.target.value }))} className="rounded-lg border px-3 py-2" />
-                </div>}
-                <p className="text-xs">Reassignment cannot leave the previous active Manager without another active Prakalpa.</p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-label-md font-bold mb-2">
-                    Prakalpa Pramukh
-                  </label>
-                  <input
-                    value={prakalpaPramukh}
-                    onChange={(e) => setPrakalpaPramukh(e.target.value)}
-                    placeholder="Enter Prakalpa Pramukh name"
-                    className="w-full border border-outline-variant/30 rounded-xl px-4 py-3 outline-none focus:border-primary"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-label-md font-bold mb-2">
-                    Pramukh Email
-                  </label>
-                  <input
-                    type="email"
-                    value={prakalpaPramukhEmail}
-                    onChange={(e) => setPrakalpaPramukhEmail(e.target.value)}
-                    placeholder="pramukh@example.org"
-                    className="w-full border border-outline-variant/30 rounded-xl px-4 py-3 outline-none focus:border-primary"
-                  />
-                </div>
+                <p className="mt-3 text-sm font-semibold text-on-surface">{users.find(user => user.id === managerId)?.name || "No Manager selected"}</p>
+                <p className="mt-0.5 text-xs text-on-surface-variant break-all">{users.find(user => user.id === managerId)?.email || ""}</p>
+                <p className="mt-3 border-t border-outline-variant/20 pt-2 text-xs leading-relaxed text-on-surface-variant/70">One Manager may manage multiple Prakalpas. Reassignment cannot leave the previous active Manager without another active Prakalpa.</p>
+                {editingPrakalpa?.historicalContactMismatch && <p role="status" className="text-sm text-amber-700">Historical Pramukh details differ from the assigned Manager and require review. Stored historical details will be preserved.</p>}
+                {editingPrakalpa?.managerAssignmentStatus && editingPrakalpa.managerAssignmentStatus !== "resolved" && <p role="alert">Manager assignment is {editingPrakalpa.managerAssignmentStatus}. Select a Manager explicitly.</p>}
               </div>
 
               <div>
@@ -761,18 +760,20 @@ export default function PrakalpaManagementPage() {
                   ))}
                 </div>
               </div>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={prakalpaActive} onChange={event => setPrakalpaActive(event.target.checked)} />Active Prakalpa</label>
+              {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
             </div>
 
-            <div className="p-5 sm:p-6 border-t border-outline-variant/10 flex flex-col-reverse sm:flex-row justify-end gap-2">
+            <div className="p-5 sm:p-6 border-t border-outline-variant/10 flex flex-col-reverse sm:flex-row justify-end gap-2 shrink-0">
               <button
-                onClick={() => { setNewManager({ name: "", email: "", password: "" }); setShowPrakalpaModal(false); }}
+                onClick={() => { setShowPrakalpaModal(false); }}
                 className="px-5 py-2.5 rounded-xl border border-outline-variant/30 font-bold"
               >
                 Cancel
               </button>
 
               <button
-                disabled={saving || loading}
+                disabled={saving || loading || unchangedPrakalpa}
                 onClick={savePrakalpa}
                 className="px-5 py-2.5 rounded-xl bg-primary text-on-primary font-bold disabled:opacity-50"
               >
@@ -813,6 +814,7 @@ export default function PrakalpaManagementPage() {
             </div>
 
             <div className="p-5 sm:p-6 space-y-5">
+              {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
               <div>
                 <label className="block font-label-md font-bold mb-2">
                   Location Name

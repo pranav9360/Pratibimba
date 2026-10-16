@@ -1,8 +1,11 @@
+import api from '../services/api';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
+import { sortAuditRecords } from "../../../../shared/audit-order.mjs";
 import { FilterToolbar } from "../components/filters/filter-toolbar";
 import { FilterSelect } from "../components/filters/filter-select";
 import { FilterDate } from "../components/filters/filter-date";
 import { matchesDateFilter, type DateFilter } from "../components/filters/date-filter-utils";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 
 import {
@@ -16,6 +19,7 @@ import {
   getScheduledAudits,
   updateScheduledAudit as updateScheduledAuditAPI,
   markScheduledAuditCompleted,
+  getCompletionEligibility,
 } from "../services/scheduledAuditService";
 
 import {
@@ -26,6 +30,7 @@ import {
 import {
   getScheduledAuditFindings,
   getCoordinatorFindingSummaries,
+  getCoordinatorConsolidatedFindings,
   type CoordinatorFindingSummary,
   createAuditFindingDraft,
   updateAuditFindingDraft,
@@ -45,6 +50,10 @@ const { currentUser, auditors, auditorDirectoryError } = useApp();
 
   const [scheduledAudits, setScheduledAudits] =
     useState<ScheduledAudit[]>([]);
+  const [eligibility, setEligibility] = useState<Record<string,{eligible:boolean;reason:string}>>({});
+  const [eligibilityError, setEligibilityError] = useState("");
+  const [allClearStatuses, setAllClearStatuses] = useState<Record<string,string>>({});
+  const [pendingConsolidated, setPendingConsolidated] = useState<Record<string,boolean>>({});
   const [receivedFindings, setReceivedFindings] = useState<Record<string, CoordinatorFindingSummary>>({});
 
   const [editTarget, setEditTarget] =
@@ -89,6 +98,7 @@ const [editAuditors, setEditAuditors] =
   const [completionConfirmed, setCompletionConfirmed] =
     useState(false);
 
+  const completionPending = useRef(false);
   const [completing, setCompleting] =
     useState(false);
 
@@ -156,6 +166,15 @@ const [editAuditors, setEditAuditors] =
       setScheduledAudits(
         Array.isArray(data) ? data : []
       );
+      try {
+        const response = await api.get('/zero-findings/statuses');
+        setAllClearStatuses(response.data?.data || {});
+      } catch { setAllClearStatuses({}); }
+      if (["admin", "super_admin", "audit_coordinator"].includes(currentUser.role)) {
+        setEligibility({});setEligibilityError("");
+        try { setEligibility(await getCompletionEligibility()); }
+        catch { setEligibilityError("Completion eligibility could not be verified. Refresh to retry."); }
+      }
       if (currentUser.role === "auditor") {
         const assigned = (Array.isArray(data) ? data : []).filter(
           (audit) => (audit.auditors || []).includes(currentUser.name || "") || audit.leadAuditor === currentUser.name
@@ -179,7 +198,8 @@ const [editAuditors, setEditAuditors] =
       }
       if (currentUser.role === "audit_coordinator") {
         try {
-          const summaries = await getCoordinatorFindingSummaries();
+          const [summaries, consolidated] = await Promise.all([getCoordinatorFindingSummaries(), getCoordinatorConsolidatedFindings()]);
+          setPendingConsolidated(Object.fromEntries(consolidated.filter(f => f.workflowStatus === 'submitted_to_coordinator').map(f => [String(typeof f.scheduledAudit === 'object' ? (f.scheduledAudit as any)._id : f.scheduledAudit), true])));
           setReceivedFindings(Object.fromEntries(summaries.map(s => [s.scheduledAuditId, s])));
         } catch (summaryError) {
           console.error("Unable to load Coordinator finding counts", summaryError);
@@ -259,7 +279,7 @@ const [editAuditors, setEditAuditors] =
       return false;
     }
 
-    return new Date() >= endDate;
+    return new Date() >= endDate && eligibility[String(s.id || s._id)]?.eligible === true;
   };
 
   const canAddFindingsForAudit = (
@@ -522,6 +542,7 @@ const [editAuditors, setEditAuditors] =
   const openCompletionReview = (
     audit: ScheduledAudit
   ) => {
+    if(!canMarkCompleted(audit))return;
     setCompletionTarget(audit);
     setCompletionConfirmed(false);
     setCompletionError("");
@@ -529,7 +550,7 @@ const [editAuditors, setEditAuditors] =
 
   const confirmCompletion =
     async () => {
-      if (!completionTarget) {
+      if (completionPending.current || completing || !completionTarget) {
         return;
       }
 
@@ -552,6 +573,7 @@ const [editAuditors, setEditAuditors] =
       }
 
       try {
+        completionPending.current=true;
         setCompleting(true);
         setCompletionError("");
 
@@ -574,6 +596,7 @@ const [editAuditors, setEditAuditors] =
             "Failed to mark the audit as completed."
         );
       } finally {
+        completionPending.current=false;
         setCompleting(false);
       }
     };
@@ -598,7 +621,7 @@ const [editAuditors, setEditAuditors] =
 
   const filtered = useMemo(
     () =>
-      scheduledAudits.filter((s) => {
+      sortAuditRecords(scheduledAudits).filter((s) => {
         const status =
           getStatus(s);
 
@@ -979,7 +1002,7 @@ setEditAuditors([]);
                     "Auditors",
                     "Dates",
                     "Coordinator",
-                    "Pramukh",
+                    "Pramukh (recorded)",
                     ...(showMailColumn ? ["Mail"] : []),
                     "Status",
                     ...(showActionsColumn
@@ -1070,6 +1093,14 @@ setEditAuditors([]);
                           <p className="font-data-mono text-[12px] text-primary font-bold whitespace-nowrap">
                             {audit.iqaNumber}
                           </p>
+                          {currentUser.role === 'audit_coordinator' && audit.status !== 'completed' && (() => {
+                            const id = String(audit._id || audit.id);
+                            const allClear = allClearStatuses[id] === 'submitted';
+                            const review = (receivedFindings[id]?.awaitingReview ?? 0) > 0 || pendingConsolidated[id];
+                            const ready = eligibility[id]?.eligible === true;
+                            if (!allClear && !review && !ready) return null;
+                            return <button type="button" onClick={() => allClear ? navigate(`/zero-findings/${id}`) : review ? navigate(`/coordinator-findings?scheduledAuditId=${id}`) : openCompletionReview(audit)} className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${allClear ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-900'}`}><span aria-hidden="true" className="material-symbols-outlined text-[13px]">{ready && !review && !allClear ? 'task_alt' : 'rate_review'}</span>{allClear ? 'Review All Clear' : review ? 'Review Findings' : 'Ready to Complete'}</button>;
+                          })()}
                           {isMyLeadAssignment && (
                             <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold whitespace-nowrap">
                               Lead Auditor
@@ -1300,9 +1331,11 @@ setEditAuditors([]);
                                   </div>
                                 </div>
                               ) : (
-                                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase text-amber-800">
-                                  Upcoming
-                                </span>
+                                <TooltipProvider><Tooltip><TooltipTrigger asChild>
+                                  <span tabIndex={0} role="group" aria-label={`Complete Audit unavailable: ${eligibilityError || eligibility[String(audit.id || audit._id)]?.reason || 'Checking completion requirements…'}`} className="inline-flex cursor-help">
+                                    <button type="button" disabled aria-label="Complete Audit unavailable" className="whitespace-nowrap rounded-lg border px-2 py-1 text-xs opacity-60">Complete Audit</button>
+                                  </span>
+                                </TooltipTrigger><TooltipContent className="max-w-xs whitespace-normal">{eligibilityError || eligibility[String(audit.id || audit._id)]?.reason || 'Checking completion requirements…'}</TooltipContent></Tooltip></TooltipProvider>
                               )}
                             </div>
                           ) : (
@@ -1335,6 +1368,14 @@ setEditAuditors([]);
                           <td className="px-3 py-3">
 
                             <div className="flex gap-2 whitespace-nowrap">
+                              {(audit.status !== 'completed' || allClearStatuses[String(audit._id || audit.id)] === 'approved') && ((currentUser.role === "auditor" && isMyLeadAssignment) ||
+                                 (currentUser.role === "audit_coordinator" && audit.auditCoordinator === currentUser.name) || (["admin", "super_admin"].includes(currentUser.role) && Boolean(allClearStatuses[String(audit._id || audit.id)]))) && (
+                                <button type="button"
+                                  onClick={() => navigate(`/zero-findings/${encodeURIComponent(String(audit._id || audit.id || ""))}`)}
+                                  className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1.5 text-[11px] font-semibold text-blue-800">
+                                  {allClearStatuses[String(audit._id || audit.id)] === "submitted" ? "All Clear Received" : "All Clear"}
+                                </button>
+                              )}
 
                               {canManage ? (
                                 <>
@@ -2215,7 +2256,7 @@ setEditAuditors([]);
 
                 <div className="rounded-xl bg-surface-container-low p-4">
                   <p className="text-[10px] uppercase tracking-wider font-bold text-on-surface-variant">
-                    Pramukh
+                    Pramukh (recorded)
                   </p>
                   <p className="mt-1 text-sm font-semibold text-on-surface">
                     {completionTarget.prakalphaPramukh || "—"}

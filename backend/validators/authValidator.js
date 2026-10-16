@@ -1,3 +1,4 @@
+import { isValidNewPassword, PASSWORD_POLICY_MESSAGE } from "../../shared/password-policy.mjs";
 import { body } from "express-validator";
 
 export const loginValidator = [
@@ -26,8 +27,8 @@ export const otpValidator = [
 
 export const resetPasswordValidator = [
   body("password")
-    .isLength({ min: 8 })
-    .withMessage("Password must be at least 8 characters"),
+    .custom(isValidNewPassword)
+    .withMessage(PASSWORD_POLICY_MESSAGE),
 
   body("confirmPassword").custom((value, { req }) => {
     if (value !== req.body.password) {

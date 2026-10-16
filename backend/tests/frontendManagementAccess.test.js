@@ -41,6 +41,7 @@ const load = (file, role, pathname = "/dashboard", cache = new Map()) => {
     if (name.includes("/pages/") && !/\/(user-management|prakalpa-management|role-access)$/.test(name)) {
       return { default: () => React.createElement("div", null, name), __esModule: true };
     }
+    if (name.endsWith(".mjs")) return requireFrontend(resolve(dirname(filename), name));
     if (name.startsWith(".") || name.startsWith("@/")) {
       const base = name.startsWith("@/") ? resolve(frontend, "src", name.slice(2)) : resolve(dirname(filename), name);
       const target = [base + ".tsx", base + ".ts"].find(candidate => {
@@ -56,54 +57,46 @@ const load = (file, role, pathname = "/dashboard", cache = new Map()) => {
 };
 const render = (file, name, role, path) => renderToStaticMarkup(React.createElement(load(file, role, path)[name]));
 
-test("desktop and mobile navigation hide management from Admin while retaining audit navigation", () => {
-  for (const [file, component] of [["components/side-nav.tsx", "SideNav"], ["components/top-nav.tsx", "TopNav"]]) {
-    // Mobile menu starts closed. Inspect its actual role arrays in addition to desktop rendering.
-    const source = readFileSync(`${frontend}/src/${file}`, "utf8");
-    for (const path of managementPaths) {
-      const escaped = path.replaceAll("/", "\\/");
-      const match = source.match(new RegExp(`href: "${escaped}"[\\s\\S]*?roles: (\\[[^\\]]*\\])`));
-      assert.ok(match, `${file}: ${path}`);
-      assert.deepEqual(JSON.parse(match[1]), ["super_admin"]);
+
+test("desktop/mobile management grants Admin users/projects but keeps Role Access exclusive", () => {
+  for (const [file, component] of [["components/side-nav.tsx","SideNav"],["components/top-nav.tsx","TopNav"]]) {
+    const source=readFileSync(`${frontend}/src/${file}`,"utf8");
+    for(const path of managementPaths){
+      const start=source.indexOf(`href: "${path}"`); const roles=source.slice(start).match(/roles: (\[[^\]]*\])/);
+      assert.deepEqual(JSON.parse(roles[1]),path==="/role-access"?["super_admin"]:["super_admin","admin"]);
     }
-    const admin = render(file, component, "admin");
-    if (component === "SideNav") {
-      for (const path of managementPaths) assert.equal(admin.includes(`href="${path}"`), false);
-      for (const path of ["/audit-plan", "/scheduled-audits", "/all-reports"]) assert.ok(admin.includes(`href="${path}"`));
-      const superadmin = render(file, component, "super_admin");
-      for (const path of managementPaths) assert.ok(superadmin.includes(`href="${path}"`));
+    const markup=render(file,component,"admin");
+    if(component==="SideNav"){
+      assert.ok(markup.includes('href="/user-management"'));assert.ok(markup.includes('href="/prakalpa-management"'));
+      assert.equal(markup.includes('href="/role-access"'),false);
     }
   }
 });
-
-test("direct frontend management routes reject Admin and all operational roles", () => {
-  for (const role of ["admin", "auditor", "audit_coordinator", "prakalpa_manager"]) {
-    for (const path of managementPaths) {
-      const markup = render("App.tsx", "default", role, path);
-      assert.ok(markup.includes("Access Restricted"), `${role}: ${path}`);
+test("direct routes enforce the revised management matrix",()=>{
+  for(const role of ["admin","super_admin","auditor","audit_coordinator","prakalpa_manager"]){
+    for(const path of managementPaths){
+      const allowed=role==="super_admin" || (role==="admin"&&path!=="/role-access");
+      assert.equal(render("App.tsx","default",role,path).includes("Access Restricted"),!allowed,`${role}: ${path}`);
     }
   }
-  for (const path of managementPaths) {
-    const markup = render("App.tsx", "default", "super_admin", path);
-    assert.equal(markup.includes("Access Restricted"), false, path);
-  }
 });
-
-test("management page controls independently deny Admin", () => {
-  for (const file of ["user-management", "prakalpa-management", "role-access"]) {
-    const markup = render(`pages/${file}.tsx`, "default", "admin");
-    assert.match(markup, /Only [Ss]uperadmins can manage/);
+test("management page guards independently admit Admin, preserving protected-role UI",()=>{
+  for(const file of ["user-management","prakalpa-management"]){
+    assert.doesNotMatch(render(`pages/${file}.tsx`,"default","admin"),/Only [Ss]uperadmins can manage/);
   }
+  assert.match(render("pages/role-access.tsx","default","admin"),/Only [Ss]uperadmins can manage/);
 });
-
-test("Admin and Superadmin retain audit routes without inheriting operational impersonation", () => {
-  const { isRoleAllowed } = load("components/role-route-guard.tsx", "admin");
-  for (const role of ["admin", "super_admin"]) {
-    for (const path of ["/audit-plan", "/scheduled-audits", "/all-reports", "/audit-calendar"]) {
-      assert.equal(render("App.tsx", "default", role, path).includes("Access Restricted"), false);
-    }
+test("management grants do not impersonate operational roles",()=>{
+  const {isRoleAllowed}=load("components/role-route-guard.tsx","admin");
+  for(const role of ["admin","super_admin"]){
+    for(const path of ["/audit-plan","/scheduled-audits","/all-reports","/audit-calendar"])
+      assert.equal(render("App.tsx","default",role,path).includes("Access Restricted"),false);
   }
-  assert.equal(isRoleAllowed("super_admin", ["admin"]), true);
-  assert.equal(isRoleAllowed("super_admin", ["auditor"]), false);
-  assert.equal(isRoleAllowed("super_admin", ["audit_coordinator"]), false);
+  assert.equal(isRoleAllowed("super_admin",["auditor"]),false);
+  assert.equal(isRoleAllowed("super_admin",["audit_coordinator"]),false);
+});
+test("Help is routed outside authenticated AppProvider and header has no notification UI/polling",()=>{
+  assert.match(render("App.tsx","default","", "/help"),/pages\/help/);
+  const header=readFileSync(`${frontend}/src/components/top-nav.tsx`,"utf8");
+  assert.doesNotMatch(header,/notifications|setInterval|getCoordinatorFindingSummaries|getReports/);
 });

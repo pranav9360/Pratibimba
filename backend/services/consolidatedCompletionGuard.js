@@ -1,3 +1,4 @@
+import ZeroFindingDeclaration from "../models/ZeroFindingDeclaration.js";
 import AuditFinding from "../models/AuditFinding.js";
 import ConsolidatedFinding from "../models/ConsolidatedFinding.js";
 import ConsolidatedFindingSourceClaim from "../models/ConsolidatedFindingSourceClaim.js";
@@ -35,6 +36,11 @@ export const assertConsolidatedAuditReadyForCompletion = async (audit, session =
   );
 
   if (consolidatedFindings.length === 0) {
+    const zeroFinding = await ZeroFindingDeclaration.findOne({ scheduledAudit: audit._id })
+      .session(session).select('status');
+    if (!zeroFinding || zeroFinding.status !== 'approved') {
+      throw new AppError('Zero-finding completion requires an approved All Clear declaration.', 409);
+    }
     if (submittedSources.length > 0) {
       throw new AppError(
         "Cannot complete this audit: submitted Auditor findings have not been consolidated.",

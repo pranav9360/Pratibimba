@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import ScheduledAudit from "../models/ScheduledAudit.js";
 import ConsolidatedFinding from "../models/ConsolidatedFinding.js";
 import Report from "../models/Report.js";
+import ZeroFindingDeclaration from "../models/ZeroFindingDeclaration.js";
 import {
   reviewCoordinatorConsolidatedClassification,
   convertConsolidatedFindingToReport,
@@ -18,6 +19,7 @@ const originals = {
   reportExists: Report.exists,
   reportFindOne: Report.findOne,
   reportCreate: Report.create,
+  zeroFindingExists: ZeroFindingDeclaration.exists,
 };
 
 const restore = () => {
@@ -28,6 +30,7 @@ const restore = () => {
   Report.exists = originals.reportExists;
   Report.findOne = originals.reportFindOne;
   Report.create = originals.reportCreate;
+  ZeroFindingDeclaration.exists = originals.zeroFindingExists;
 };
 
 test.afterEach(restore);
@@ -65,6 +68,11 @@ const makeFixture = () => {
   };
 
   mongoose.startSession = async () => session;
+
+  // No All Clear declaration exists in these finding-based fixtures.
+  ZeroFindingDeclaration.exists = () => ({
+    session: async () => null,
+  });
 
   ConsolidatedFinding.findById = () => ({
     session: async () => finding,

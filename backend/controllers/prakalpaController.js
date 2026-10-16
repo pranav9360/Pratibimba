@@ -5,6 +5,15 @@ import ApiResponse from "../utils/ApiResponse.js";
 
 import * as prakalpaService from "../services/prakalpaService.js";
 
+export const getMyPrakalpas = asyncHandler(async (req, res) => {
+  if (Object.keys(req.query).length || Object.keys(req.body || {}).length) {
+    throw new AppError("My Prakalpas does not accept selection parameters.", 400);
+  }
+  const prakalpas = await prakalpaService.getMyPrakalpas(req.user);
+  res.set("Cache-Control", "no-store");
+  res.json(new ApiResponse(200, "Assigned Prakalpas fetched successfully", prakalpas));
+});
+
 export const getPrakalpas =
   asyncHandler(async (req, res) => {
     const prakalpas =

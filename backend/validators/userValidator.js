@@ -1,3 +1,4 @@
+import { isValidNewPassword, PASSWORD_POLICY_MESSAGE } from "../../shared/password-policy.mjs";
 import { body } from "express-validator";
 
 const USER_ROLES = [
@@ -23,8 +24,8 @@ export const createUserValidator = [
 
   body("password")
     .isString().bail()
-    .isLength({ min: 8 })
-    .withMessage("Password must be at least 8 characters"),
+    .custom(isValidNewPassword)
+    .withMessage(PASSWORD_POLICY_MESSAGE),
 
   body("role")
     .isString().bail()
@@ -60,8 +61,8 @@ export const updateUserValidator = [
   body("name").optional().isString().bail().trim().notEmpty(),
 
   body("password").optional().isString().bail()
-    .custom((value) => !value.trim() || value.length >= 8)
-    .withMessage("Password must be at least 8 characters"),
+    .custom((value) => value === "" || isValidNewPassword(value))
+    .withMessage(PASSWORD_POLICY_MESSAGE),
 
   body("email")
     .optional()

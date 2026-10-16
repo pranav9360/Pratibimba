@@ -1,3 +1,5 @@
+import { fetchWithTimeout, readApiResponse } from "./request-errors";
+
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "https://pratibimba-backend-final.onrender.com/api/v1";
 
@@ -12,21 +14,13 @@ function authHeaders() {
   };
 }
 
-async function handleResponse(res: Response) {
-  const data = await res.json();
-
-  if (!res.ok) {
-    throw new Error(data.message || "Request failed");
-  }
-
-  return data;
-}
+const handleResponse = readApiResponse;
 
 export async function getAuditorDirectory(): Promise<{
   success: boolean;
   data: Array<{ _id: string; name: string }>;
 }> {
-  const res = await fetch(`${BASE_URL}/auditor-directory`, {
+  const res = await fetchWithTimeout(`${BASE_URL}/auditor-directory`, {
     headers: authHeaders(),
   });
   return handleResponse(res);
@@ -39,12 +33,12 @@ export interface AuditPerson {
 }
 
 export async function getAuditPersonDirectory(): Promise<{ success: boolean; data: AuditPerson[] }> {
-  const res = await fetch(`${BASE_URL}/audit-directory`, { headers: authHeaders() });
+  const res = await fetchWithTimeout(`${BASE_URL}/audit-directory`, { headers: authHeaders() });
   return handleResponse(res);
 }
 
 export async function getUsers() {
-  const res = await fetch(BASE_URL, {
+  const res = await fetchWithTimeout(BASE_URL, {
     headers: authHeaders(),
   });
 
@@ -52,7 +46,7 @@ export async function getUsers() {
 }
 
 export async function createUser(data: any) {
-  const res = await fetch(BASE_URL, {
+  const res = await fetchWithTimeout(BASE_URL, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(data),
@@ -62,7 +56,7 @@ export async function createUser(data: any) {
 }
 
 export async function updateUser(id: string, data: any) {
-  const res = await fetch(`${BASE_URL}/${id}`, {
+  const res = await fetchWithTimeout(`${BASE_URL}/${id}`, {
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify(data),
@@ -72,7 +66,7 @@ export async function updateUser(id: string, data: any) {
 }
 
 export async function updateUserRole(id: string, role: string) {
-  const res = await fetch(`${BASE_URL}/${id}/role`, {
+  const res = await fetchWithTimeout(`${BASE_URL}/${id}/role`, {
     method: "PATCH",
     headers: authHeaders(),
     body: JSON.stringify({ role }),
@@ -82,7 +76,7 @@ export async function updateUserRole(id: string, role: string) {
 }
 
 export async function deleteUser(id: string, replacementManagerId?: string) {
-  const res = await fetch(`${BASE_URL}/${id}`, {
+  const res = await fetchWithTimeout(`${BASE_URL}/${id}`, {
     method: "DELETE",
     headers: authHeaders(),
     body: JSON.stringify({ ...(replacementManagerId ? { replacementManagerId } : {}) }),

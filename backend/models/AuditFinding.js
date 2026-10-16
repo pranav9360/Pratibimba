@@ -257,6 +257,7 @@ const auditFindingSchema =
       },
 
       leadEvidenceFiles: { type: [String], default: [] },
+      withdrawnEvidenceFiles: { type: [{ token: String, by: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, at: Date }], default: [] },
       evidenceReviews: { type: [{
         token: { type: String, required: true },
         leadDropped: { type: Boolean, default: false },

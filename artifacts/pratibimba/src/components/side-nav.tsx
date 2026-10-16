@@ -110,13 +110,13 @@ const navItems: NavItem[] = [
     label: "Prakalpa Management",
     href: "/prakalpa-management",
     icon: "account_tree",
-    roles: ["super_admin"],
+    roles: ["super_admin", "admin"],
   },
   {
     label: "User Management",
     href: "/user-management",
     icon: "manage_accounts",
-    roles: ["super_admin"],
+    roles: ["super_admin", "admin"],
   },
   {
     label: "Roles & Permissions",

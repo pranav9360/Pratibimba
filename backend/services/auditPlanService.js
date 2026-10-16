@@ -1,3 +1,5 @@
+import { withAuditWrite, assertAuditHistoryCanBeRemoved } from './legacyAuditWriteBarrier.js';
+import { resolvePrakalpaManager, managerDirectory } from "./prakalpaIdentity.js";
 import AuditPlan from "../models/AuditPlan.js";
 import User from "../models/User.js";
 import ScheduledAudit from "../models/ScheduledAudit.js";
@@ -296,16 +298,11 @@ const resolvePlanningMasterData = async (data) => {
     );
   }
 
-  const pramukh = String(
-    prakalpa.prakalpaPramukh || ""
-  ).trim();
-
-  if (!pramukh) {
-    throw new AppError(
-      `Prakalpa Pramukh is not configured for ${prakalpa.name}. Please configure it in Prakalpa Management.`,
-      400
-    );
+  const identity = resolvePrakalpaManager(prakalpa, await managerDirectory());
+  if (identity.managerAssignmentStatus !== "resolved") {
+    throw new AppError(`Prakalpa Manager assignment is ${identity.managerAssignmentStatus} for ${prakalpa.name}. Reconcile it in Prakalpa Management.`, 400);
   }
+  const pramukh = identity.prakalpaPramukh;
 
   /*
    * Location is required only when this Prakalpa has
@@ -595,9 +592,7 @@ export const deleteAuditPlan = async (
     );
   }
 
-  await ScheduledAudit.deleteOne({
-    auditPlan: plan._id,
-  });
+  if (await ScheduledAudit.exists({ auditPlan: plan._id })) throw new AppError('A linked Scheduled Audit must be reviewed before deleting its plan.', 409);
 
   await plan.deleteOne();
 
@@ -734,6 +729,7 @@ export const scheduleAuditPlan = async (
     );
   }
 
+  if (await ScheduledAudit.findOne({ auditPlan: plan._id })) throw new AppError('A Scheduled Audit already exists; its history cannot be replaced.', 409);
   plan.auditPlannedDate = startDate;
   plan.status = "scheduled";
 
@@ -764,21 +760,10 @@ export const scheduleAuditPlan = async (
   };
 
   if (scheduledAudit) {
-    delete scheduledAuditData.workflowMode;
-    Object.assign(
-      scheduledAudit,
-      scheduledAuditData
-    );
-
-    await scheduledAudit.save();
-  } else {
-    scheduledAudit =
-      new ScheduledAudit(
-        scheduledAuditData
-      );
-
-    await scheduledAudit.save();
+    throw new AppError('A Scheduled Audit already exists. Edit it from Scheduled Audits; its history cannot be replaced.', 409);
   }
+  scheduledAudit = new ScheduledAudit(scheduledAuditData);
+  await scheduledAudit.save();
 
   return await AuditPlan.findById(plan._id);
 };
@@ -819,19 +804,16 @@ export const unscheduleAuditPlan = async (
     );
   }
 
-  await ScheduledAudit.deleteOne({
-    auditPlan: plan._id,
+  const scheduled = await ScheduledAudit.findOne({ auditPlan: plan._id });
+  if (!scheduled) throw new AppError('Linked Scheduled Audit not found.', 409);
+  await withAuditWrite(scheduled._id, async (audit, session) => {
+    if (user.role === 'audit_coordinator' && audit.auditCoordinator !== user.name) throw new AppError('This audit is outside your assignment.', 403);
+    await assertAuditHistoryCanBeRemoved(audit, session);
+    await ScheduledAudit.deleteOne({ _id: audit._id }, { session });
+    plan.status = 'pending';
+    plan.auditors = [];
+    await plan.save({ session });
   });
-
-  plan.status = "pending";
-
-  /*
-   * Auditors must be selected again the next time
-   * this plan is scheduled.
-   */
-  plan.auditors = [];
-
-  await plan.save();
 
   return plan;
 };

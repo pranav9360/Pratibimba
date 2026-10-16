@@ -1,4 +1,5 @@
 import test from "node:test";
+import ZeroFindingDeclaration from "../models/ZeroFindingDeclaration.js";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
 
@@ -94,10 +95,10 @@ test("Assigned Auditor can create a draft", async () => {
     name: "Auditor One",
   });
 
-  AuditFinding.create = async (payload) => ({
-    ...payload,
-    _id: new mongoose.Types.ObjectId().toString(),
-  });
+  AuditFinding.create = async ([payload], options) => {
+    assert.ok(options.session);
+    return [{ ...payload, _id: new mongoose.Types.ObjectId().toString() }];
+  };
   ScheduledAudit.findById = () => query(audit);
 
   const result = await createAuditFindingDraft(
@@ -600,10 +601,10 @@ test("October 14 versus October 15 boundary in Asia/Kolkata", async () => {
     name: "Auditor One",
   });
 
-  AuditFinding.create = async (payload) => ({
-    ...payload,
-    _id: new mongoose.Types.ObjectId().toString(),
-  });
+  AuditFinding.create = async ([payload], options) => {
+    assert.ok(options.session);
+    return [{ ...payload, _id: new mongoose.Types.ObjectId().toString() }];
+  };
   ScheduledAudit.findById = () => query(audit);
 
   try {
@@ -712,4 +713,34 @@ test("Compatibility aliases remain in the route tree without bypassing the audit
   assert.ok(aliasPaths.includes("/:id"));
   assert.ok(aliasPaths.includes("/submit-to-lead"));
   assert.ok(aliasPaths.includes("/"));
+});
+
+
+// Isolated fixture: an approved All Clear declaration exists.
+// Production still verifies the real declaration in MongoDB.
+const approvedAllClearQuery = () => ({
+  session() { return this; },
+  select: async () => ({ status: "approved" }),
+  then(resolve, reject) {
+    return Promise.resolve({ status: "approved" }).then(resolve, reject);
+  },
+});
+const noActiveAllClearQuery = () => ({
+  session: async () => null,
+  then(resolve, reject) {
+    return Promise.resolve(null).then(resolve, reject);
+  },
+});
+
+const originalZeroFindingExists = ZeroFindingDeclaration.exists;
+const originalZeroFindingFindOne = ZeroFindingDeclaration.findOne;
+
+test.beforeEach(() => {
+  ZeroFindingDeclaration.exists = noActiveAllClearQuery;
+  ZeroFindingDeclaration.findOne = approvedAllClearQuery;
+});
+
+test.after(() => {
+  ZeroFindingDeclaration.exists = originalZeroFindingExists;
+  ZeroFindingDeclaration.findOne = originalZeroFindingFindOne;
 });

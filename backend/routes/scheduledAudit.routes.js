@@ -4,6 +4,7 @@ import authenticate from "../middleware/authMiddleware.js";
 import authorize from "../middleware/authorize.js";
 
 import {
+  getCompletionEligibility,
   getScheduledAudits,
   getScheduledAuditById,
   updateScheduledAudit,
@@ -24,6 +25,8 @@ router.get(
   authenticate,
   getScheduledAudits
 );
+
+router.get("/completion-eligibility", authenticate, authorize("admin", "audit_coordinator"), getCompletionEligibility);
 
 router.get(
   "/:id",

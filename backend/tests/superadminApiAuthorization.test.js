@@ -231,14 +231,14 @@ const request = (id, path, options = {}) =>
 
 test("mounted administrative APIs enforce Superadmin and Admin access rules", async () => {
   const adminList = await request("admin", "/users");
-  assert.equal(adminList.status, 403, "Admin cannot access the management user list");
+  assert.equal(adminList.status, 200, "Admin has management user-list access");
 
   const adminProfileEdit = await request("admin", "/users/target", {
     method: "PUT",
     body: JSON.stringify({ name: "Updated Target" }),
   });
-  assert.equal(adminProfileEdit.status, 403, "Admin cannot edit user profiles");
-  assert.equal(users.target.name, "Auditor Target");
+  assert.equal(adminProfileEdit.status, 200, "Admin can edit ordinary user profiles");
+  assert.equal(users.target.name, "Updated Target");
 
   const superAdminList = await request("superadmin", "/users");
   assert.equal(superAdminList.status, 200, "Superadmin inherits Admin user-list access");
@@ -306,7 +306,7 @@ test("mounted administrative APIs enforce Superadmin and Admin access rules", as
 
 test("mounted APIs preserve Superadmin creation and permissions while rejecting escalation", async () => {
   const created = await request("superadmin", "/users", {
-    method: "POST", body: JSON.stringify({ name: "New Admin", email: "new@example.test", password: "dummy-password", role: "admin" }),
+    method: "POST", body: JSON.stringify({ name: "New Admin", email: "new@example.test", password: "dummy-password1", role: "admin" }),
   });
   assert.equal(created.status, 201);
   const payload = await created.json();
@@ -342,23 +342,16 @@ test("mounted APIs preserve Superadmin creation and permissions while rejecting 
       assert.equal(denied.status, 403);
     }
   }
-  assert.equal(JSON.stringify(recordedActivity).includes("dummy-password"), false);
+  assert.equal(JSON.stringify(recordedActivity).includes("dummy-password1"), false);
 });
 
-test("Admin is denied every user and role management endpoint, including indirect role mutation", async () => {
-  for (const [path, method, body] of [
-    ["/users", "GET"], ["/users/target", "GET"],
-    ["/users", "POST", { name: "New", email: "new@example.test", role: "auditor", password: "dummy-password" }],
-    ["/users/target", "PUT", { name: "Forbidden" }], ["/users/target", "DELETE"],
-    ["/users/target/role", "PATCH", { role: "admin" }],
-    ["/roles", "GET"], ["/roles?includeInactive=true", "GET"], ["/roles/role-admin", "GET"],
-    ["/roles", "POST", { name: "new_role" }], ["/roles/role-admin", "PUT", { permissions: { canManageUsers: false } }],
-    ["/roles/role-admin", "DELETE"],
-  ]) {
-    const response = await request("admin", path, { method, ...(body ? { body: JSON.stringify(body) } : {}) });
-    assert.equal(response.status, 403, `${method} ${path}`);
-  }
-  assert.equal(recordedActivity.length, 0);
+test("Admin manages ordinary accounts but cannot access Role Access or Super Admin targets",async()=>{
+ for(const [path,method,body] of [["/users","GET"],["/users/target","GET"],["/users/target","PUT",{name:"Updated"}],["/users/target/role","PATCH",{role:"admin"}]]){
+   const response=await request("admin",path,{method,...(body?{body:JSON.stringify(body)}:{})});assert.equal(response.status,200,`${method} ${path}`);
+ }
+ for(const [path,method,body] of [["/roles","GET"],["/roles?includeInactive=true","GET"],["/roles/role-admin","GET"],["/roles","POST",{name:"new_role"}],["/roles/role-admin","PUT",{permissions:{canManageUsers:false}}],["/roles/role-admin","DELETE"],["/users/superadmin","PUT",{name:"Forbidden"}],["/users/superadmin","DELETE"],["/users/target/role","PATCH",{role:"super_admin"}],["/users/admin/role","PATCH",{role:"super_admin"}]]){
+   assert.equal((await request("admin",path,{method,...(body?{body:JSON.stringify(body)}:{})})).status,403,`${method} ${path}`);
+ }
 });
 
 test("audit-person directory preserves Admin selectors and exposes only eligible names, IDs and roles", async () => {
@@ -378,7 +371,7 @@ test("audit-person directory preserves Admin selectors and exposes only eligible
       assert.equal((await request(actor, "/users/audit-directory")).status, 403);
       assert.equal((await request(actor, "/roles")).status, 200, "existing operational role reads remain available");
     }
-    assert.equal((await request("admin", "/users/audit-directory", { method: "PUT", body: JSON.stringify({ name: "Forbidden" }) })).status, 403);
+    assert.equal((await request("admin", "/users/audit-directory", { method: "PUT", body: JSON.stringify({ name: "Forbidden" }) })).status, 404);
   } finally { Object.assign(users.target, originalTarget); }
 });
 

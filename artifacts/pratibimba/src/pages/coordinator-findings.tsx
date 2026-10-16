@@ -1,4 +1,6 @@
+import { AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel } from "../components/ui/alert-dialog";
 import {
+  useRef,
   useCallback,
   useEffect,
   useState,
@@ -95,6 +97,7 @@ export default function CoordinatorFindingsPage() {
   const [coordinatorDrafts,setCoordinatorDrafts] = useState<Record<string,{findings:string;severity:"non_conformance"|"open_for_improvement"}>>({});
   const [workingFinding,setWorkingFinding] = useState<string|null>(null);
   const [discardTargetId, setDiscardTargetId] = useState<string | null>(null);
+  const approvalFocus = useRef<HTMLButtonElement | null>(null);
   const [pendingConfirmation,setPendingConfirmation] = useState<{kind:"complete"|"generate"; findingId:string}|null>(null);
   const [confirmationBusy,setConfirmationBusy] = useState(false);
   const [batchGenerating, setBatchGenerating] = useState(false);
@@ -505,21 +508,22 @@ export default function CoordinatorFindingsPage() {
 
 
         <button type="button" className="mb-5 rounded-lg border border-outline-variant px-4 py-2 text-sm" onClick={() => window.location.assign("/scheduled-audits")}>← Back to Scheduled Audits</button>
-        {auditHeader && <div className="mb-5 rounded-xl border border-outline-variant/30 bg-surface p-5"><p className="font-title-lg">{auditHeader.iqaNumber} · {auditHeader.prakalpa}</p><p className="text-sm text-on-surface-variant">{findings.length} {findings.length === 1 ? "finding" : "findings"} · {generatedCount} report(s) generated</p><p className="mt-2 text-sm font-semibold text-primary">{auditHeader.status === "completed" ? "IQA Completed · Final review enabled" : "Findings received · Preview only until IQA completion"}</p></div>}
+        {auditHeader && <div className="mb-5 rounded-xl border border-outline-variant/30 bg-surface p-5"><p className="font-title-lg">{auditHeader.iqaNumber} · {auditHeader.prakalpa}</p><p className="text-sm text-on-surface-variant">{findings.length} {findings.length === 1 ? "finding" : "findings"} · {generatedCount} report(s) generated</p><p className="mt-2 text-sm font-semibold text-primary">{auditHeader.status === "completed" ? "IQA Completed · Final review enabled" : "Findings received · Verify and approve before IQA completion"}</p></div>}
         {!selectedAuditId && <p className="mb-5 rounded-lg border border-amber-300 p-4">Open an IQA from Scheduled Audits using Check Findings or Generate IQRs.</p>}
         {pendingConfirmation && (() => {
           const target = findings.find(f => f._id === pendingConfirmation.findingId);
           if (!target) return null;
           const completing = pendingConfirmation.kind === "complete";
-          return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget && !confirmationBusy)setPendingConfirmation(null)}}>
-            <div role="alertdialog" aria-modal="true" aria-labelledby="coordinator-confirm-title" aria-describedby="coordinator-confirm-description" className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl">
+          return <AlertDialog open onOpenChange={open=>{if(!open&&!confirmationBusy)setPendingConfirmation(null)}}>
+            <AlertDialogContent onCloseAutoFocus={e=>{e.preventDefault();approvalFocus.current?.focus()}} onEscapeKeyDown={e=>{if(confirmationBusy)e.preventDefault()}} overlayClassName="z-[100]" className="z-[101] flex max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-xl flex-col overflow-y-auto overscroll-contain rounded-2xl bg-surface p-4 sm:p-6">
               <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary"><span className="material-symbols-outlined">{completing?"lock":"description"}</span></div>
-              <h2 id="coordinator-confirm-title" className="font-title-lg text-on-surface">{completing?"Approve and lock this finding?":"Generate official IQR?"}</h2>
-              <p id="coordinator-confirm-description" className="mt-2 text-sm text-on-surface-variant">{completing?"This locks the verified finding and its evidence decisions against further changes.":"The backend will create a unique official IQR from the finalized finding."}</p>
-              <p className="mt-3 rounded-lg bg-surface-container-low p-3 text-sm text-on-surface">{(target.coordinatorEditedCopy?.findings || target.leadEditedCopy?.findings || target.findings).slice(0,220)}</p>
-              <div className="mt-5 flex justify-end gap-2"><button type="button" autoFocus disabled={confirmationBusy} onClick={()=>setPendingConfirmation(null)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm disabled:opacity-50">Cancel</button><button type="button" disabled={confirmationBusy} className="rounded-lg bg-primary px-4 py-2 text-sm text-on-primary disabled:opacity-50" onClick={async()=>{try{setConfirmationBusy(true);if(completing){setWorkingFinding(target._id);setError(null);const updated=await completeCoordinatorFinding(target._id);setFindings(items=>items.map(x=>x._id===updated._id?updated:x));}else{await handleGenerate(target);}setPendingConfirmation(null);}catch(e){setError(getErrorMessage(e));}finally{setWorkingFinding(null);setConfirmationBusy(false);}}}>{confirmationBusy?"Working...":completing?"Approve & Lock":"Generate IQR"}</button></div>
-            </div>
-          </div>;
+              <AlertDialogTitle id="coordinator-confirm-title" className="font-title-lg text-on-surface">{completing?"Approve and lock this finding?":"Generate official IQR?"}</AlertDialogTitle>
+              <AlertDialogDescription id="coordinator-confirm-description" className="mt-2 text-sm text-on-surface-variant">{completing?"This locks the verified finding and its evidence decisions against further changes.":"The backend will create a unique official IQR from the finalized finding."}</AlertDialogDescription>
+              <div className="mt-3 rounded-lg bg-surface-container-low p-3 text-sm text-on-surface"><p className="mb-2 font-semibold">Final classification: {(target.coordinatorEditedCopy?.severity ?? target.leadEditedCopy?.severity ?? target.severity) === "non_conformance" ? "NC" : (target.coordinatorEditedCopy?.severity ?? target.leadEditedCopy?.severity ?? target.severity) === "open_for_improvement" ? "OFI" : "Unclassified"}</p><p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{target.coordinatorEditedCopy?.findings || target.leadEditedCopy?.findings || target.findings}</p></div>
+              <FindingEvidence findingId={target._id} files={target.proofFiles} leadFiles={target.leadEvidenceFiles} reviews={target.evidenceReviews} />
+              <div className="sticky bottom-0 mt-5 flex flex-wrap justify-end gap-2 bg-surface py-2"><AlertDialogCancel disabled={confirmationBusy}>Cancel</AlertDialogCancel><button type="button" disabled={confirmationBusy} className="rounded-lg bg-primary px-4 py-2 text-sm text-on-primary disabled:opacity-50" onClick={async()=>{try{setConfirmationBusy(true);if(completing){setWorkingFinding(target._id);setError(null);const updated=await completeCoordinatorFinding(target._id);setFindings(items=>items.map(x=>x._id===updated._id?updated:x));}else{await handleGenerate(target);}setPendingConfirmation(null);}catch(e){setError(getErrorMessage(e));}finally{setWorkingFinding(null);setConfirmationBusy(false);}}}>{confirmationBusy?"Working...":completing?"Approve & Lock":"Generate IQR"}</button></div>
+            </AlertDialogContent>
+          </AlertDialog>;
         })()}
         {error && (
           <div className="mb-6 rounded-xl border border-error/30 bg-error/5 p-4">
@@ -670,7 +674,7 @@ export default function CoordinatorFindingsPage() {
                           </p>
 
                           <p className="mt-2 whitespace-pre-wrap font-body-md text-on-surface">
-                            {finding.leadEditedCopy?.findings || finding.findings ||
+                            {finding.coordinatorEditedCopy?.findings || finding.leadEditedCopy?.findings || finding.findings ||
                               "—"}
                           </p>
                         </div>
@@ -716,7 +720,7 @@ export default function CoordinatorFindingsPage() {
                       </div>
 
 
-                      {auditHeader?.status === "completed" && !finding.coordinatorCompletedAt && finding.workflowStatus === "submitted_to_coordinator" && (
+                      {!finding.coordinatorCompletedAt && finding.workflowStatus === "submitted_to_coordinator" && (
                         <div className="my-5 rounded-xl border border-outline-variant/30 p-4 space-y-3">
                           <p className="font-label-lg">Review or Update Finding</p>
                           <textarea rows={4} className="w-full rounded-lg border border-outline-variant bg-surface p-3" aria-label="Final finding text"
@@ -729,28 +733,13 @@ export default function CoordinatorFindingsPage() {
                           </select>
                           <div className="flex flex-wrap gap-2">
                             <button type="button" disabled={workingFinding!==null} className="rounded-lg border border-primary px-4 py-2 text-primary disabled:opacity-50" onClick={async()=>{try{setWorkingFinding(finding._id);setError(null);const updated=await reviewCoordinatorFinding(finding._id,coordinatorDrafts[finding._id] ?? {findings:finding.coordinatorEditedCopy?.findings ?? finding.leadEditedCopy?.findings ?? finding.findings,severity:finding.coordinatorEditedCopy?.severity ?? finding.leadEditedCopy?.severity ?? finding.severity});setFindings(items=>items.map(x=>x._id===updated._id?updated:x));setCoordinatorDrafts(d=>{const next={...d};delete next[finding._id];return next;});}catch(e){setError(getErrorMessage(e));}finally{setWorkingFinding(null);}}}>Save Changes & Verify</button>
-                            <button type="button" disabled={workingFinding!==null || !finding.coordinatorVerifiedAt || Boolean(coordinatorDrafts[finding._id])} className="rounded-lg bg-primary px-4 py-2 text-on-primary disabled:opacity-50" onClick={()=>setPendingConfirmation({kind:"complete",findingId:finding._id})}>Approve & Lock Finding</button>
+                            <button type="button" disabled={workingFinding!==null || !finding.coordinatorVerifiedAt || Boolean(coordinatorDrafts[finding._id])} className="rounded-lg bg-primary px-4 py-2 text-on-primary disabled:opacity-50" onClick={event=>{approvalFocus.current=event.currentTarget;setPendingConfirmation({kind:"complete",findingId:finding._id})}}>Approve & Lock Finding</button>
                             <button type="button" disabled={workingFinding!==null} className="rounded-lg border border-red-500 px-4 py-2 text-red-700 disabled:opacity-50" onClick={() => setDiscardTargetId(finding._id)}>Discard Finding</button>
                           </div>
                         </div>
                       )}
-                      {auditHeader?.status !== "completed" && finding.workflowStatus === "submitted_to_coordinator" && (
-                        <div className="mt-4 space-y-2">
-                          <button
-                            type="button"
-                            disabled
-                            title="Mark the audit as Completed first."
-                            className="rounded-lg bg-primary px-4 py-2 text-on-primary opacity-40 cursor-not-allowed"
-                          >
-                            Approve Finding
-                          </button>
-                          <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
-                            Mark the audit as Completed first.
-                          </p>
-                        </div>
-                      )}
                       {finding.coordinatorCompletedAt && <p className="mt-4 text-sm text-primary">Verified and completed · Final copy locked</p>}
-                      <FindingEvidence findingId={finding._id} files={finding.proofFiles} leadFiles={finding.leadEvidenceFiles} reviews={finding.evidenceReviews} stage={auditHeader?.status === "completed" && !finding.coordinatorCompletedAt && finding.workflowStatus === "submitted_to_coordinator" ? "coordinator" : undefined} />
+                      <FindingEvidence findingId={finding._id} files={finding.proofFiles} leadFiles={finding.leadEvidenceFiles} reviews={finding.evidenceReviews} stage={!finding.coordinatorCompletedAt && finding.workflowStatus === "submitted_to_coordinator" ? "coordinator" : undefined} />
                       {finding.proofFiles &&
                         finding.proofFiles.length >
                           0 && (

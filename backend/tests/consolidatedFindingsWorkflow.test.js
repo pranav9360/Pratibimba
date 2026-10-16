@@ -1,4 +1,5 @@
 import test from "node:test";
+import ZeroFindingDeclaration from "../models/ZeroFindingDeclaration.js";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
 import { createHash, randomUUID } from "node:crypto";
@@ -953,4 +954,34 @@ test("the individual consolidated endpoint also rejects unreviewed submitted sou
   const draft = await createConsolidatedFinding(currentAudit._id, { title: "NC", classification: "NC", sourceFindings: [currentFindings[0]._id] }, lead);
   await assert.rejects(submitConsolidatedFinding(draft._id, lead), { statusCode: 409 });
   assert.equal(currentConsolidateds[0].workflowStatus, "consolidated_draft");
+});
+
+
+// Isolated fixture: an approved All Clear declaration exists.
+// Production still verifies the real declaration in MongoDB.
+const approvedAllClearQuery = () => ({
+  session() { return this; },
+  select: async () => ({ status: "approved" }),
+  then(resolve, reject) {
+    return Promise.resolve({ status: "approved" }).then(resolve, reject);
+  },
+});
+const noActiveAllClearQuery = () => ({
+  session: async () => null,
+  then(resolve, reject) {
+    return Promise.resolve(null).then(resolve, reject);
+  },
+});
+
+const originalZeroFindingExists = ZeroFindingDeclaration.exists;
+const originalZeroFindingFindOne = ZeroFindingDeclaration.findOne;
+
+test.beforeEach(() => {
+  ZeroFindingDeclaration.exists = noActiveAllClearQuery;
+  ZeroFindingDeclaration.findOne = approvedAllClearQuery;
+});
+
+test.after(() => {
+  ZeroFindingDeclaration.exists = originalZeroFindingExists;
+  ZeroFindingDeclaration.findOne = originalZeroFindingFindOne;
 });

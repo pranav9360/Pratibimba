@@ -83,10 +83,13 @@ test("report predicates include both authorized Prakalpas while excluding unassi
   }
 });
 
-test("management screens use the shared relationship without equating Pramukh contacts with Manager", () => {
+test("management screens use one authoritative Manager and route account creation to User Management", () => {
   const user = read("pages/user-management.tsx"), role = read("pages/role-access.tsx"), project = read("pages/prakalpa-management.tsx");
   assert.doesNotMatch(user, /PRAKALPAS/); assert.match(user, /PrakalpaAssignments/); assert.match(role, /PrakalpaAssignments/);
-  assert.match(project, /Assigned Manager \(separate from Pramukh contact\)/); assert.match(project, /newManager/);
+  assert.match(project, /Assigned Manager/); assert.match(project, /Prakalpa Pramukh/); assert.doesNotMatch(project, /newManager|createManager|type="radio"/);
+  assert.match(project, /navigate\("\/user-management"\)/);
+  assert.match(project, /Unsaved Prakalpa changes will be lost/);
+  assert.match(project, /Prakalpa Pramukh \(Assigned Manager\)/);
   assert.match(user, /unchanged \? \{\} : \{ assignedPrakalpas \}/);
 });
 

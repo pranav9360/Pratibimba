@@ -35,13 +35,13 @@ export function PrakalpaAssignments({ value, onChange, onReady, managers = [], u
     {loading ? <p role="status">Loading Prakalpas…</p> : error ? <p role="alert">{error}</p> : <>
       <input aria-label="Search assignment Prakalpas" value={search} onChange={event => setSearch(event.target.value)}
         className="w-full rounded-lg border px-3 py-2" placeholder="Search Prakalpas" />
-      {projects.length === 0 && <p>No active Prakalpas available. Create a Prakalpa with its Manager in Prakalpa Management.</p>}
-      <div className="max-h-44 overflow-y-auto">
+      {projects.length === 0 && <p>No active Prakalpas available. Create this Manager account, then assign it in Prakalpa Management.</p>}
+      <div className="space-y-1">
         {projects.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).map(p => {
           const unavailable = managers.some(manager => manager.active && manager.role === "prakalpa_manager" && manager.id !== userId &&
             [manager.prakalpa, ...(manager.assignedPrakalpas || [])].includes(p.name));
           return <label key={p._id || p.name} className="flex items-center gap-2 py-2">
-          <input type="checkbox" disabled={unavailable} checked={value.includes(p.name)} onChange={event => onChange(event.target.checked ? [...value, p.name] : value.filter(name => name !== p.name))} />{p.name}{unavailable ? " — assigned to another Manager; reassign in Prakalpa Management" : ""}
+          <input type="checkbox" disabled={unavailable} checked={value.includes(p.name)} onChange={event => onChange(event.target.checked ? [...new Set([...value, p.name])] : value.filter(name => name !== p.name))} />{p.name}{unavailable ? " — assigned to another Manager; reassign in Prakalpa Management" : ""}
         </label>; })}
       </div>
     </>}

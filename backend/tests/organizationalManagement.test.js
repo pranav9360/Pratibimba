@@ -87,8 +87,8 @@ test("Superadmin can create, edit and deactivate Prakalpas, locations and subloc
   assert.deepEqual(location.sublocations, ["Updated Room"]);
 });
 
-test("Admin and operational roles receive 403 on every organizational mutation", async () => {
-  for (const role of ["admin", "audit_coordinator", "auditor", "prakalpa_manager"]) {
+test("Operational roles receive 403 on every organizational mutation", async () => {
+  for (const role of ["audit_coordinator", "auditor", "prakalpa_manager"]) {
     for (const [path, method, body] of [
       ["/prakalpas", "POST", { name: "Forbidden", initialLocation: "Office" }],
       ["/prakalpas/prakalpa", "PUT", { name: "Forbidden" }], ["/prakalpas/prakalpa", "DELETE"],
@@ -134,14 +134,14 @@ const operations = actor => [
   () => locations.deleteLocation("location", actor),
 ];
 test("direct service calls cannot bypass organizational authorization", async () => {
-  for (const actor of [actors.admin, actors.auditor, null]) {
+  for (const actor of [actors.auditor, null]) {
     for (const operation of operations(actor)) await assert.rejects(operation(), { statusCode: 403 });
   }
   assert.equal(writes.length, 0);
 });
 
 test("stale Superadmin requests are rejected using authority read after guard acquisition", async () => {
-  for (const replacement of [actors.admin, { ...actors.super_admin, active: false }]) {
+  for (const replacement of [actors.auditor, { ...actors.super_admin, active: false }]) {
     freshActor = replacement;
     for (const [path, method, body] of [["/prakalpas", "POST", { name: "New", initialLocation: "Office" }],
       ["/prakalpas/prakalpa", "PUT", { name: "Changed" }], ["/prakalpas/prakalpa", "DELETE"],
@@ -170,12 +170,27 @@ test("location moves require an existing active Prakalpa", async () => {
 
 test("operational lookups project only master-data fields required for planning and report delivery", async () => {
   let fields;
-  const lookup = value => ({ sort() { return this; }, select(projection) { fields = projection; return this; },
-    then(resolve, reject) { return Promise.resolve([value]).then(resolve, reject); } });
+  const lookup = value => ({
+    sort() { return this; },
+    select(projection) { fields = projection; return this; },
+    lean() { return Promise.resolve([value]); },
+    then(resolve, reject) { return Promise.resolve([value]).then(resolve, reject); },
+  });
   Prakalpa.find = () => lookup(prakalpa);
   Location.find = () => lookup(location);
-  await prakalpas.getPrakalpas(actors.admin);
-  assert.equal(fields, "_id name auditAreas prakalpaPramukh prakalpaPramukhEmail seniorEmail active");
+
+  const { default: User } = await import("../models/User.js");
+  const previousUserFind = User.find;
+  try {
+    User.find = () => ({
+      select() { return this; },
+      lean() { return Promise.resolve([]); },
+    });
+    await prakalpas.getPrakalpas(actors.admin);
+    assert.equal(fields, "_id name auditAreas prakalpaPramukh prakalpaPramukhEmail seniorEmail active");
+  } finally {
+    User.find = previousUserFind;
+  }
   await locations.getLocations(actors.admin);
   assert.equal(fields, "_id prakalpa name sublocations active");
   fields = undefined;
@@ -184,8 +199,14 @@ test("operational lookups project only master-data fields required for planning 
 });
 
 
-test("inactive Prakalpa inspection remains Superadmin-only", async () => {
-  for (const role of ["admin", "auditor", "audit_coordinator", "prakalpa_manager"]) {
+test("inactive Prakalpa inspection is limited to management administrators", async () => {
+  for (const role of ["auditor", "audit_coordinator", "prakalpa_manager"]) {
     assert.equal((await request(role, "/prakalpas?includeInactive=true")).status, 403);
   }
+});
+
+test("Admin can update Prakalpas and locations through the authorized APIs", async()=>{
+ assert.equal((await request("admin","/prakalpas/prakalpa","PUT",{seniorEmail:"cc@example.test"})).status,200);
+ assert.equal((await request("admin","/locations/location","PUT",{sublocations:["Room"]})).status,200);
+ assert.equal((await request("admin","/prakalpas","POST",{name:"New",managerId:manager._id,initialLocation:"Office"})).status,201);
 });

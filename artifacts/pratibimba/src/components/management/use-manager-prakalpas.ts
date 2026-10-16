@@ -1,29 +1,27 @@
 import { useEffect, useState } from "react";
-import { getPrakalpas } from "../../services/prakalpaService";
-import { getAuthenticatedUser } from "../../services/authService";
-import { assignmentNames } from "./prakalpa-assignments";
+import { getMyPrakalpas } from "../../services/prakalpaService";
+import { getRequestErrorMessage } from "../../services/request-errors";
 
-export function useManagerPrakalpas(user: { id?: string; role: string; prakalpa?: string; assignedPrakalpas?: string[] }) {
-  const [scope, setScope] = useState<{ key: string; names: string[] }>({ key: "", names: [] });
-  const key = JSON.stringify([user.id, user.role, assignmentNames(user)]);
+type ManagerIdentity = { id?: string; role: string; prakalpa?: string; assignedPrakalpas?: string[] };
+export function useManagerPrakalpaScope(user: ManagerIdentity) {
+  const [scope, setScope] = useState({ key: "", names: [] as string[], loading: false, error: "" });
+  const key = JSON.stringify([user.id, user.role, user.prakalpa, user.assignedPrakalpas]);
   useEffect(() => {
+    if (user.role !== "prakalpa_manager") return;
     let cancelled = false;
-    let generation = 0;
-    const load = async () => {
-      const request = ++generation;
-      setScope({ key, names: [] });
-      try {
-        const [records, identity] = await Promise.all([getPrakalpas(), getAuthenticatedUser()]);
-        if (!cancelled && request === generation) {
-          const active = new Set(records.filter(p => p.active !== false).map(p => p.name));
-          setScope({ key, names: identity.role === "prakalpa_manager" ? assignmentNames(identity).filter(name => active.has(name)) : [] });
-        }
-      } catch { if (!cancelled && request === generation) setScope({ key, names: [] }); }
-    };
-    if (user.role === "prakalpa_manager") {
-      void load(); window.addEventListener("focus", load);
-    }
-    return () => { cancelled = true; window.removeEventListener("focus", load); };
+    const controller = new AbortController();
+    setScope({ key, names: [], loading: true, error: "" });
+    getMyPrakalpas({ signal: controller.signal }).then(records => {
+      if (!cancelled) setScope({ key, names: [...new Set(records.filter(p => p.active).map(p => p.name))], loading: false, error: "" });
+    }).catch(error => {
+      if (!cancelled) setScope({ key, names: [], loading: false,
+        error: getRequestErrorMessage(error, "Unable to verify your Prakalpa access. Refresh the page and try again.") });
+    });
+    return () => { cancelled = true; controller.abort(); };
   }, [user.role, key]);
-  return scope.key === key ? scope.names : [];
+  return scope.key === key ? scope : { key, names: [], loading: user.role === "prakalpa_manager", error: "" };
+}
+
+export function useManagerPrakalpas(user: ManagerIdentity) {
+  return useManagerPrakalpaScope(user).names;
 }

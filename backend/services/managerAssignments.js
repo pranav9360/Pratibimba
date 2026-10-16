@@ -35,8 +35,8 @@ export const prepareManagerAssignments = (fields, target = null) => {
   }
   const explicitArray = Object.hasOwn(fields, "assignedPrakalpas");
   const explicitScalar = Object.hasOwn(fields, "prakalpa");
-  if (!target || target.role !== "prakalpa_manager") {
-    if (!explicitArray && !explicitScalar && (fields.active ?? target?.active ?? true) === true) throw new AppError("Select Prakalpas for the new Manager.", 400);
+  if (target && target.role !== "prakalpa_manager" && !explicitArray && !explicitScalar && (fields.active ?? target.active ?? true) === true) {
+    throw new AppError("Select Prakalpas for the new Manager.", 400);
   }
   let names;
   if (explicitArray) {
@@ -92,6 +92,8 @@ export const validateAssignmentState = (state, affectedNames, affectedUsers = []
 };
 
 export const validateManagerMutation = async (before, after, session) => {
+  // A newly created account can await its first Prakalpa; it grants no access.
+  if (!before && after?.role === "prakalpa_manager" && !managerAssignments(after).length) return;
   const names = new Set();
   for (const user of [before, after]) {
     if (user?.role === "prakalpa_manager") for (const name of managerAssignments(user)) names.add(name);

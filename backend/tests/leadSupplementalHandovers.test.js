@@ -1,3 +1,4 @@
+import ZeroFindingDeclaration from '../models/ZeroFindingDeclaration.js';
 import { after, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
@@ -35,11 +36,12 @@ beforeEach(() => {
   audit = { _id: id(), leadAuditor: "Lead", auditCoordinator: "Coordinator", auditors: ["A", "B"],
     workflowMode: "legacy", status: "ongoing", startDate: new Date(Date.now() - 86400000), workflowRevision: 0 };
   findings = []; submissions = []; handover = null; closed = false; tail = Promise.resolve(); failAppend = false; saves = 0; onTransactionQueued = null;
+  mock(ZeroFindingDeclaration, "exists", () => q(null));
   mock(ScheduledAudit, "findById", () => q(audit));
   mock(ScheduledAudit, "updateOne", async () => { audit.workflowRevision++; return { modifiedCount: 1 }; });
   mock(AuditFinding, "find", filter => q(matching(filter)));
   mock(AuditFinding, "findById", value => q(findings.find(f => String(f._id) === String(value))));
-  mock(AuditFinding, "create", async payload => { const created = finding(payload); findings.push(created); return created; });
+  mock(AuditFinding, "create", async (payload, options) => { assert.ok(options.session); const created = finding(payload[0]); findings.push(created); return [created]; });
   mock(AuditFinding, "updateMany", async (filter, update) => {
     matching(filter).forEach(f => Object.assign(f, update.$set)); return { modifiedCount: matching(filter).length };
   });
@@ -220,12 +222,15 @@ test("final closure racing another handover commits closure without a duplicate 
 });
 
 
-test("an empty initial handover remains supported, but empty supplements cannot be appended", async () => {
+test("empty initial handover is rejected in favor of All Clear; empty supplements still reject", async () => {
+  const empty = await request();
+  await assert.rejects(submitLeadBatchToCoordinator(audit._id, lead, empty), { statusCode: 409 });
+  assert.equal(handover, null); assert.equal(submissions.length, 0);
+  findings.push(finding());
   const confirmed = await request();
-  const first = await submitLeadBatchToCoordinator(audit._id, lead, confirmed);
-  assert.equal(first.approved, 0); assert.equal(first.discarded, 0); assert.equal(submissions.length, 0);
-  await assert.rejects(submitLeadBatchToCoordinator(audit._id, lead, { ...confirmed, requestId: randomUUID() }), { statusCode: 409 });
+  await submitLeadBatchToCoordinator(audit._id, lead, confirmed);
   assert.equal((await submitLeadBatchToCoordinator(audit._id, lead, confirmed)).alreadySubmitted, true);
+  await assert.rejects(submitLeadBatchToCoordinator(audit._id, lead, await request()), { statusCode: 409 });
 });
 
 test("historical discard counts cannot silently hide inconsistent membership", async () => {

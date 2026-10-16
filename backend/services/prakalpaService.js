@@ -2,44 +2,37 @@ import mongoose from "mongoose";
 import Prakalpa from "../models/Prakalpa.js";
 import Location from "../models/Location.js";
 import User from "../models/User.js";
-import Role from "../models/Role.js";
+import { resolvePrakalpaManager, managerDirectory } from "./prakalpaIdentity.js";
 import AppError from "../utils/AppError.js";
-import { withAdministrativeMutation } from "./administrativeMutation.js";
+import { withManagementMutation as withAdministrativeMutation } from "./administrativeMutation.js";
 import { organizationalFields } from "./organizationalFields.js";
-import { managerAssignments, readAssignmentState, validateAssignmentState } from "./managerAssignments.js";
+import { managerAssignments, authorizedManagerPrakalpas, readAssignmentState, validateAssignmentState } from "./managerAssignments.js";
 import { recordActivity, userActivityTarget } from "./activityLogService.js";
 
-const editable = (data, creating = false) => organizationalFields(data, {
-  text: ["name", "prakalpaPramukh", "prakalpaPramukhEmail", "seniorEmail", ...(creating ? ["initialLocation"] : [])],
-  arrays: ["auditAreas"], creating,
+const editable = (data, creating = false) => {
+  const fields = organizationalFields(data, {
+    text: ["name", "prakalpaPramukh", "prakalpaPramukhEmail", "seniorEmail", ...(creating ? ["initialLocation"] : [])],
+    arrays: ["auditAreas"], creating,
+  });
+  // Validate legacy inputs for compatibility, but preserve stored historical contacts.
+  const { prakalpaPramukh, prakalpaPramukhEmail, ...authoritativeFields } = fields;
+  return authoritativeFields;
+};
+const projectResponse = (project, state) => ({
+  ...(project.toObject ? project.toObject() : project),
+  ...resolvePrakalpaManager(project, state.users),
 });
 const assignmentInput = data => {
   const { managerId, newManager, ...fields } = data || {};
   if (managerId !== undefined && (typeof managerId !== "string" || !mongoose.isValidObjectId(managerId))) throw new AppError("Select a valid Manager account.", 400);
-  if (newManager !== undefined && (managerId !== undefined || !newManager || typeof newManager !== "object" || Array.isArray(newManager))) throw new AppError("Choose an existing Manager or supply one new Manager.", 400);
-  return { managerId, newManager, fields };
+  if (newManager !== undefined) throw new AppError("Create Manager accounts in User Management, then select the existing Manager.", 400);
+  return { managerId, fields };
 };
 const assignmentSnapshot = user => ({ role: user.role, active: user.active,
   prakalpa: user.prakalpa || "", assignedPrakalpas: [...(user.assignedPrakalpas || [])] });
-const assignManager = async (name, managerId, newManager, actor, session) => {
-  let selected;
-  if (newManager) {
-    if (Object.keys(newManager).some(key => !["name", "email", "password", "phone"].includes(key)) ||
-      typeof newManager.name !== "string" || !newManager.name.trim() ||
-      typeof newManager.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newManager.email) ||
-      typeof newManager.password !== "string" || newManager.password.length < 8 ||
-      (newManager.phone !== undefined && typeof newManager.phone !== "string")) throw new AppError("New Manager requires a name, valid email and password of at least 8 characters.", 400);
-    if (!await Role.findOne({ name: "prakalpa_manager", active: true }).session(session)) throw new AppError("Prakalpa Manager role is not available.", 400);
-    if (await User.findOne({ email: newManager.email.trim().toLowerCase() }).session(session)) throw new AppError("Email already exists", 409);
-    [selected] = await User.create([{ name: newManager.name.trim(), email: newManager.email.trim().toLowerCase(),
-      password: newManager.password, ...(newManager.phone ? { phone: newManager.phone.trim() } : {}),
-      role: "prakalpa_manager", active: true, assignedPrakalpas: [name], prakalpa: name }], { session });
-    await recordActivity({ actor, target: userActivityTarget(selected), action: "user_role_changed",
-      oldValue: { role: null }, newValue: assignmentSnapshot(selected), session });
-  } else {
-    selected = await User.findById(managerId).session(session);
-    if (!selected || selected.role !== "prakalpa_manager" || selected.active !== true) throw new AppError("Select an existing active Prakalpa Manager.", 400);
-  }
+const assignManager = async (name, managerId, actor, session) => {
+  const selected = await User.findById(managerId).session(session);
+  if (!selected || selected.role !== "prakalpa_manager" || selected.active !== true) throw new AppError("Select an existing active Prakalpa Manager.", 400);
   const affectedManagers = new Set([String(selected._id)]);
   const managers = await User.find({ role: "prakalpa_manager", active: true }).session(session);
   for (const manager of managers) {
@@ -60,10 +53,42 @@ const assignManager = async (name, managerId, newManager, actor, session) => {
 };
 
 export const getPrakalpas = async (actor, includeInactive = false) => {
-  if (includeInactive && (actor?.role !== "super_admin" || actor?.active !== true)) throw new AppError("Only Superadmins can inspect inactive Prakalpas.", 403);
+  if (includeInactive && (!["super_admin", "admin"].includes(actor?.role) || actor?.active !== true)) throw new AppError("Only administrators can inspect inactive Prakalpas.", 403);
   const query = Prakalpa.find(includeInactive ? {} : { active: true }).sort({ name: 1 });
   if (actor?.role !== "super_admin") query.select("_id name auditAreas prakalpaPramukh prakalpaPramukhEmail seniorEmail active");
-  return query;
+  const projects = await query.lean();
+  const managers = await managerDirectory();
+  return projects.map(project => ({ ...project, ...resolvePrakalpaManager(project, managers) }));
+};
+
+// Self-service identity comes from the authenticated Manager account.
+export const getMyPrakalpas = async (actor) => {
+  if (actor?.role !== "prakalpa_manager" || actor.active !== true) {
+    throw new AppError("Active Prakalpa Manager access required.", 403);
+  }
+  // Empty historical assignments grant no access. Conflicts still fail closed.
+  let assignments;
+  try { assignments = managerAssignments(actor); }
+  catch { throw new AppError("Manager assignments require administrative reconciliation.", 403); }
+  if (!assignments.length) return [];
+  const names = await authorizedManagerPrakalpas(actor);
+  if (!names.length) return [];
+  const projects = await Prakalpa.find({ active: true, name: { $in: names } })
+    .select("name active auditAreas prakalpaPramukh prakalpaPramukhEmail seniorEmail")
+    .sort({ name: 1 }).lean();
+  const locations = await Location.find({ active: true, prakalpa: { $in: names } })
+    .select("name prakalpa sublocations").sort({ name: 1 }).lean();
+  // Explicit DTOs also prevent future model fields from leaking through this API.
+  return projects.map(project => ({
+    name: project.name,
+    active: project.active,
+    auditAreas: project.auditAreas || [],
+    prakalpaPramukh: actor.name || "",
+    prakalpaPramukhEmail: actor.email || "",
+    seniorEmail: project.seniorEmail || "",
+    locations: locations.filter(location => location.prakalpa === project.name)
+      .map(location => ({ name: location.name, sublocations: location.sublocations || [] })),
+  }));
 };
 
 export const createPrakalpa = async (data, actor) => withAdministrativeMutation(actor, async (freshActor, session) => {
@@ -71,13 +96,14 @@ export const createPrakalpa = async (data, actor) => withAdministrativeMutation(
   const fields = editable(input.fields, true);
   const { initialLocation, ...prakalpaData } = fields;
   if (!initialLocation) throw new AppError("Location is required to create a Prakalpa.", 400);
-  if (fields.active !== false && !input.managerId && !input.newManager) throw new AppError("An active Prakalpa requires one active Manager.", 400);
+  if (fields.active !== false && !input.managerId) throw new AppError("An active Prakalpa requires one active Manager.", 400);
   if (await Prakalpa.findOne({ name: fields.name }).session(session)) throw new AppError("Prakalpa already exists", 409);
   const [prakalpa] = await Prakalpa.create([prakalpaData], { session });
   await Location.create([{ prakalpa: fields.name, name: initialLocation, sublocations: [], active: true }], { session });
-  const manager = input.managerId || input.newManager ? await assignManager(fields.name, input.managerId, input.newManager, freshActor, session) : null;
-  validateAssignmentState(await readAssignmentState(session), [fields.name], manager || []);
-  return prakalpa;
+  const manager = input.managerId ? await assignManager(fields.name, input.managerId, freshActor, session) : null;
+  const state = await readAssignmentState(session);
+  validateAssignmentState(state, [fields.name], manager || []);
+  return projectResponse(prakalpa, state);
 });
 
 export const updatePrakalpa = async (id, data, actor) => withAdministrativeMutation(actor, async (freshActor, session) => {
@@ -86,12 +112,13 @@ export const updatePrakalpa = async (id, data, actor) => withAdministrativeMutat
   const prakalpa = await Prakalpa.findById(id).session(session);
   if (!prakalpa) throw new AppError("Prakalpa not found", 404);
   if (fields.name !== undefined && fields.name !== prakalpa.name) throw new AppError("Prakalpa names are used by assignments and audit history. Renaming requires a separately reviewed migration.", 409);
-  const assignmentChange = fields.active !== undefined && fields.active !== prakalpa.active || input.managerId || input.newManager;
+  const assignmentChange = fields.active !== undefined && fields.active !== prakalpa.active || input.managerId;
   for (const [key, value] of Object.entries(fields)) prakalpa[key] = value;
   await prakalpa.save({ session });
-  const manager = input.managerId || input.newManager ? await assignManager(prakalpa.name, input.managerId, input.newManager, freshActor, session) : null;
-  if (assignmentChange) validateAssignmentState(await readAssignmentState(session), [prakalpa.name], manager || []);
-  return prakalpa;
+  const manager = input.managerId ? await assignManager(prakalpa.name, input.managerId, freshActor, session) : null;
+  const state = await readAssignmentState(session);
+  if (assignmentChange) validateAssignmentState(state, [prakalpa.name], manager || []);
+  return projectResponse(prakalpa, state);
 });
 
 export const deletePrakalpa = async (id, actor) => withAdministrativeMutation(actor, async (_freshActor, session) => {

@@ -25,7 +25,7 @@ const router = express.Router();
 router.get(
   "/",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "admin"),
   getUsers
 );
 
@@ -46,14 +46,14 @@ router.get(
 router.get(
   "/:id",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "admin"),
   getUserById
 );
 
 router.post(
   "/",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "admin"),
   createUserValidator,
   createUser
 );
@@ -61,7 +61,7 @@ router.post(
 router.patch(
   "/:id/role",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "admin"),
   changeUserRoleValidator,
   changeUserRole
 );
@@ -69,7 +69,7 @@ router.patch(
 router.put(
   "/:id",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "admin"),
   updateUserValidator,
   updateUser
 );
@@ -77,7 +77,7 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "admin"),
   deleteUser
 );
 

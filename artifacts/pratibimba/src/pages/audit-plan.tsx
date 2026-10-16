@@ -1,8 +1,10 @@
+import { compareAuditRecords } from "../../../../shared/audit-order.mjs";
+import { getRequestErrorMessage, logRequestError } from "../services/request-errors";
 import { FilterToolbar } from "../components/filters/filter-toolbar";
 import { FilterSelect } from "../components/filters/filter-select";
 import { FilterDate } from "../components/filters/filter-date";
 import { matchesDateFilter, type DateFilter } from "../components/filters/date-filter-utils";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Link } from "wouter";
 import { useApp, type AuditPlan } from "../context/app-context";
 import { useEffect } from "react";
@@ -48,6 +50,8 @@ interface ScheduleModalProps {
   auditors: string[];
   leadAuditors: string[];
   auditorDirectoryError: string | null;
+  requestError?: string;
+  busy?: boolean;
 }
 function ScheduleModal({
   plan,
@@ -56,6 +60,7 @@ function ScheduleModal({
   auditors,
   leadAuditors,
   auditorDirectoryError,
+  requestError, busy,
 }: ScheduleModalProps) {
   const [startDate, setStartDate] = useState(
     plan.auditPlannedDate
@@ -87,6 +92,7 @@ function ScheduleModal({
           <p className="font-body-md text-on-surface-variant mt-0.5">{plan.prakalpa} — {plan.location}{plan.sublocation ? `, ${plan.sublocation}` : ""}</p>
         </div>
         <div className="p-6 space-y-4">
+          {requestError && <p role="alert" className="text-sm text-error">{requestError}</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Start Date</label>
@@ -156,7 +162,7 @@ function ScheduleModal({
         </div>
         <div className="p-6 pt-0 flex gap-3">
           <button onClick={onClose} className="flex-1 py-3 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
-          <button disabled={!!auditorDirectoryError || !startDate || !endDate || selectedAuditors.length === 0 || !leadAuditor || !selectedAuditors.every((name) => auditors.includes(name)) || !auditors.includes(leadAuditor)} onClick={() =>
+          <button disabled={busy || !!auditorDirectoryError || !startDate || !endDate || selectedAuditors.length === 0 || !leadAuditor || !selectedAuditors.every((name) => auditors.includes(name)) || !auditors.includes(leadAuditor)} onClick={() =>
             onSchedule({
               startDate,
               endDate,
@@ -178,6 +184,8 @@ interface EditModalProps {
   coordinators: string[];
   prakalpas: Prakalpa[];
   masterLocations: Location[];
+  requestError?: string;
+  busy?: boolean;
 }
 
 function EditModal({
@@ -187,6 +195,7 @@ function EditModal({
   coordinators,
   prakalpas,
   masterLocations,
+  requestError, busy,
 }: EditModalProps) {
   const firstPrakalpa =
     plan?.prakalpa ||
@@ -204,7 +213,6 @@ function EditModal({
     auditPlannedDate: plan?.auditPlannedDate || "",
     auditCoordinator: plan?.auditCoordinator || coordinators[0] || "",
     prakalphaPramukh:
-      plan?.prakalphaPramukh ||
       prakalpas.find((p) => p.name === firstPrakalpa)?.prakalpaPramukh ||
       "",
     purpose: plan?.purpose || "",
@@ -290,6 +298,7 @@ function EditModal({
           {plan ? <p className="font-data-mono text-[11px] text-primary mt-1">{plan.iqaNumber}</p> : <p className="font-label-md text-on-surface-variant/50 mt-0.5">Audit ID auto-generated</p>}
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {requestError && <p role="alert" className="text-sm text-error">{requestError}</p>}
           {/* Prakalpa */}
           <div>
             <label className="font-label-md text-on-surface-variant block mb-1">Prakalpa Type <span className="text-error">*</span></label>
@@ -357,19 +366,14 @@ function EditModal({
             </div>
           </div>
 
-          {/* Prakalpa Pramukh — automatically derived from Prakalpa master data */}
           <div>
-            <label className="font-label-md text-on-surface-variant block mb-1">
-              Prakalpa Pramukh <span className="text-error">*</span>
-            </label>
-
-            <div className="w-full border border-outline-variant/40 rounded-lg p-3 font-body-md bg-surface-container-lowest text-on-surface">
-              {form.prakalphaPramukh || "— Select a Prakalpa —"}
+            <label className="font-label-md text-on-surface-variant block mb-1">Prakalpa Pramukh (Assigned Manager) <span className="text-error">*</span></label>
+            <div className="w-full border border-outline-variant/40 rounded-lg p-3 bg-surface-container-lowest">
+              {selectedPrakalpa?.prakalpaPramukh || `Manager assignment ${selectedPrakalpa?.managerAssignmentStatus || "missing"}. Contact the Super Admin.`}
+              {selectedPrakalpa?.prakalpaPramukhEmail && <p>{selectedPrakalpa.prakalpaPramukhEmail}</p>}
             </div>
-
-            <p className="text-[11px] text-on-surface-variant/60 mt-1">
-              Automatically assigned from Prakalpa Management
-            </p>
+            {selectedPrakalpa?.historicalContactMismatch && <p role="status" className="text-xs text-amber-700 mt-1">Historical contact differs; assigned Manager details are used. Historical records are preserved.</p>}
+            {plan?.prakalphaPramukh && plan.prakalphaPramukh !== selectedPrakalpa?.prakalpaPramukh && <p className="text-xs mt-1">Historical plan Pramukh: {plan.prakalphaPramukh}. Saving this edit uses the assigned Manager.</p>}
           </div>
 
           {/* Audit Planning */}
@@ -420,7 +424,7 @@ function EditModal({
           <button onClick={onClose} className="flex-1 py-3 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
           <button
             disabled={
-              !form.prakalpa ||
+              busy || !form.prakalpa ||
               !form.auditPlannedDate ||
               (locations.length > 0 && !form.location) ||
               !form.auditCoordinator ||
@@ -446,6 +450,10 @@ export default function AuditPlanPage() {
     coordinatorUsers,
     refreshLiveData
   } = useApp();
+  const [pageError, setPageError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const actionBusyRef = useRef(false);
   const [auditPlans, setAuditPlans] = useState<AuditPlan[]>([]);
   const [prakalpas, setPrakalpas] = useState<Prakalpa[]>([]);
   const [masterLocations, setMasterLocations] = useState<Location[]>([]);
@@ -466,10 +474,8 @@ export default function AuditPlanPage() {
       setPrakalpas(prakalpaData);
       setMasterLocations(locationData);
     } catch (err) {
-      console.error(
-        "Failed to load Audit Plan master data:",
-        err
-      );
+      logRequestError("Failed to load Audit Plan master data:", err);
+      setPageError(getRequestErrorMessage(err, "Unable to load Audit Plan master data."));
     }
   }
 
@@ -481,7 +487,8 @@ export default function AuditPlanPage() {
         setAuditPlans(response.data);
       }
     } catch (err) {
-      console.error(err);
+      logRequestError("Audit Plan request failed", err);
+      setPageError(getRequestErrorMessage(err, "Unable to load Audit Plans."));
     }
   }
   const coordinatorNames = coordinatorUsers.map((u) => u.name);
@@ -515,7 +522,7 @@ export default function AuditPlanPage() {
 
         const ms =
           !q ||
-          p.iqaNumber.toLowerCase().includes(q) ||
+          (p.iqaNumber || "").toLowerCase().includes(q) ||
           p.prakalpa.toLowerCase().includes(q) ||
           p.location.toLowerCase().includes(q) ||
           (p.purpose || "").toLowerCase().includes(q);
@@ -545,16 +552,7 @@ export default function AuditPlanPage() {
 
         return matchesExistingFilters && matchesView;
       })
-      .sort((a, b) =>
-        a.iqaNumber.localeCompare(
-          b.iqaNumber,
-          undefined,
-          {
-            numeric: true,
-            sensitivity: "base",
-          }
-        )
-      );
+      .sort(compareAuditRecords);
   }, [
     auditPlans,
     search,
@@ -572,6 +570,7 @@ export default function AuditPlanPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 min-w-0">
+      {pageError && <p role="alert" className="rounded-lg bg-error/5 p-3 text-sm text-error">{pageError}</p>}
       <div className="flex flex-wrap justify-between items-start gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">Audit Plan</h2>
@@ -652,7 +651,7 @@ export default function AuditPlanPage() {
             <table className="w-full min-w-[1180px] text-left">
               <thead className="bg-surface-container-lowest border-b border-outline-variant/20">
                 <tr>
-                  {["Audit ID", "Prakalpa", "Location", "Sublocation", "Audit Areas", "Planned Date", "Coordinator", "Pramukh", "Auditors", "Status", ...(canSeeAuditPlanActions ? ["Actions"] : [])].map((h) => (
+                  {["Audit ID", "Prakalpa", "Location", "Sublocation", "Audit Areas", "Planned Date", "Coordinator", "Pramukh (recorded)", "Auditors", "Status", ...(canSeeAuditPlanActions ? ["Actions"] : [])].map((h) => (
                     <th key={h} className="px-4 py-3 font-label-md text-on-surface-variant uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -761,8 +760,12 @@ export default function AuditPlanPage() {
       {scheduleTarget && (
         <ScheduleModal
           plan={scheduleTarget}
+          requestError={actionError}
+          busy={actionBusy}
           onClose={() => setScheduleTarget(null)}
           onSchedule={async (data) => {
+            if (actionBusyRef.current) return;
+            actionBusyRef.current = true; setActionBusy(true); setActionError("");
             try {
               const id = scheduleTarget.id || scheduleTarget._id || "";
               await scheduleAudit(id, data);
@@ -771,8 +774,9 @@ export default function AuditPlanPage() {
 
               setScheduleTarget(null);
             } catch (err) {
-              console.error(err);
-            }
+              logRequestError("Audit Plan change failed", err);
+              setActionError(getRequestErrorMessage(err, "Unable to save this Audit Plan change."));
+            } finally { actionBusyRef.current = false; setActionBusy(false); }
           }}
           auditors={auditors}
           leadAuditors={auditors}
@@ -782,8 +786,12 @@ export default function AuditPlanPage() {
       {editTarget && (
         <EditModal
           plan={editTarget === "new" ? null : editTarget}
+          requestError={actionError}
+          busy={actionBusy}
           onClose={() => setEditTarget(null)}
           onSave={async (data) => {
+            if (actionBusyRef.current) return;
+            actionBusyRef.current = true; setActionBusy(true); setActionError("");
             try {
               if (editTarget === "new") {
                 await createAuditPlan(data);
@@ -796,8 +804,9 @@ export default function AuditPlanPage() {
 
               setEditTarget(null);
             } catch (err) {
-              console.error(err);
-            }
+              logRequestError("Audit Plan change failed", err);
+              setActionError(getRequestErrorMessage(err, "Unable to save this Audit Plan change."));
+            } finally { actionBusyRef.current = false; setActionBusy(false); }
           }}
           coordinators={coordinatorNames}
           prakalpas={prakalpas}
@@ -811,9 +820,12 @@ export default function AuditPlanPage() {
             <span className="material-symbols-outlined text-error text-[40px]">delete_forever</span>
             <h3 className="font-headline-sm">Delete Audit Plan?</h3>
             <p className="font-body-md text-on-surface-variant">This action cannot be undone.</p>
+            {actionError && <p role="alert" className="text-sm text-error">{actionError}</p>}
             <div className="flex gap-3">
               <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2.5 border border-outline-variant rounded-lg font-label-md">Cancel</button>
-              <button onClick={async () => {
+              <button disabled={actionBusy} onClick={async () => {
+                if (actionBusyRef.current) return;
+                actionBusyRef.current = true; setActionBusy(true); setActionError("");
                 try {
                   await deleteAuditPlan(deleteConfirm);
 
@@ -821,8 +833,9 @@ export default function AuditPlanPage() {
 
                   setDeleteConfirm(null);
                 } catch (err) {
-                  console.error(err);
-                }
+                  logRequestError("Audit Plan delete failed", err);
+                  setActionError(getRequestErrorMessage(err, "Unable to delete this Audit Plan."));
+                } finally { actionBusyRef.current = false; setActionBusy(false); }
               }} className="flex-1 py-2.5 bg-error text-white rounded-lg font-label-md font-bold">Delete</button>
             </div>
           </div>

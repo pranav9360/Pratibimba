@@ -10,11 +10,19 @@ export const assertSuperAdmin = (actor) => {
 
 // Account revocations and role mutations take the SAME guard before reading
 // authority. A conflicting transaction must retry and authorize afresh.
-export const withAdministrativeMutation = (actor, operation) => {
-  assertSuperAdmin(actor);
+export const assertManagementAdmin = actor => {
+  if (actor?.active !== true || !["super_admin", "admin"].includes(actor.role)) {
+    throw new AppError("Active Admin or Super Admin access required.", 403);
+  }
+};
+const mutateWithAuthority = (actor, operation, assertAuthority) => {
+  assertAuthority(actor);
   return withSuperAdminMutationTransaction(async (session) => {
     const freshActor = await User.findById(actor._id).session(session);
-    assertSuperAdmin(freshActor);
+    assertAuthority(freshActor);
     return operation(freshActor, session);
   });
 };
+
+export const withAdministrativeMutation = (actor, operation) => mutateWithAuthority(actor, operation, assertSuperAdmin);
+export const withManagementMutation = (actor, operation) => mutateWithAuthority(actor, operation, assertManagementAdmin);

@@ -1,12 +1,11 @@
 import { useLocation } from "wouter";
-import { useEffect, useState } from "react";
-import { getReports } from "../services/reportService";
-import { getCoordinatorFindingSummaries } from "../services/auditFindingService";
+import { useState } from "react";
 import { useApp } from "../context/app-context";
 import { isRoleAllowed } from "./role-route-guard";
 
 const breadcrumbMap: Record<string, string> = {
   "/dashboard":       "Dashboard",
+  "/my-prakalpas":    "My Prakalpas",
   "/audit-plan":      "Audit Plan",
   "/audit-calendar":  "Audit Calendar",
   "/scheduled-audits":"Scheduled Audits",
@@ -36,31 +35,9 @@ const ROLE_BADGE: Record<string, string> = {
 
 export function TopNav() {
   const [pathname, setLocation] = useLocation();
-  const { currentUser, notifications, markNotificationRead, markAllNotificationsRead } = useApp();
+  const { currentUser } = useApp();
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-
-  const [pendingReview, setPendingReview] = useState({ findings: 0, actions: 0 });
-  useEffect(() => {
-    if (currentUser.role !== "audit_coordinator") { setPendingReview({ findings: 0, actions: 0 }); return; }
-    let active = true;
-    const refresh = async () => {
-      try {
-        const [summaries, reports] = await Promise.all([getCoordinatorFindingSummaries(), getReports()]);
-        if (active) setPendingReview({
-          findings: summaries.reduce((total, item) => total + (Number(item.awaitingReview) || 0), 0),
-          actions: (Array.isArray(reports) ? reports : []).filter((report: { workflowStatus?: string }) => report.workflowStatus === "action_submitted").length,
-        });
-      } catch { /* Do not show misleading stale pending counts on failure. */
-        if (active) setPendingReview({ findings: 0, actions: 0 });
-      }
-    };
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 60000);
-    return () => { active = false; window.clearInterval(interval); };
-  }, [currentUser.role, currentUser.name]);
-  const unreadCount = notifications.filter((n) => !n.read).length + pendingReview.findings + pendingReview.actions;
 
   const breadcrumbs = (() => {
     if (!pathname) return [];
@@ -84,7 +61,6 @@ export function TopNav() {
           type="button"
           onClick={() => {
             setShowMobileMenu((s) => !s);
-            setShowNotifications(false);
             setShowUserMenu(false);
           }}
           className="md:hidden shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors"
@@ -110,68 +86,6 @@ export function TopNav() {
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2 md:gap-3 shrink-0">
-        {/* Notification Bell */}
-        <div className="relative">
-          <button
-            onClick={() => { setShowNotifications((s) => !s); setShowUserMenu(false); }}
-            className="relative p-2 rounded-lg hover:bg-surface-container-low transition-colors"
-          >
-            <span className="material-symbols-outlined text-on-surface-variant text-[22px]">notifications</span>
-            {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-error text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
-            )}
-          </button>
-
-          {showNotifications && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
-              <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 sm:w-96 bg-white rounded-xl shadow-floating border border-outline-variant/20 z-50 overflow-hidden">
-                <div className="px-4 py-3 border-b border-outline-variant/10 bg-surface-container-lowest flex justify-between items-center">
-                  <p className="font-label-md text-on-surface font-bold">Notifications</p>
-                  {unreadCount > 0 && (
-                    <button onClick={markAllNotificationsRead} className="text-[11px] text-primary hover:underline font-label-md">
-                      Mark all read
-                    </button>
-                  )}
-                </div>
-                {currentUser.role === "audit_coordinator" && (pendingReview.findings > 0 || pendingReview.actions > 0) && (
-                  <div className="p-3 space-y-2 border-b border-outline-variant/20">
-                    {pendingReview.findings > 0 && <button type="button" className="block w-full text-left rounded-lg bg-primary/5 px-3 py-2 hover:bg-primary/10" onClick={() => { setShowNotifications(false); setLocation("/scheduled-audits"); }}><span className="font-bold text-sm">{pendingReview.findings} Lead-approved findings</span><span className="block text-xs text-on-surface-variant">Awaiting Coordinator review · Open Scheduled Audits</span></button>}
-                    {pendingReview.actions > 0 && <button type="button" className="block w-full text-left rounded-lg bg-primary/5 px-3 py-2 hover:bg-primary/10" onClick={() => { setShowNotifications(false); setLocation("/all-reports"); }}><span className="font-bold text-sm">{pendingReview.actions} corrective actions</span><span className="block text-xs text-on-surface-variant">Awaiting Coordinator verification · Open All Reports</span></button>}
-                  </div>
-                )}
-                {notifications.length === 0 && pendingReview.findings === 0 && pendingReview.actions === 0 ? (
-                  <div className="p-6 text-center text-on-surface-variant/50 font-body-md">No notifications</div>
-                ) : (
-                  <div className="max-h-80 overflow-y-auto divide-y divide-outline-variant/10">
-                    {notifications.map((n) => (
-                      <button
-                        key={n.id}
-                        onClick={() => markNotificationRead(n.id)}
-                        className={`w-full text-left px-4 py-3 hover:bg-surface-container-low transition-colors ${!n.read ? "bg-primary/5" : ""}`}
-                      >
-                        <div className="flex gap-3 items-start">
-                          <span className={`material-symbols-outlined text-[18px] mt-0.5 shrink-0 ${n.type === "mail" ? "text-secondary" : n.type === "warning" ? "text-error" : "text-primary"}`}>
-                            {n.type === "mail" ? "mail" : n.type === "warning" ? "warning" : "info"}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <p className={`font-label-md ${!n.read ? "font-bold text-on-surface" : "text-on-surface-variant"}`}>{n.title}</p>
-                            <p className="font-label-md text-on-surface-variant/70 text-[11px] mt-0.5 leading-snug">{n.message}</p>
-                            <p className="font-data-mono text-[10px] text-on-surface-variant/50 mt-1">{new Date(n.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</p>
-                          </div>
-                          {!n.read && <span className="w-2 h-2 bg-primary rounded-full mt-1.5 shrink-0" />}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-
         {/* Authenticated User Identity */}
         <div className="flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1.5 rounded-lg">
           <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-on-secondary font-bold text-[11px]">
@@ -214,8 +128,8 @@ export function TopNav() {
                 { label: "Open Reports", href: "/open-reports", icon: "inbox", roles: ["audit_coordinator", "prakalpa_manager", "auditor", "admin"] },
                 { label: "Checklist", href: "/checklist", icon: "checklist", roles: ["audit_coordinator", "auditor", "admin"] },
                 { label: "IQA Summary", href: "/iqa-summary", icon: "summarize", roles: ["audit_coordinator", "admin"] },
-                { label: "Prakalpa Management", href: "/prakalpa-management", icon: "account_tree", roles: ["super_admin"] },
-                { label: "User Management", href: "/user-management", icon: "manage_accounts", roles: ["super_admin"] },
+                { label: "Prakalpa Management", href: "/prakalpa-management", icon: "account_tree", roles: ["super_admin", "admin"] },
+                { label: "User Management", href: "/user-management", icon: "manage_accounts", roles: ["super_admin", "admin"] },
                 { label: "Roles & Permissions", href: "/role-access", icon: "admin_panel_settings", roles: ["super_admin"] },
               ]
                 .filter((item) => isRoleAllowed(currentUser?.role || "", item.roles))

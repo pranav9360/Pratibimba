@@ -1,5 +1,6 @@
 import ScheduledAudit from "../models/ScheduledAudit.js";
 import AppError from "../utils/AppError.js";
+import ZeroFindingDeclaration from "../models/ZeroFindingDeclaration.js";
 
 /**
  * Coordinate consolidated-workflow writes through one Scheduled Audit
@@ -10,7 +11,8 @@ import AppError from "../utils/AppError.js";
  */
 export const acquireConsolidatedAuditWriteBarrier = async (
   scheduledAuditId,
-  session
+  session,
+  { allowAllClear = false, allowLegacy = false } = {}
 ) => {
   if (!session) {
     throw new AppError(
@@ -22,7 +24,7 @@ export const acquireConsolidatedAuditWriteBarrier = async (
   const audit = await ScheduledAudit.findOneAndUpdate(
     {
       _id: scheduledAuditId,
-      workflowMode: "consolidated",
+      ...(allowLegacy ? {} : { workflowMode: "consolidated" }),
       status: { $ne: "completed" },
     },
     {
@@ -41,5 +43,13 @@ export const acquireConsolidatedAuditWriteBarrier = async (
     );
   }
 
+  if (!['legacy', 'consolidated'].includes(audit.workflowMode || 'legacy')) throw new AppError('Unknown audit workflow; administrative review required.', 409);
+  const activeAllClear = await ZeroFindingDeclaration.exists({
+    scheduledAudit: scheduledAuditId,
+    status: { $in: ['submitted', 'approved'] },
+  }).session(session);
+  if (activeAllClear && !allowAllClear) {
+    throw new AppError('An All Clear declaration is pending or approved. Findings are locked until returned.', 409);
+  }
   return audit;
 };

@@ -1,3 +1,4 @@
+import { isValidNewPassword, PASSWORD_POLICY_MESSAGE } from "../../shared/password-policy.mjs";
 import User from "../models/User.js";
 import Role from "../models/Role.js";
 import AppError from "../utils/AppError.js";
@@ -6,7 +7,7 @@ import {
   assertLastActiveSuperAdminRemains,
   assertSupportedRole,
 } from "./userRolePolicy.js";
-import { assertSuperAdmin, withAdministrativeMutation as withAccountMutation } from "./administrativeMutation.js";
+import { assertManagementAdmin, withManagementMutation as withAccountMutation } from "./administrativeMutation.js";
 import { prepareManagerAssignments, managerMutationRequested, validateManagerMutation, transferReleasedAssignments } from "./managerAssignments.js";
 import { markPasswordChanged } from "../utils/passwordSessions.js";
 
@@ -33,8 +34,8 @@ const editableData = (data) => {
       throw new AppError("User text fields must be strings", 400);
     }
   }
-  if (data.password !== undefined && data.password.length < 8) {
-    throw new AppError("Password must be at least 8 characters", 400);
+  if (data.password !== undefined && !isValidNewPassword(data.password)) {
+    throw new AppError(PASSWORD_POLICY_MESSAGE, 400);
   }
   if (data.assignedPrakalpas !== undefined && (
     !Array.isArray(data.assignedPrakalpas) || data.assignedPrakalpas.some((name) => typeof name !== "string")
@@ -94,7 +95,7 @@ const recordAdministrativeChange = async ({
 };
 
 export const getUsers = async (actor) => {
-  assertSuperAdmin(actor);
+  assertManagementAdmin(actor);
   const users = await User.find().select("-password").sort({ createdAt: -1 });
   return users.map(publicUser);
 };
@@ -116,7 +117,7 @@ export const getAuditPersonDirectory = async (actor) => {
 };
 
 export const getUserById = async (id, actor) => {
-  assertSuperAdmin(actor);
+  assertManagementAdmin(actor);
   const user = await User.findById(id).select("-password");
 
   if (!user) {
@@ -152,13 +153,17 @@ export const updateUser = async (id, data, currentUser = null) => {
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new AppError("Invalid user data", 400);
   // The original profile API treats an empty password as "leave unchanged".
   const profile = { ...data };
-  if (typeof profile.password === "string" && !profile.password.trim()) delete profile.password;
+  if (typeof profile.password === "string" && profile.password === "") delete profile.password;
   const { replacementManagerId, ...userProfile } = profile;
   if (replacementManagerId !== undefined && typeof replacementManagerId !== "string") throw new AppError("Invalid replacement Manager.", 400);
   const fields = editableData(userProfile);
   return withAccountMutation(currentUser, async (actor, session) => {
     const target = await User.findById(id).session(session);
     if (!target) throw new AppError("User not found", 404);
+    if (actor.role === "admin" && String(actor._id) === String(target._id) &&
+        ((fields.role !== undefined && fields.role !== target.role) || (fields.active !== undefined && fields.active !== target.active))) {
+      throw new AppError("Use another authorized administrator to change your own role or account status.", 403);
+    }
     const assignmentChange = managerMutationRequested(target, fields);
     const safeFields = assignmentChange ? prepareManagerAssignments(fields, target) : fields;
     const previousAssignment = { _id: target._id, role: target.role, active: target.active,
@@ -208,6 +213,7 @@ export const deleteUser = async (id, currentUser = null, replacementManagerId = 
     if (target.role === "super_admin" && actor.role !== "super_admin") {
       throw new AppError("Only a Superadmin can deactivate a Superadmin account.", 403);
     }
+    if (actor.role === "admin" && String(actor._id) === String(target._id)) throw new AppError("You cannot deactivate your own administrator account.", 403);
     if (target.active === false) return publicUser(target);
     await assertSuperAdminRemains(target, target.role, false, session);
     const before = accountSnapshot(target);

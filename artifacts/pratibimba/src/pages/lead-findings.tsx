@@ -1,3 +1,4 @@
+import AllClearWorkflow from '../components/all-clear-workflow';
 import {
   useCallback,
   useEffect,
@@ -979,7 +980,7 @@ function ScopedLeadFindingsPage({
 
   if (workflowMode === "consolidated") {
     return (
-      <ConsolidatedFindingsView
+      <><div className="mx-auto max-w-[1200px] px-4 pt-4"><AllClearWorkflow scheduledAuditId={auditId} compact /></div><ConsolidatedFindingsView
         audit={{
           _id: auditId,
           workflowMode,
@@ -991,14 +992,14 @@ function ScopedLeadFindingsPage({
           endDate: audit.endDate || "",
           auditCoordinator: audit.auditCoordinator || "",
         }}
-      />
+      /></>
     );
   }
 
   return (
-    <LegacyLeadFindingsPage
+    <><div className="mx-auto max-w-[1200px] px-4 pt-4"><AllClearWorkflow scheduledAuditId={auditId} compact /></div><LegacyLeadFindingsPage
       scheduledAuditId={auditId}
-    />
+    /></>
   );
 }
 
@@ -1432,7 +1433,7 @@ function LegacyLeadFindingsPage({
           auditGroups.some(group => group.key === expandedAuditKey)
         )) && (
           <>
-{activeAuditId && batchStatus && !batchStatus.finalized && (
+{activeAuditId && batchStatus && !batchStatus.finalized && batchStatus.findingIds.length > 0 && (
         <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4 flex flex-col gap-3">
           <p className="font-label-md">{batchStatus.submitted ? "Supplemental handover" : "Initial handover"} · {batchStatus.approved} approved · {batchStatus.discarded} discarded</p>
           {batchStatus.missingAuditors.length > 0 && <p className="text-on-surface-variant text-sm">Pending Auditors (does not block handover): {batchStatus.missingAuditors.join(", ")}</p>}

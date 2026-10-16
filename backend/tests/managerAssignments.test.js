@@ -28,7 +28,7 @@ const document = data => ({ ...data, async save() { return this; } });
 let users, projects, locations, logs, tail, actor, manager, other, failLocation;
 const names = user => managerAssignments(user);
 const addProject = (name, active = true) => { const p = document({ _id: id(), name, active }); projects.push(p); return p; };
-const managerData = extra => ({ name: "New Manager", email: `${id()}@example.test`, password: "unit-test-only-password", role: "prakalpa_manager", active: true, ...extra });
+const managerData = extra => ({ name: "New Manager", email: `${id()}@example.test`, password: "unit-test-only-password123", role: "prakalpa_manager", active: true, ...extra });
 
 beforeEach(() => {
   restore(); tail = Promise.resolve(); logs = []; locations = []; failLocation = false;
@@ -88,28 +88,37 @@ test("an active Prakalpa cannot be created without a Manager", async () => {
   assert.equal(projects.length, 3); assert.equal(locations.length, 0);
 });
 
-test("an active Manager cannot be created or edited with no active Prakalpa", async () => {
-  await assert.rejects(createUser(managerData({ assignedPrakalpas: [] }), actor), /at least one active Prakalpa/);
+test("a new Manager may await assignment but existing coverage cannot be removed", async () => {
+  const created = await createUser(managerData({ assignedPrakalpas: [] }), actor);
+  assert.deepEqual(created.assignedPrakalpas, []);
+  await assert.rejects(authorizedManagerPrakalpas(created), /No Prakalpa is assigned/);
   await assert.rejects(updateUser(manager._id, { assignedPrakalpas: [] }, actor), /at least one active Prakalpa/);
   assert.deepEqual(names(users.find(u => u._id === manager._id)), ["TEST", "Second"]);
 });
 
-test("creating a Manager and first Prakalpa is atomic and uses existing bcrypt middleware", async () => {
-  await createPrakalpa({ name: "New", initialLocation: "Office", newManager: {
-    name: "Fresh", email: "fresh@example.test", password: "unit-test-only-password",
-  } }, actor);
-  const fresh = users.find(u => u.email === "fresh@example.test");
-  assert.deepEqual(names(fresh), ["New"]); assert.equal(fresh.role, "prakalpa_manager");
-  assert.ok(await bcrypt.compare("unit-test-only-password", fresh.password)); assert.match(fresh.password, /^\$2[aby]\$12\$/);
-  assert.doesNotMatch(JSON.stringify(logs), /unit-test-only-password|\$2[aby]\$/);
+test("User Management creates a Manager with bcrypt, then Prakalpa Management assigns the existing account", async () => {
+  const fresh = await createUser(managerData({ email: "fresh@example.test" }), actor);
+  const stored = users.find(u => u.email === "fresh@example.test");
+  assert.ok(await bcrypt.compare("unit-test-only-password123", stored.password));
+  assert.deepEqual(names(stored), []);
+  await createPrakalpa({ name: "New", initialLocation: "Office", managerId: String(fresh._id) }, actor);
+  assert.deepEqual(names(stored), ["New"]);
+  assert.equal(stored.prakalpa, "New");
+  assert.doesNotMatch(JSON.stringify(logs), /unit-test-only-password123|\$2[aby]\$/);
 });
 
-test("failed combined creation preserves all prior users and projects", async () => {
-  failLocation = true;
+test("inline account creation is rejected without writing users or Prakalpas", async () => {
   await assert.rejects(createPrakalpa({ name: "New", initialLocation: "Office", newManager: {
-    name: "Fresh", email: "fresh@example.test", password: "unit-test-only-password",
-  } }, actor), /Location unavailable/);
+    name: "Fresh", email: "fresh@example.test", password: "unit-test-only-password123",
+  } }, actor), /Create Manager accounts in User Management/);
   assert.equal(projects.length, 3); assert.equal(users.length, 3); assert.equal(logs.length, 0);
+});
+
+test("failed Prakalpa creation leaves the existing Manager and assignments intact", async () => {
+  failLocation = true;
+  await assert.rejects(createPrakalpa({ name: "New", initialLocation: "Office", managerId: manager._id }, actor), /Location unavailable/);
+  assert.equal(projects.length, 3); assert.equal(users.length, 3); assert.equal(logs.length, 0);
+  assert.deepEqual(names(users.find(u => u._id === manager._id)), ["TEST", "Second"]);
 });
 
 test("explicit reassignment atomically updates both Managers without changing Pramukh", async () => {
@@ -194,8 +203,8 @@ test("corrective action is permitted for each assigned active Prakalpa and denie
   }
 });
 
-test("Admin and other roles cannot create or reassign organizational records", async () => {
-  for (const role of ["admin", "auditor", "audit_coordinator", "prakalpa_manager"]) {
+test("Operational roles cannot create or reassign organizational records", async () => {
+  for (const role of ["auditor", "audit_coordinator", "prakalpa_manager"]) {
     await assert.rejects(updatePrakalpa(projects[0]._id, { managerId: other._id }, { ...actor, role }), { statusCode: 403 });
   }
 });
@@ -222,7 +231,7 @@ test("a failed activity event rolls back both accounts in a replacement operatio
 
 test("new Manager payloads cannot inject a privileged role or independently assigned relationship", async () => {
   await assert.rejects(createPrakalpa({ name: "New", initialLocation: "Office", newManager: {
-    name: "Injected", email: "injected@example.test", password: "unit-test-only-password", role: "super_admin",
+    name: "Injected", email: "injected@example.test", password: "unit-test-only-password123", role: "super_admin",
   } }, actor), { statusCode: 400 });
   assert.equal(projects.length, 3); assert.equal(users.length, 3);
 });
@@ -246,4 +255,23 @@ test("unrelated profile edits preserve scalar-only records without backfilling t
   manager.assignedPrakalpas = [];
   await updateUser(manager._id, { phone: "1234567890" }, actor);
   assert.deepEqual(manager.assignedPrakalpas, []); assert.equal(manager.prakalpa, "TEST");
+});
+
+test("metadata-only and unchanged Prakalpa payloads do not reassign Managers or rewrite unrelated assignments", async () => {
+  const initialManager = { prakalpa: manager.prakalpa, assignedPrakalpas: [...manager.assignedPrakalpas] };
+  const initialOther = { prakalpa: other.prakalpa, assignedPrakalpas: [...other.assignedPrakalpas] };
+  const result = await updatePrakalpa(projects[0]._id, { name: "TEST", active: true, auditAreas: ["Finance"], seniorEmail: "cc@example.test" }, actor);
+  assert.equal(result.assignedManagerId, manager._id);
+  assert.deepEqual({ prakalpa: manager.prakalpa, assignedPrakalpas: manager.assignedPrakalpas }, initialManager);
+  assert.deepEqual({ prakalpa: other.prakalpa, assignedPrakalpas: other.assignedPrakalpas }, initialOther);
+  assert.equal(logs.length, 0);
+});
+
+test("the live-data shape of a sole active assignment rejects both reassignment and deactivation with 409", async () => {
+  for (const data of [{ managerId: manager._id }, { active: false }]) {
+    await assert.rejects(updatePrakalpa(projects[2]._id, data, actor), { statusCode: 409 });
+    assert.equal(projects.find(p => p.name === "Third").active, true);
+    assert.deepEqual(names(users.find(u => u._id === other._id)), ["Third"]);
+    assert.deepEqual(names(users.find(u => u._id === manager._id)), ["TEST", "Second"]);
+  }
 });

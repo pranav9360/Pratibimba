@@ -1,3 +1,6 @@
+import { withAuditWrite } from './legacyAuditWriteBarrier.js';
+import { assertAuditEndReached, assertScheduledAuditOutcome } from './scheduledAuditOutcome.js';
+import { activeActionProofFiles } from "../../shared/evidence-status.mjs";
 import PDFDocument from "pdfkit";
 import { authorizedManagerPrakalpas } from "./managerAssignments.js";
 import { fileURLToPath } from "node:url";
@@ -131,6 +134,11 @@ export const createReport = async (
     throw new AppError("At least one observation is required.", 400);
   }
 
+  return withAuditWrite(audit._id, async (lockedAudit, session) => {
+  assertCanManageScheduledAuditReports(lockedAudit, currentUser);
+  assertAuditEndReached(lockedAudit);
+  const outcome = await assertScheduledAuditOutcome(lockedAudit, session);
+  if (outcome === 'all_clear') throw new AppError('An All Clear audit does not generate IQR reports.', 409);
   const currentYear = new Date().getFullYear();
 
   const reports = await Report.find(
@@ -138,7 +146,7 @@ export const createReport = async (
       iqrNumber: new RegExp(`^IQR-${currentYear}-`),
     },
     "iqrNumber"
-  );
+  ).session(session);
 
   let maxNumber = 0;
 
@@ -177,26 +185,26 @@ export const createReport = async (
 
     runningNumber++;
 
-    const report = await Report.create({
+    const [report] = await Report.create([{
       iqrNumber,
-      auditPlan: audit.auditPlan,
-      scheduledAudit: audit._id,
-      iqaNumber: audit.iqaNumber,
+      auditPlan: lockedAudit.auditPlan,
+      scheduledAudit: lockedAudit._id,
+      iqaNumber: lockedAudit.iqaNumber,
 
-      prakalpa: audit.prakalpa,
-      location: audit.location,
-      sublocation: audit.sublocation,
-      auditCoordinator: audit.auditCoordinator,
+      prakalpa: lockedAudit.prakalpa,
+      location: lockedAudit.location,
+      sublocation: lockedAudit.sublocation,
+      auditCoordinator: lockedAudit.auditCoordinator,
 
-      auditors: audit.auditors,
+      auditors: lockedAudit.auditors,
 
       // =========================
       // Audit Metadata
       // =========================
 
-      auditAreas: audit.auditAreas || [],
-      purpose: audit.purpose || "",
-      prakalphaPramukh: audit.prakalphaPramukh || "",
+      auditAreas: lockedAudit.auditAreas || [],
+      purpose: lockedAudit.purpose || "",
+      prakalphaPramukh: lockedAudit.prakalphaPramukh || "",
 
       visitDate: data.visitDate,
       visitTime: data.visitTime,
@@ -216,7 +224,7 @@ export const createReport = async (
 
       status: "open",
       reportCreatedOn: new Date(),
-    });
+    }], { session });
 
     createdReports.push(report);
   }
@@ -231,14 +239,18 @@ export const createReport = async (
   //
   // Mark the lifecycle as completed instead.
 
-  audit.status = "completed";
-  await audit.save();
+  lockedAudit.status = "completed";
+  lockedAudit.outcome = outcome;
+  lockedAudit.completedAt ||= new Date();
+  lockedAudit.completedBy ||= currentUser._id;
+  await lockedAudit.save({ session });
 
-  await AuditPlan.findByIdAndUpdate(audit.auditPlan, {
+  await AuditPlan.findByIdAndUpdate(lockedAudit.auditPlan, {
     status: "completed",
-  });
+  }, { session });
 
   return createdReports;
+  });
 };
 
 /*
@@ -1387,7 +1399,7 @@ export const submitPrakalpaCorrectiveAction = async (
         "action_submitted",
       actionTakenSnapshot: actionTaken,
       completionRemarksSnapshot: completionRemarks,
-      actionProofFilesSnapshot: [...(report.actionProofFiles || [])],
+      actionProofFilesSnapshot: activeActionProofFiles(report),
       fromStatus,
       toStatus:
         "action_submitted",

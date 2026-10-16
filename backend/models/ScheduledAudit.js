@@ -67,7 +67,7 @@ const scheduledAuditSchema =
         default: "legacy",
       },
 
-      // Shared transaction write-conflict counter for consolidated audits.
+      // Shared transaction write-conflict counter for audit outcome changes.
       workflowRevision: {
         type: Number,
         default: 0,
@@ -103,6 +103,10 @@ const scheduledAuditSchema =
         ],
         default: "upcoming",
       },
+
+      outcome: { type: String, enum: ['all_clear', 'consolidated_findings', 'legacy_approved_findings'], default: undefined },
+      completedAt: { type: Date, default: null },
+      completedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 
       mailSent: {
         type: Boolean,

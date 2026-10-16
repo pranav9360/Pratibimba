@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+
+const EMPTY_REVIEWS: Review[] = [];
+const EMPTY_FILES: string[] = [];
 import api from "../services/api";
 
 type Review = { token: string; leadDropped?: boolean; coordinatorDropped?: boolean };
 type Props = { findingId: string; files?: string[]; leadFiles?: string[]; reviews?: Review[]; stage?: "lead" | "coordinator"; canUpload?: boolean; onUploaded?: () => Promise<void> | void };
-export default function FindingEvidence({ findingId, files=[], leadFiles=[], reviews=[], stage, canUpload=false, onUploaded }: Props) {
+export default function FindingEvidence({ findingId, files=EMPTY_FILES, leadFiles=EMPTY_FILES, reviews=EMPTY_REVIEWS, stage, canUpload=false, onUploaded }: Props) {
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState("");
   const [preview,setPreview] = useState<{url:string;type:string;name:string}|null>(null);
@@ -25,7 +28,7 @@ export default function FindingEvidence({ findingId, files=[], leadFiles=[], rev
     finally{setBusy(false);}
   }
   async function openFile(token:string) {
-    if(!token.startsWith("evidence:")) return;
+    if(dropped(token) || !token.startsWith("evidence:")) return;
     try {
       setError("");
       const id=token.slice(9);
@@ -45,6 +48,12 @@ export default function FindingEvidence({ findingId, files=[], leadFiles=[], rev
     }catch(e:any){setError(e?.response?.data?.message||"Could not update evidence decision");}
     finally{setBusy(false);setConfirm(null);}
   }
+  async function removeDraft(token:string) {
+    if(busy)return;setBusy(true);setError("");
+    try { await api.delete(`/audit-findings/${findingId}/evidence/${token.slice(9)}`); await onUploaded?.(); }
+    catch(e:any){setError(e?.response?.data?.message||"Unable to remove draft evidence.");}
+    finally{setBusy(false);}
+  }
   return <div className="space-y-3 rounded-lg border border-outline-variant p-3">
     <p className="font-label-md">Proof of findings ({all.filter(t=>!dropped(t)).length} retained)</p>
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -53,8 +62,9 @@ export default function FindingEvidence({ findingId, files=[], leadFiles=[], rev
         const canReview=Boolean(stage && token.startsWith("evidence:") && !(stage==="coordinator" && status(token)?.leadDropped));
         const label=names[token]||`Evidence ${index+1}${index>=files.length?" · Lead":" · Auditor"}`;
         return <div key={token} className={`relative rounded-lg border border-outline-variant p-3 ${excluded?"opacity-60":""}`}>
+          {canUpload && !stage && token.startsWith("evidence:") && <button type="button" aria-label="Remove draft evidence" disabled={busy} onClick={()=>void removeDraft(token)} className="text-xs text-error underline">Remove draft</button>}
           {canReview && <button type="button" title={excluded?"Restore evidence":"Drop evidence"} aria-label={excluded?"Restore evidence":"Drop evidence"} disabled={busy} onClick={e=>{e.stopPropagation();if(excluded)void decide(token,false);else setConfirm(token)}} className="absolute right-1 top-1 z-10 rounded-full p-1 text-error hover:bg-surface-container">{excluded?"↶":"×"}</button>}
-          <div role="button" tabIndex={0} title="Double-click to preview" onDoubleClick={()=>void openFile(token)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();void openFile(token)}}} className="cursor-zoom-in select-none pr-5">
+          <div role={excluded ? undefined : "button"} tabIndex={excluded ? undefined : 0} aria-disabled={excluded || undefined} title={excluded ? "Excluded evidence — retained in history" : "Double-click to preview"} onDoubleClick={()=>{if(!excluded)void openFile(token)}} onKeyDown={e=>{if(!excluded && (e.key==="Enter"||e.key===" ")){e.preventDefault();void openFile(token)}}} className={`${excluded ? "cursor-default" : "cursor-zoom-in"} select-none pr-5`}>
             <div className="text-2xl" aria-hidden="true">{token.endsWith(".pdf")?"▤":"▧"}</div>
             <p className="break-all text-xs">{label}</p>
             <p className="text-xs text-on-surface-variant">{excluded?"Excluded":"Double-click to preview"}</p>
