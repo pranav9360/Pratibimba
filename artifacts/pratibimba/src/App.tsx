@@ -6,6 +6,7 @@ import { RoleRouteGuard } from "./components/role-route-guard";
 import { Link } from "wouter";
 import pratibimbaLogo from "./assets/pratibimba-logo.jpeg";
 
+import HelpPage from "./pages/help";
 import LoginPage from "./pages/login";
 import ForgotPasswordPage from "./pages/forgot-password";
 import OTPVerificationPage from "./pages/otp-verification";
@@ -23,10 +24,12 @@ import IQASummaryPage from "./pages/iqa-summary";
 import RoleAccessPage from "./pages/role-access";
 import UserManagementPage from "./pages/user-management";
 import PrakalpaManagementPage from "./pages/prakalpa-management";
+import MyPrakalpasPage from "./pages/my-prakalpas";
 import MyFindingsPage from "./pages/my-findings";
 
 import LeadFindingsPage from "./pages/lead-findings";
 import CoordinatorFindingsPage from "./pages/coordinator-findings";
+import ZeroFindingsPage from "./pages/zero-findings";
 function AuthLayout({
   children,
 }: {
@@ -186,6 +189,15 @@ function ProtectedRouter() {
         </DashboardLayout>
       </Route>
 
+
+      <Route path="/zero-findings/:id">
+        <DashboardLayout>
+          <RoleRouteGuard allowedRoles={["auditor", "audit_coordinator", "admin"]}>
+            <ZeroFindingsPage />
+          </RoleRouteGuard>
+        </DashboardLayout>
+      </Route>
+
       <Route path="/scheduled-audits/:id/edit">
         <DashboardLayout>
             <RoleRouteGuard allowedRoles={["audit_coordinator", "admin"]}>
@@ -236,7 +248,7 @@ function ProtectedRouter() {
 
 <Route path="/user-management">
         <DashboardLayout>
-            <RoleRouteGuard allowedRoles={["super_admin"]}>
+            <RoleRouteGuard allowedRoles={["super_admin", "admin"]}>
             <UserManagementPage />
           </RoleRouteGuard>
         </DashboardLayout>
@@ -244,8 +256,16 @@ function ProtectedRouter() {
 
       <Route path="/prakalpa-management">
         <DashboardLayout>
-          <RoleRouteGuard allowedRoles={["super_admin"]}>
+          <RoleRouteGuard allowedRoles={["super_admin", "admin"]}>
             <PrakalpaManagementPage />
+          </RoleRouteGuard>
+        </DashboardLayout>
+      </Route>
+
+      <Route path="/my-prakalpas">
+        <DashboardLayout>
+          <RoleRouteGuard allowedRoles={["prakalpa_manager"]}>
+            <MyPrakalpasPage />
           </RoleRouteGuard>
         </DashboardLayout>
       </Route>
@@ -285,6 +305,8 @@ function AppRouter() {
           <LoginPage />
         </AuthLayout>
       </Route>
+
+      <Route path="/help"><AuthLayout><HelpPage /></AuthLayout></Route>
 
       <Route path="/forgot-password">
         <AuthLayout>

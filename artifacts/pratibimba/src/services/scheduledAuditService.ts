@@ -1,3 +1,4 @@
+import { sortAuditRecords } from "../../../../shared/audit-order.mjs";
 import api from "./api";
 import type { ScheduledAudit } from "../context/app-context";
 
@@ -26,7 +27,7 @@ export const getScheduledAudits =
       [];
 
     return Array.isArray(data)
-      ? data.map(withId)
+      ? sortAuditRecords(data.map(withId))
       : data;
   };
 
@@ -115,3 +116,8 @@ export const sendScheduledAuditEmail =
 
     return withId(res.data.data);
   };
+
+export const getCompletionEligibility = async (): Promise<Record<string, {eligible:boolean;reason:string}>> => {
+  const res = await api.get("/scheduled-audits/completion-eligibility");
+  return res.data.data;
+};

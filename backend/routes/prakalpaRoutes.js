@@ -5,6 +5,7 @@ import authorize from "../middleware/authorize.js";
 
 import {
   getPrakalpas,
+  getMyPrakalpas,
   createPrakalpa,
   updatePrakalpa,
   deletePrakalpa,
@@ -18,6 +19,8 @@ import {
 const router =
   express.Router();
 
+router.get("/mine", authenticate, authorize("prakalpa_manager"), getMyPrakalpas);
+
 router.get(
   "/",
   authenticate,
@@ -27,7 +30,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "admin"),
   createPrakalpaValidator,
   createPrakalpa
 );
@@ -35,7 +38,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "admin"),
   updatePrakalpaValidator,
   updatePrakalpa
 );
@@ -43,7 +46,7 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("super_admin"),
+  authorize("super_admin", "admin"),
   deletePrakalpa
 );
 

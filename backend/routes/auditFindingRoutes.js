@@ -1,5 +1,5 @@
 import express from "express";
-import { uploadFindingEvidence, downloadFindingEvidence, reviewFindingEvidence, evidenceUpload } from "../controllers/findingEvidenceController.js";
+import { uploadFindingEvidence, downloadFindingEvidence, reviewFindingEvidence, removeDraftFindingEvidence, evidenceUpload } from "../controllers/findingEvidenceController.js";
 
 import authenticate from "../middleware/authMiddleware.js";
 import authorize from "../middleware/authorize.js";
@@ -45,6 +45,7 @@ const router = express.Router();
 // Evidence is authenticated, finding-scoped and checked against current assignments.
 router.post("/:id/evidence", authenticate, authorize("auditor"), evidenceUpload.single("file"), uploadFindingEvidence);
 router.patch("/:id/evidence/:fileId/review", authenticate, authorize("auditor", "audit_coordinator"), reviewFindingEvidence);
+router.delete("/:id/evidence/:fileId", authenticate, authorize("auditor"), removeDraftFindingEvidence);
 router.get("/:id/evidence/:fileId", authenticate, authorize("auditor", "audit_coordinator", "admin", "super_admin"), downloadFindingEvidence);
 
 router.get("/coordinator/finding-summaries",authenticate,authorize("audit_coordinator"),getCoordinatorFindingSummariesController);

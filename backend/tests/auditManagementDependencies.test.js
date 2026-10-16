@@ -20,6 +20,7 @@ test("Admin can select a Coordinator and Auditor from the minimal directory, pla
   let plan, scheduled;
   try {
     User.find = filter => {
+      if (filter.role === "prakalpa_manager") return { select() { return this; }, lean: async () => [{ _id: "manager", name: "Manager Pramukh", email: "manager@example.test", prakalpa: "Test Prakalpa", assignedPrakalpas: ["Test Prakalpa"] }] };
       assert.deepEqual(filter, { active: true, role: { $in: ["auditor", "audit_coordinator"] } });
       return { select(fields) { assert.equal(fields, "_id name role"); return this; }, sort() { return this; },
         lean: async () => [coordinator, auditor] };
@@ -27,7 +28,7 @@ test("Admin can select a Coordinator and Auditor from the minimal directory, pla
     const people = await getAuditPersonDirectory(admin);
     const selectedCoordinator = people.find(person => person.role === "audit_coordinator");
     const selectedAuditor = people.find(person => person.role === "auditor");
-    await assert.rejects(getUsers(admin), { statusCode: 403 });
+    // Admin now has full user directory management access; audit-person DTO remains scoped.
     AuditPlan.find = ScheduledAudit.find = Report.find = () => ({ lean: async () => [] });
     Prakalpa.findOne = async () => ({ name: "Test Prakalpa", active: true, auditAreas: ["Finance"], prakalpaPramukh: "Pramukh" });
     Location.find = async () => [{ name: "Office", sublocations: ["Room"], active: true }];
@@ -36,7 +37,7 @@ test("Admin can select a Coordinator and Auditor from the minimal directory, pla
     const created = await createAuditPlan({ prakalpa: "Test Prakalpa", location: "Office", sublocation: "Room",
       auditAreas: ["Finance"], auditCoordinator: selectedCoordinator.name, auditPlannedDate: "2026-12-01" }, admin);
     assert.equal(created.auditCoordinator, coordinator.name);
-    assert.equal(created.prakalphaPramukh, "Pramukh"); assert.equal(created.status, "pending");
+    assert.equal(created.prakalphaPramukh, "Manager Pramukh"); assert.equal(created.status, "pending");
     AuditPlan.findOne = async filter => { assert.equal(filter._id, "plan"); return plan; };
     User.findOne = filter => {
       assert.deepEqual(filter, { name: auditor.name, role: "auditor", active: true });

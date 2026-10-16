@@ -135,3 +135,7 @@ export const markMailSent =
       )
     );
   });
+
+export const getCompletionEligibility = asyncHandler(async (req, res) => {
+  res.json(new ApiResponse(200, "Completion eligibility", await scheduledAuditService.getCompletionEligibility(req.user)));
+});

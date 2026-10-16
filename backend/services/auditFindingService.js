@@ -1,4 +1,7 @@
+import ZeroFindingDeclaration from '../models/ZeroFindingDeclaration.js';
+import { withAuditWrite } from './legacyAuditWriteBarrier.js';
 import mongoose from "mongoose";
+import { createHash } from "node:crypto";
 
 import AuditFinding from "../models/AuditFinding.js";
 import ConsolidatedFinding from "../models/ConsolidatedFinding.js";
@@ -233,7 +236,7 @@ const assertAssignedAuditorForSchedule = async (
       .map(normalize)
       .filter(Boolean);
 
-  if (!assignedAuditors.includes(userName)) {
+  if (!assignedAuditors.includes(userName) && normalize(audit.leadAuditor) !== userName) {
     throw new AppError(
       "You are not assigned as an Auditor for this audit.",
       403
@@ -309,7 +312,7 @@ const assertOwnDraftFinding = async (
 
   if (
     !userName ||
-    !assignedAuditors.includes(userName)
+    (!assignedAuditors.includes(userName) && normalize(audit.leadAuditor) !== userName)
   ) {
     throw new AppError(
       "You are not assigned as an Auditor for this audit.",
@@ -364,7 +367,7 @@ const assertAssignedAuditor = (
       .map(normalize)
       .filter(Boolean);
 
-  if (!assignedAuditors.includes(userName)) {
+  if (!assignedAuditors.includes(userName) && normalize(audit.leadAuditor) !== userName) {
     throw new AppError(
       "You are not assigned as an Auditor for this audit.",
       403
@@ -470,8 +473,80 @@ const validateFindingPayload = (
   };
 };
 
-const assertAuditorBatchNotSubmitted = async (auditId, auditorId) => {
-  const existing = await AuditorSubmission.exists({ scheduledAudit: auditId, auditor: auditorId });
+// Every submitted-finding writer and final closure shares this transaction barrier.
+const acquireFindingSubmissionBarrier = async (auditId, session) => {
+  const audit = await ScheduledAudit.findById(auditId).session(session);
+  if (!audit) throw new AppError("Scheduled Audit not found.", 404);
+  if (getScheduledAuditWorkflowMode(audit) === "consolidated") {
+    return acquireConsolidatedAuditWriteBarrier(auditId, session);
+  }
+  await ScheduledAudit.updateOne({ _id: auditId }, { $inc: { workflowRevision: 1 } }, { session });
+  if (await ZeroFindingDeclaration.exists({ scheduledAudit: auditId, status: { $in: ['submitted', 'approved'] } }).session(session)) throw new AppError('All Clear is pending or approved. Return it before changing findings.', 409);
+  if (await CoordinatorBatchClosure.exists({ scheduledAudit: auditId }).session(session)) {
+    throw new AppError("The Coordinator has finalized this audit. Submissions and handovers are closed.", 409);
+  }
+  return audit;
+};
+
+const normalizeHandoverRequest = (data) => {
+  if (!data || typeof data.requestId !== "string" ||
+      !/^[A-Za-z0-9-]{16,100}$/.test(data.requestId) ||
+      typeof data.confirmation !== "string" || !/^[a-f0-9]{64}$/.test(data.confirmation) ||
+      !Array.isArray(data.findingIds) ||
+      data.findingIds.some(id => typeof id !== "string" || !mongoose.isValidObjectId(id)) ||
+      new Set(data.findingIds).size !== data.findingIds.length) {
+    throw new AppError("A request ID and exact confirmed finding membership are required. Refresh and confirm again.", 400);
+  }
+  return { requestId: data.requestId, confirmation: data.confirmation, findingIds: [...data.findingIds].sort() };
+};
+
+const sameMembership = (a, b) => JSON.stringify(a.map(String).sort()) === JSON.stringify(b.map(String).sort());
+const handoverConfirmation = (findings) => createHash("sha256").update(JSON.stringify(
+  findings.map(f => [String(f._id), f.workflowStatus, f.status, f.classification, f.severity,
+    f.leadEditedCopy?.revision || 0, f.leadReviewedAt || null, f.updatedAt || null,
+    f.title || "", f.sourceFindings?.map(String).sort() || []]).sort((a, b) => a[0].localeCompare(b[0]))
+)).digest("hex");
+
+const selectUnforwardedLegacyFindings = (findings, handover) => {
+  const recorded = new Set([
+    ...(handover?.initialHandover?.findingIds || []),
+    ...(handover?.supplementalHandovers || []).flatMap(h => h.findingIds || []),
+  ].map(String));
+  if (handover && !handover.initialHandover) {
+    const historicalDiscards = findings.filter(f => f.workflowStatus === "discarded_by_lead" &&
+      !recorded.has(String(f._id)) && f.leadReviewedAt &&
+      new Date(f.leadReviewedAt).getTime() <= new Date(handover.submittedAt).getTime());
+    if (historicalDiscards.length !== handover.discardedCount) {
+      throw new AppError("Historical discarded-finding counts require reconciliation before supplemental handover.", 409);
+    }
+  }
+  return findings.filter(f => {
+    if (recorded.has(String(f._id)) || ["submitted_to_coordinator", "converted_to_report", "discarded_by_coordinator", "auditor_draft"].includes(f.workflowStatus)) return false;
+    if (handover && !handover.initialHandover && f.workflowStatus === "discarded_by_lead") {
+      // Old handovers have no membership. Only a recorded review timestamp is reliable.
+      const reviewed = new Date(f.leadReviewedAt).getTime();
+      const sent = new Date(handover.submittedAt).getTime();
+      if (!f.leadReviewedAt || !Number.isFinite(reviewed) || !Number.isFinite(sent)) {
+        throw new AppError("Historical discarded-finding membership requires reconciliation before supplemental handover.", 409);
+      }
+      if (reviewed <= sent) return false;
+    }
+    return true;
+  });
+};
+
+const assertHandoverCapacity = (document) => {
+  // Reserve 1 KiB for Mongoose timestamps/versioning, below MongoDB's 16 MiB BSON ceiling.
+  if (mongoose.mongo.BSON.calculateObjectSize(document) > 16 * 1024 * 1024 - 1024) {
+    throw new AppError("Handover history is at MongoDB's document size limit. Administrator review is required; no findings were sent.", 413);
+  }
+};
+
+const assertAuditorBatchNotSubmitted = async (auditId, auditorId, session = null) => {
+  if (await CoordinatorBatchClosure.exists({ scheduledAudit: auditId }).session(session)) {
+    throw new AppError("The Coordinator has finalized this audit. Submissions are closed.", 409);
+  }
+  const existing = await AuditorSubmission.exists({ scheduledAudit: auditId, auditor: auditorId }).session(session);
   if (existing) throw new AppError("Your final findings batch has already been sent and cannot be changed or sent again.", 409);
 };
 
@@ -488,10 +563,11 @@ export const submitAllAuditorFindings = async (auditId, currentUser) => {
   try {
     session = await mongoose.startSession();
     return await session.withTransaction(async () => {
-      const lockedAudit = await ScheduledAudit.findById(audit._id).session(session);
-      if (!lockedAudit || lockedAudit.status === "completed") throw new AppError("Audit is no longer open for submission.", 409);
-      // Shared audit revision creates a transaction conflict with concurrent batch handovers.
-      await ScheduledAudit.updateOne({ _id: audit._id }, { $inc: { workflowRevision: 1 } }, { session });
+      const lockedAudit = await acquireFindingSubmissionBarrier(audit._id, session);
+      assertAssignedAuditor(lockedAudit, currentUser);
+      assertScheduledAuditOpenForFindings(lockedAudit);
+      if (!normalize(lockedAudit.leadAuditor)) throw new AppError("A Lead Auditor must be assigned before submission.", 409);
+      if (lockedAudit.status === "completed") throw new AppError("Audit is no longer open for submission.", 409);
       const existing = await AuditorSubmission.findOne({ scheduledAudit: audit._id, auditor: currentUser._id }).session(session);
       if (existing) throw new AppError("Your findings have already been submitted. They cannot be unsent.", 409);
       const findings = await AuditFinding.find({ scheduledAudit: audit._id, auditor: currentUser._id }).session(session);
@@ -556,10 +632,13 @@ export const createAuditFindingDraft = async (
     );
   }
 
-  const finding =
-    await AuditFinding.create({
-      auditPlan: audit.auditPlan,
-      scheduledAudit: audit._id,
+  return withAuditWrite(audit._id, async (lockedAudit, session) => {
+    assertAssignedAuditor(lockedAudit, currentUser);
+    assertScheduledAuditOpenForFindings(lockedAudit);
+    await assertAuditorBatchNotSubmitted(lockedAudit._id, currentUser._id, session);
+    const [finding] = await AuditFinding.create([{
+      auditPlan: lockedAudit.auditPlan,
+      scheduledAudit: lockedAudit._id,
       auditor: currentUser._id,
       submittedBy: currentUser._id,
       submittedByName: normalize(currentUser.name),
@@ -568,22 +647,23 @@ export const createAuditFindingDraft = async (
       classification,
       status: "DRAFT",
       workflowStatus: "auditor_draft",
-      iqaNumber: audit.iqaNumber,
-      prakalpa: audit.prakalpa,
-      location: audit.location,
-      sublocation: audit.sublocation || "",
-      auditCoordinator: audit.auditCoordinator,
-      leadAuditor: audit.leadAuditor || "",
-      auditArea: audit.auditAreas?.[0] || "",
+      iqaNumber: lockedAudit.iqaNumber,
+      prakalpa: lockedAudit.prakalpa,
+      location: lockedAudit.location,
+      sublocation: lockedAudit.sublocation || "",
+      auditCoordinator: lockedAudit.auditCoordinator,
+      leadAuditor: lockedAudit.leadAuditor || "",
+      auditArea: lockedAudit.auditAreas?.[0] || "",
       severity:
         classification === "NC"
           ? "non_conformance"
           : "open_for_improvement",
-      visitDate: audit.startDate,
+      visitDate: lockedAudit.startDate,
       visitTime: "00:00",
-    });
+    }], { session });
+    return finding;
+  });
 
-  return finding;
 };
 
 export const getScheduledAuditFindings = async (
@@ -692,16 +772,6 @@ export const submitAuditFindingDraft = async (
   assertScheduledAuditOpenForFindings(audit);
   await assertAuditorBatchNotSubmitted(audit._id, currentUser._id);
 
-  if (getScheduledAuditWorkflowMode(audit) !== "consolidated") {
-    finding.status = "SUBMITTED";
-    finding.submittedAt = new Date();
-    finding.workflowStatus = "submitted_to_lead";
-    finding.submittedToLeadAt = new Date();
-
-    await finding.save();
-    return finding;
-  }
-
   let session;
 
   try {
@@ -709,12 +779,14 @@ export const submitAuditFindingDraft = async (
 
     return await session.withTransaction(async () => {
       const lockedAudit =
-        await acquireConsolidatedAuditWriteBarrier(
+        await acquireFindingSubmissionBarrier(
           audit._id,
           session
         );
 
       assertAssignedAuditor(lockedAudit, currentUser);
+      assertScheduledAuditOpenForFindings(lockedAudit);
+      if (await AuditorSubmission.exists({ scheduledAudit: audit._id, auditor: currentUser._id }).session(session)) throw new AppError("Your findings have already been submitted.", 409);
 
       const currentFinding = await AuditFinding.findById(
         findingId
@@ -934,10 +1006,6 @@ export const submitFindingToLead =
         ],
       };
 
-    if (getScheduledAuditWorkflowMode(audit) !== "consolidated") {
-      return await AuditFinding.create(findingPayload);
-    }
-
     let session;
 
     try {
@@ -945,12 +1013,14 @@ export const submitFindingToLead =
 
       return await session.withTransaction(async () => {
         const lockedAudit =
-          await acquireConsolidatedAuditWriteBarrier(
+          await acquireFindingSubmissionBarrier(
             audit._id,
             session
           );
 
         assertAssignedAuditor(lockedAudit, currentUser);
+        assertScheduledAuditOpenForFindings(lockedAudit);
+        if (await AuditorSubmission.exists({ scheduledAudit: audit._id, auditor: currentUser._id }).session(session)) throw new AppError("Your findings have already been submitted.", 409);
 
         const currentLeadAuditor =
           normalize(lockedAudit.leadAuditor);
@@ -1864,37 +1934,29 @@ export const submitConsolidatedFinding = async (
     );
   }
 
-  const now = new Date();
-  finding.status = "SUBMITTED";
-  finding.workflowStatus = "submitted_to_coordinator";
-  finding.submittedAt = now;
-  finding.submittedToCoordinatorAt = now;
-
-  appendConsolidatedHistory(
-    finding,
-    {
-      action: "submitted_to_coordinator",
-      fromStatus: "consolidated_draft",
-      toStatus: "submitted_to_coordinator",
-      currentUser,
-      remarks: normalize(extraData.remarks || ""),
-      performedAt: now,
+  const confirmed = handoverConfirmation([finding]);
+  return runConsolidationTransaction(async (session) => {
+    const lockedAudit = await acquireConsolidatedAuditWriteBarrier(finding.scheduledAudit, session);
+    assertAssignedLeadAuditor(lockedAudit, currentUser);
+    const current = await ConsolidatedFinding.findById(id).session(session);
+    if (!current || current.status !== "DRAFT" || current.workflowStatus !== "consolidated_draft" || handoverConfirmation([current]) !== confirmed) {
+      throw new AppError("The confirmed finding changed. Refresh and confirm again.", 409);
     }
-  );
-
-  if (typeof finding.$session === "function") {
-    finding.$session(null);
-  }
-
-  await runConsolidationTransaction(async (session) => {
-    await acquireConsolidatedAuditWriteBarrier(finding.scheduledAudit, session);
-    if (typeof finding.$session === "function") {
-      finding.$session(session);
-    }
-    await finding.save();
+    const groups = await ConsolidatedFinding.find({ scheduledAudit: audit._id }).session(session);
+    const ungrouped = await AuditFinding.find({ scheduledAudit: audit._id, status: "SUBMITTED",
+      workflowStatus: { $in: ["submitted_to_lead", "returned_to_auditor"] },
+      _id: { $nin: groups.flatMap(group => group.sourceFindings) } }).session(session).select("_id");
+    if (ungrouped.length) throw new AppError("Consolidate all currently submitted Auditor findings before sending.", 409);
+    const now = new Date();
+    current.status = "SUBMITTED";
+    current.workflowStatus = "submitted_to_coordinator";
+    current.submittedAt = now;
+    current.submittedToCoordinatorAt = now;
+    appendConsolidatedHistory(current, { action: "submitted_to_coordinator", fromStatus: "consolidated_draft",
+      toStatus: "submitted_to_coordinator", currentUser, remarks: normalize(extraData.remarks || ""), performedAt: now });
+    await current.save({ session });
+    return current;
   });
-
-  return finding;
 };
 
 
@@ -1903,6 +1965,7 @@ export const submitAllConsolidatedFindingsForAudit = async (
   currentUser,
   extraData = {}
 ) => {
+  const request = normalizeHandoverRequest(extraData);
   assertConsolidationDatabaseConnected();
 
   const audit = await assertLeadAuditorForScheduledAudit(
@@ -1917,26 +1980,26 @@ export const submitAllConsolidatedFindingsForAudit = async (
   );
 
   return runConsolidationTransaction(async (session) => {
-    await acquireConsolidatedAuditWriteBarrier(audit._id, session);
-    const findings = await ConsolidatedFinding.find({
+    const lockedAudit = await acquireConsolidatedAuditWriteBarrier(audit._id, session);
+    assertAssignedLeadAuditor(lockedAudit, currentUser);
+    const handover = await LeadBatchSubmission.findOne({ scheduledAudit: audit._id }).session(session);
+    const previous = [handover?.initialHandover, ...(handover?.supplementalHandovers || [])].find(h => h?.requestId === request.requestId);
+    if (previous) {
+      if (!sameMembership(previous.findingIds, request.findingIds) || previous.confirmation !== request.confirmation) throw new AppError("This request ID was already used for different findings.", 409);
+      return ConsolidatedFinding.find({ scheduledAudit: audit._id, _id: { $in: previous.findingIds } }).session(session);
+    }
+    const allFindings = await ConsolidatedFinding.find({
       scheduledAudit: audit._id,
     }).session(session);
 
+    const findings = allFindings.filter(f => f.status === "DRAFT" && f.workflowStatus === "consolidated_draft");
+    if (!sameMembership(findings.map(f => f._id), request.findingIds) || handoverConfirmation(findings) !== request.confirmation) {
+      throw new AppError("The confirmed finding set changed. Refresh, review and confirm again.", 409);
+    }
     if (findings.length === 0) {
       throw new AppError(
         "Create consolidated findings before submitting this IQA.",
         400
-      );
-    }
-
-    if (findings.some(
-      (finding) =>
-        finding.status !== "DRAFT" ||
-        finding.workflowStatus !== "consolidated_draft"
-    )) {
-      throw new AppError(
-        "This IQA contains findings that have already been submitted or are not editable drafts.",
-        409
       );
     }
 
@@ -1960,7 +2023,7 @@ export const submitAllConsolidatedFindingsForAudit = async (
         $in: ["submitted_to_lead", "returned_to_auditor"],
       },
       _id: {
-        $nin: findings.flatMap((finding) => finding.sourceFindings),
+        $nin: allFindings.flatMap((finding) => finding.sourceFindings),
       },
     }).session(session).select("_id");
 
@@ -1972,6 +2035,13 @@ export const submitAllConsolidatedFindingsForAudit = async (
     }
 
     const now = new Date();
+    const entry = { ...request, leadAuditor: currentUser._id, submittedAt: now,
+      approvedCount: findings.length, discardedCount: 0 };
+    const record = handover?.toObject ? handover.toObject() : { ...(handover || {}) };
+    const next = handover ? { ...record, supplementalHandovers: [...(record.supplementalHandovers || []), entry] }
+      : { scheduledAudit: audit._id, leadAuditor: currentUser._id, approvedCount: findings.length,
+          discardedCount: 0, submittedAt: now, initialHandover: entry };
+    assertHandoverCapacity(next);
 
     for (const finding of findings) {
       finding.status = "SUBMITTED";
@@ -1991,6 +2061,8 @@ export const submitAllConsolidatedFindingsForAudit = async (
       await finding.save({ session });
     }
 
+    if (handover) await LeadBatchSubmission.updateOne({ _id: handover._id }, { $push: { supplementalHandovers: entry } }, { session, runValidators: true });
+    else await LeadBatchSubmission.create([next], { session });
     return findings;
   });
 };
@@ -2701,9 +2773,24 @@ export const resubmitFindingToLead =
       }
     );
 
-    await finding.save();
-
-    return finding;
+    const session = await mongoose.startSession();
+    try {
+      return await session.withTransaction(async () => {
+        const lockedAudit = await acquireFindingSubmissionBarrier(audit._id, session);
+        assertAssignedAuditor(lockedAudit, currentUser);
+        assertScheduledAuditOpenForFindings(lockedAudit);
+        const current = await AuditFinding.findById(finding._id).session(session);
+        if (!current || current.workflowStatus !== "returned_to_auditor" || String(current.submittedBy) !== String(currentUser._id)) {
+          throw new AppError("Finding changed. Refresh and retry.", 409);
+        }
+        // Carry over only this validated correction; never replace a concurrent review.
+        for (const key of ["findings", "description", "severity", "classification", "auditArea", "visitDate", "visitTime", "proofFiles", "hasChecklist", "workflowStatus", "submittedToLeadAt", "leadReviewRemarks", "leadReviewedAt", "workflowHistory"]) {
+          if (finding[key] !== undefined) current[key] = finding[key];
+        }
+        await current.save({ session });
+        return current;
+      });
+    } finally { await session.endSession(); }
   };
 
 
@@ -2805,50 +2892,65 @@ export const getLeadBatchStatus = async (scheduledAuditId, currentUser) => {
   if (!audit) throw new AppError("Scheduled Audit not found.", 404);
   assertAssignedLeadAuditor(audit, currentUser);
   assertScheduledAuditWorkflowMode(audit, "legacy", "Legacy Lead batch only.");
-  const [handover, findings, submissions] = await Promise.all([
+  const [handover, findings, submissions, closure] = await Promise.all([
     LeadBatchSubmission.findOne({ scheduledAudit: audit._id }).lean(),
     AuditFinding.find({ scheduledAudit: audit._id }).lean(),
     AuditorSubmission.find({ scheduledAudit: audit._id }).lean(),
+    CoordinatorBatchClosure.exists({ scheduledAudit: audit._id }),
   ]);
+  const available = selectUnforwardedLegacyFindings(findings, handover);
   const assigned = [...new Set((audit.auditors || []).map(normalize).filter(Boolean))];
   const submittedNames = new Set(submissions.map(s => normalize(s.auditorName)));
   return { submitted: Boolean(handover), submittedAt: handover?.submittedAt || null,
+    finalized: Boolean(closure), handoverCount: handover ? 1 + (handover.supplementalHandovers?.length || 0) : 0,
+    findingIds: available.map(f => String(f._id)).sort(), confirmation: handoverConfirmation(available),
     missingAuditors: assigned.filter(name => !submittedNames.has(name)),
-    pending: findings.filter(f => f.workflowStatus === "submitted_to_lead").length,
-    approved: findings.filter(f => f.workflowStatus === "approved_by_lead").length,
-    discarded: findings.filter(f => f.workflowStatus === "discarded_by_lead").length };
+    pending: available.filter(f => !["approved_by_lead", "discarded_by_lead"].includes(f.workflowStatus)).length,
+    approved: available.filter(f => f.workflowStatus === "approved_by_lead").length,
+    discarded: available.filter(f => f.workflowStatus === "discarded_by_lead").length };
 };
 
-export const submitLeadBatchToCoordinator = async (scheduledAuditId, currentUser) => {
+export const submitLeadBatchToCoordinator = async (scheduledAuditId, currentUser, data = {}) => {
   assertObjectId(scheduledAuditId, "Scheduled Audit");
+  const request = normalizeHandoverRequest(data);
   const session = await mongoose.startSession();
   try {
-    let result;
-    await session.withTransaction(async () => {
-      const audit = await ScheduledAudit.findById(scheduledAuditId).session(session);
-      if (!audit) throw new AppError("Scheduled Audit not found.", 404);
+    return await session.withTransaction(async () => {
+      const audit = await acquireFindingSubmissionBarrier(scheduledAuditId, session);
       assertAssignedLeadAuditor(audit, currentUser);
       assertScheduledAuditWorkflowMode(audit, "legacy", "Legacy Lead batch only.");
+      assertScheduledAuditOpenForFindings(audit);
       if (!normalize(audit.auditCoordinator)) throw new AppError("Audit Coordinator is not assigned.", 409);
-      if (await LeadBatchSubmission.findOne({ scheduledAudit: audit._id }).session(session))
-        throw new AppError("Lead batch was already submitted.", 409);
-      // This write serializes competing batch submissions and Auditor submissions on the audit.
-      await ScheduledAudit.updateOne({ _id: audit._id }, { $inc: { workflowRevision: 1 } }, { session });
-      const assigned = [...new Set((audit.auditors || []).map(normalize).filter(Boolean))];
-      const submissions = await AuditorSubmission.find({ scheduledAudit: audit._id }).session(session);
-      const submittedNames = new Set(submissions.map(s => normalize(s.auditorName)));
-      if (assigned.some(name => !submittedNames.has(name)))
-        throw new AppError("Wait for every assigned Auditor to submit or mark No Findings.", 409);
-      const findings = await AuditFinding.find({ scheduledAudit: audit._id }).session(session);
-      if (findings.some(f => ["auditor_draft", "submitted_to_lead", "returned_to_auditor"].includes(f.workflowStatus)))
-        throw new AppError("All findings must be approved or discarded before handover.", 409);
-      if (findings.some(f => !["approved_by_lead", "discarded_by_lead"].includes(f.workflowStatus)))
-        throw new AppError("Existing transferred findings require reconciliation before batch handover.", 409);
+      const handover = await LeadBatchSubmission.findOne({ scheduledAudit: audit._id }).session(session);
+      const previous = [handover?.initialHandover, ...(handover?.supplementalHandovers || [])]
+        .find(h => h?.requestId === request.requestId);
+      if (previous) {
+        if (!sameMembership(previous.findingIds, request.findingIds) || previous.confirmation !== request.confirmation) {
+          throw new AppError("This request ID was already used for different findings.", 409);
+        }
+        return { approved: previous.approvedCount, discarded: previous.discardedCount, submittedAt: previous.submittedAt, alreadySubmitted: true };
+      }
+      const allFindings = await AuditFinding.find({ scheduledAudit: audit._id }).session(session);
+      const findings = selectUnforwardedLegacyFindings(allFindings, handover);
+      if (!findings.length) throw new AppError("No findings are available to forward. Use Send All Clear after all Auditors submit zero-finding responses.", 409);
+      if ((!findings.length && handover) || !sameMembership(findings.map(f => f._id), request.findingIds) || handoverConfirmation(findings) !== request.confirmation) {
+        throw new AppError("The confirmed finding set changed. Refresh, review and confirm again.", 409);
+      }
+      if (findings.some(f => !["approved_by_lead", "discarded_by_lead"].includes(f.workflowStatus))) {
+        throw new AppError("All currently submitted findings must be approved or discarded before handover.", 409);
+      }
       const now = new Date();
-      let approved = 0, discarded = 0;
+      const entry = { ...request, leadAuditor: currentUser._id, submittedAt: now,
+        approvedCount: findings.filter(f => f.workflowStatus === "approved_by_lead").length,
+        discardedCount: findings.filter(f => f.workflowStatus === "discarded_by_lead").length };
+      const record = handover?.toObject ? handover.toObject() : { ...(handover || {}) };
+      const next = handover
+        ? { ...record, supplementalHandovers: [...(record.supplementalHandovers || []), entry] }
+        : { scheduledAudit: audit._id, leadAuditor: currentUser._id, approvedCount: entry.approvedCount,
+            discardedCount: entry.discardedCount, submittedAt: now, initialHandover: entry };
+      assertHandoverCapacity(next);
       for (const finding of findings) {
-        if (finding.workflowStatus === "discarded_by_lead") { discarded++; continue; }
-        approved++;
+        if (finding.workflowStatus === "discarded_by_lead") continue;
         finding.workflowStatus = "submitted_to_coordinator";
         finding.submittedToCoordinatorAt = now;
         finding.auditCoordinator = normalize(audit.auditCoordinator);
@@ -2857,11 +2959,13 @@ export const submitLeadBatchToCoordinator = async (scheduledAuditId, currentUser
           performedByName: normalize(currentUser.name), role: normalize(currentUser.role), performedAt: now });
         await finding.save({ session });
       }
-      await LeadBatchSubmission.create([{ scheduledAudit: audit._id, leadAuditor: currentUser._id,
-        approvedCount: approved, discardedCount: discarded, submittedAt: now }], { session });
-      result = { approved, discarded, submittedAt: now };
+      if (handover) {
+        await LeadBatchSubmission.updateOne({ _id: handover._id }, { $push: { supplementalHandovers: entry } }, { session, runValidators: true });
+      } else {
+        await LeadBatchSubmission.create([next], { session });
+      }
+      return { approved: entry.approvedCount, discarded: entry.discardedCount, submittedAt: now, alreadySubmitted: false };
     });
-    return result;
   } finally { await session.endSession(); }
 };
 
@@ -2875,8 +2979,7 @@ const getCoordinatorFindingContext = async (id, currentUser) => {
   assertScheduledAuditWorkflowMode(audit, "legacy", "This action is only for individual finding audits.");
   if (!normalize(audit.auditCoordinator) || normalize(audit.auditCoordinator) !== normalize(currentUser.name))
     throw new AppError("This audit is outside your Coordinator assignment.", 403);
-  if (audit.status !== "completed")
-    throw new AppError("Mark the scheduled IQA Completed before reviewing final IQRs.", 409);
+  // Coordinator verification/approval must precede IQA completion. Report issuance retains its separate completion gate.
   return { finding, audit };
 };
 
@@ -2986,15 +3089,26 @@ export const generateCoordinatorBatchReports = async (scheduledAuditId,currentUs
     await convertFindingToReport(finding._id,currentUser);
     if (finding.workflowStatus !== "converted_to_report") generated++;
   }
-  const remaining = await AuditFinding.countDocuments({scheduledAudit:audit._id,
-    workflowStatus:{$nin:["converted_to_report","discarded_by_coordinator","discarded_by_lead"]}});
-  if (remaining) throw new AppError("Some findings remain unresolved; retry generation.",409);
-  const reported = await Report.countDocuments({scheduledAudit:audit._id,sourceFinding:{$in:approved.map(f=>f._id)}});
-  if (reported !== approved.length) throw new AppError("Missing official IQR record; retry batch generation.",409);
-  const discarded = findings.filter(f=>["discarded_by_coordinator","discarded_by_lead"].includes(f.workflowStatus)).length;
-  try { await CoordinatorBatchClosure.create({scheduledAudit:audit._id,coordinator:currentUser._id,generatedCount:approved.length,discardedCount:discarded}); }
-  catch(e) { if (e.code!==11000) throw e; }
-  return {closed:true,generated,discarded,alreadyClosed:false};
+  const session = await mongoose.startSession();
+  try {
+    return await session.withTransaction(async () => {
+      const lockedAudit = await acquireFindingSubmissionBarrier(audit._id, session);
+      if (lockedAudit.status !== "completed" || normalize(lockedAudit.auditCoordinator) !== normalize(currentUser.name)) {
+        throw new AppError("Coordinator assignment or audit status changed. Refresh and retry.", 409);
+      }
+      const finalFindings = await AuditFinding.find({ scheduledAudit: audit._id }).session(session);
+      if (finalFindings.some(f => !["converted_to_report", "discarded_by_coordinator", "discarded_by_lead"].includes(f.workflowStatus))) {
+        throw new AppError("Some findings remain unresolved; retry generation.", 409);
+      }
+      const finalApproved = finalFindings.filter(f => f.workflowStatus === "converted_to_report");
+      const reported = await Report.countDocuments({ scheduledAudit: audit._id, sourceFinding: { $in: finalApproved.map(f => f._id) } }).session(session);
+      if (reported !== finalApproved.length) throw new AppError("Missing official IQR record; retry batch generation.", 409);
+      const discarded = finalFindings.length - finalApproved.length;
+      await CoordinatorBatchClosure.create([{ scheduledAudit: audit._id, coordinator: currentUser._id,
+        generatedCount: finalApproved.length, discardedCount: discarded }], { session });
+      return { closed: true, generated, discarded, alreadyClosed: false };
+    });
+  } finally { await session.endSession(); }
 };
 
 /*

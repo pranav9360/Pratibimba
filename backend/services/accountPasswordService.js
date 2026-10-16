@@ -1,3 +1,4 @@
+import { isValidNewPassword, PASSWORD_POLICY_MESSAGE } from "../../shared/password-policy.mjs";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
 import AppError from "../utils/AppError.js";
@@ -6,10 +7,8 @@ import { withSuperAdminMutationTransaction } from "./superAdminMutationTransacti
 import { recordActivity, userActivityTarget } from "./activityLogService.js";
 
 export const changeOwnPassword = async (actor, { currentPassword, newPassword }, claims) => {
-  if (typeof currentPassword !== "string" || typeof newPassword !== "string" ||
-      newPassword.length < 10 || newPassword.length > 128 ||
-      !/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
-    throw new AppError("New password must be 10–128 characters and contain letters and numbers.", 400);
+  if (typeof currentPassword !== "string" || !isValidNewPassword(newPassword)) {
+    throw new AppError(PASSWORD_POLICY_MESSAGE, 400);
   }
   if (currentPassword === newPassword) throw new AppError("Choose a different new password.", 400);
   return withSuperAdminMutationTransaction(async (session) => {

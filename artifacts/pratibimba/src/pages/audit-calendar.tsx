@@ -1,3 +1,4 @@
+import { compareAuditRecords } from "../../../../shared/audit-order.mjs";
 import { FilterToolbar } from "../components/filters/filter-toolbar";
 import { FilterSelect } from "../components/filters/filter-select";
 import { useState, useMemo, useEffect } from "react";
@@ -181,7 +182,7 @@ export default function AuditCalendarPage() {
         return d >= startOfToday;
       })
       .filter((e) => filterPrakalpa === "All" || e.prakalpa === filterPrakalpa)
-      .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      .sort(compareAuditRecords);
   }, [auditPlans, filterPrakalpa]);
 
   return (
@@ -526,7 +527,7 @@ export default function AuditCalendarPage() {
                     auditors: p.auditors || [],
                     status: p.status || "pending",
                   }))
-                  .sort((a, b) => (a.date || "").localeCompare(b.date || ""))
+                  .sort(compareAuditRecords)
                   .map((ev, idx) => (
                     <tr
                       key={idx}

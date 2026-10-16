@@ -1,3 +1,4 @@
+import { sortAuditRecords } from "../../../../shared/audit-order.mjs";
 import { useState } from "react";
 import { Link } from "wouter";
 import { useApp, PRAKALPAS } from "../context/app-context";
@@ -52,7 +53,7 @@ export default function DashboardPage() {
 
   const auditsPlanned = auditPlans.length + scheduledAudits.length;
   const avgAuditsPerPrakalpa = prakalpasWithScope > 0 ? (auditsPlanned / prakalpasWithScope).toFixed(1) : "0";
-  const auditsCompleted = scheduledAudits.filter((s) => new Date(s.endDate) < new Date()).length;
+  const auditsCompleted = scheduledAudits.filter((s) => s.status === "completed").length;
 
   const ncClosedPct = ncReports.length > 0 ? Math.round((ncClosed.length / ncReports.length) * 100) : 0;
   const overdueNCPct = ncOpen.length > 0 ? Math.round((overdueNCs.length / ncOpen.length) * 100) : 0;
@@ -60,7 +61,7 @@ export default function DashboardPage() {
 
   const myAssignedAudits =
     currentUser.role === "auditor"
-      ? scheduledAudits.filter((audit) =>
+      ? sortAuditRecords(scheduledAudits).filter((audit) =>
           (audit.auditors || []).includes(currentUser.name)
         )
       : [];
@@ -69,7 +70,7 @@ export default function DashboardPage() {
     (audit) => audit.leadAuditor === currentUser.name
   );
 
-  const activeScheduled = scheduledAudits.filter((s) => {
+  const activeScheduled = sortAuditRecords(scheduledAudits).filter((s) => {
     const now = new Date(); return new Date(s.startDate) <= now && new Date(s.endDate) >= now;
   });
 
@@ -283,7 +284,7 @@ export default function DashboardPage() {
             <Link href="/all-reports" className="font-label-md text-primary hover:underline">View All</Link>
           </div>
           <div className="space-y-3">
-            {reports.slice(0, 4).map((report, idx) => (
+            {sortAuditRecords(reports).slice(0, 4).map((report, idx) => (
               <div key={report.id || `rep-${idx}`} className={`flex items-start gap-3 p-3 rounded-lg border ${isRedFlagged(report) ? "border-error/40 bg-error/5" : "border-outline-variant/20"}`}>
                 <span className={`material-symbols-outlined text-[16px] mt-0.5 ${report.severity === "non_conformance" ? "text-error" : "text-primary"}`}>
                   {report.severity === "non_conformance" ? "error_outline" : "info"}
@@ -315,7 +316,7 @@ export default function DashboardPage() {
             <div className="p-4 sm:p-8 text-center text-on-surface-variant/50 font-body-md">No audit plans pending</div>
           ) : (
             <div className="divide-y divide-outline-variant/10">
-              {auditPlans.slice(0, 3).map((plan, idx) => (
+              {sortAuditRecords(auditPlans).slice(0, 3).map((plan, idx) => (
                 <div key={plan.id || `plan-${idx}`} className="p-4 flex items-center gap-4">
                   <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
                     <span className="material-symbols-outlined text-secondary text-[16px]">event_note</span>
@@ -344,10 +345,10 @@ export default function DashboardPage() {
             <div className="p-4 sm:p-8 text-center text-on-surface-variant/50 font-body-md">No scheduled audits</div>
           ) : (
             <div className="divide-y divide-outline-variant/10">
-              {scheduledAudits.slice(0, 3).map((audit, idx) => {
+              {sortAuditRecords(scheduledAudits).slice(0, 3).map((audit, idx) => {
                 const now = new Date();
-                const isOngoing = new Date(audit.startDate) <= now && new Date(audit.endDate) >= now;
-                const isUpcoming = new Date(audit.startDate) > now;
+                const isOngoing = audit.status !== "completed" && new Date(audit.startDate) <= now;
+                const isUpcoming = audit.status !== "completed" && new Date(audit.startDate) > now;
                 const isMyLeadAssignment =
                   currentUser.role === "auditor" &&
                   audit.leadAuditor === currentUser.name &&
@@ -384,7 +385,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${isOngoing ? "bg-primary/10 text-primary" : isUpcoming ? "bg-secondary/10 text-secondary" : "bg-surface-container text-on-surface-variant"}`}>
-                      {isOngoing ? "Ongoing" : isUpcoming ? "Upcoming" : "Completed"}
+                      {audit.status === "completed" ? "Completed" : isUpcoming ? "Upcoming" : new Date(audit.endDate) < now ? "Awaiting approval" : "Ongoing"}
                     </span>
                   </div>
                 );

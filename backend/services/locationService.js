@@ -1,7 +1,7 @@
 import Location from "../models/Location.js";
 import Prakalpa from "../models/Prakalpa.js";
 import AppError from "../utils/AppError.js";
-import { withAdministrativeMutation } from "./administrativeMutation.js";
+import { withManagementMutation as withAdministrativeMutation } from "./administrativeMutation.js";
 import { organizationalFields } from "./organizationalFields.js";
 
 const editable = (data, creating = false) => organizationalFields(data, {

@@ -1,7 +1,10 @@
+import { isValidNewPassword, PASSWORD_POLICY_MESSAGE } from "../../../../shared/password-policy.mjs";
+import { getRequestErrorMessage, logRequestError } from "../services/request-errors";
+import { PrakalpaAssignments, assignmentNames } from "../components/management/prakalpa-assignments";
 import { FilterToolbar } from "../components/filters/filter-toolbar";
 import { FilterSelect } from "../components/filters/filter-select";
-import { useState } from "react";
-import { useApp, type AppUser, type Role, PRAKALPAS } from "../context/app-context";
+import { useRef, useState } from "react";
+import { useApp, type AppUser, type Role } from "../context/app-context";
 import { useEffect } from "react";
 
 import {
@@ -31,6 +34,8 @@ type UserFormData = {
   active: boolean;
   phone: string;
   prakalpa: string;
+  assignedPrakalpas: string[];
+  replacementManagerId?: string;
 };
 
 const emptyForm = (): UserFormData => ({
@@ -41,33 +46,43 @@ const emptyForm = (): UserFormData => ({
   active: true,
   phone: "",
   prakalpa: "",
+  assignedPrakalpas: [],
 });
 
 interface UserFormProps {
   initial: UserFormData;
   onSave: (data: UserFormData) => void;
   currentUserRole: Role;
+  managers: AppUser[];
+  userId?: string;
   error?: string;
   onCancel: () => void;
   isEdit?: boolean;
+  busy?: boolean;
 }
 
-function UserForm({ initial, onSave, currentUserRole, error, onCancel, isEdit }: UserFormProps) {
+function UserForm({ initial, onSave, currentUserRole, error, onCancel, isEdit, managers, userId, busy }: UserFormProps) {
+  const { currentUser } = useApp();
+  const ownAdmin = currentUserRole === "admin" && userId === currentUser.id;
   const [form, setForm] = useState(initial);
-  const set = (k: keyof typeof form, v: string | boolean) => setForm((f) => ({ ...f, [k]: v }));
+  const [assignmentsReady, setAssignmentsReady] = useState(false);
+  const set = (k: keyof typeof form, v: string | boolean) => setForm((f) => ({ ...f, [k]: v, ...(k === "role" && v === "prakalpa_manager" && f.role !== "prakalpa_manager" ? { assignedPrakalpas: [] } : {}) }));
 
+  const unchangedManagerAssignment = isEdit && initial.role === "prakalpa_manager" && form.role === initial.role && form.active === initial.active && JSON.stringify(form.assignedPrakalpas) === JSON.stringify(initial.assignedPrakalpas);
   const valid =
+  (form.role !== "prakalpa_manager" || !form.active || form.assignedPrakalpas.length > 0 || !isEdit || unchangedManagerAssignment) &&
+  (form.role !== "prakalpa_manager" || assignmentsReady || (isEdit && initial.role === form.role && JSON.stringify(form.assignedPrakalpas) === JSON.stringify(initial.assignedPrakalpas))) &&
   form.name.trim() !== "" &&
   form.email.trim() !== "" &&
   form.email.includes("@") &&
   (
-    isEdit ||
-    form.password.length >= 8
+    (isEdit && form.password === "") ||
+    isValidNewPassword(form.password)
   );
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative bg-white rounded-2xl shadow-floating w-full max-w-lg z-10">
+      <div className="relative bg-white rounded-2xl shadow-floating w-full max-w-lg z-10 max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden">
         <div className="p-6 border-b border-outline-variant/10">
           <h3 className="font-headline-sm">{isEdit ? "Edit User" : "Add New User"}</h3>
           <p className="font-body-md text-on-surface-variant mt-1">
@@ -75,7 +90,7 @@ function UserForm({ initial, onSave, currentUserRole, error, onCancel, isEdit }:
           </p>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 min-h-0 flex-1 overflow-y-scroll">
           {error && <p role="alert" className="rounded-lg bg-error/5 p-3 text-sm text-error">{error}</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -114,10 +129,11 @@ function UserForm({ initial, onSave, currentUserRole, error, onCancel, isEdit }:
             </div>
           )}
           <div>
+            <p className="mb-3 text-xs text-on-surface-variant">{PASSWORD_POLICY_MESSAGE}</p>
             <label className="font-label-md text-on-surface-variant block mb-2">Role <span className="text-error">*</span></label>
             <div className="grid grid-cols-1 gap-2">
               {ROLE_OPTIONS.filter((role) => role.value !== "super_admin" || (isEdit && currentUserRole === "super_admin")).map((role) => (
-                <button key={role.value} type="button" onClick={() => set("role", role.value)}
+                <button key={role.value} type="button" disabled={ownAdmin} onClick={() => set("role", role.value)}
                   className={`flex items-center gap-3 rounded-lg border-2 px-4 py-3 text-left ${form.role === role.value ? role.color + " border-current" : "border-outline-variant"}`}>
                   <span className="font-label-md text-[13px] font-bold">{role.label}</span>
                   {form.role === role.value && <span className="material-symbols-outlined ml-auto text-[18px]">check_circle</span>}
@@ -127,19 +143,16 @@ function UserForm({ initial, onSave, currentUserRole, error, onCancel, isEdit }:
           </div>
 
           {form.role === "prakalpa_manager" && (
-            <div>
-              <label className="font-label-md text-on-surface-variant block mb-1">Prakalpa</label>
-              <select
-                value={form.prakalpa ?? ""}
-                onChange={(e) => set("prakalpa", e.target.value)}
-                className="w-full border border-outline-variant rounded-lg px-3 py-2.5 font-body-md bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              >
-                <option value="">Select prakalpa…</option>
-                {PRAKALPAS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
+            <PrakalpaAssignments managers={managers} userId={userId} value={form.assignedPrakalpas} onReady={setAssignmentsReady}
+              onChange={names => setForm(previous => ({ ...previous, assignedPrakalpas: names }))} />
           )}
 
+          {initial.role === "prakalpa_manager" && initial.active && <label className="block text-sm">Replacement Manager for released active Prakalpas
+            <select aria-label="Replacement Manager" value={form.replacementManagerId || ""} onChange={event => set("replacementManagerId", event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2">
+              <option value="">No transfer — preserve current coverage</option>
+              {managers.filter(manager => manager.active && manager.role === "prakalpa_manager" && manager.id !== userId).map(manager => <option key={manager.id} value={manager.id}>{manager.name}</option>)}
+            </select>
+          </label>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Phone (optional)</label>
@@ -153,8 +166,8 @@ function UserForm({ initial, onSave, currentUserRole, error, onCancel, isEdit }:
             <div>
               <label className="font-label-md text-on-surface-variant block mb-1">Status</label>
               <div className="flex gap-3 mt-2.5">
-                <button type="button" onClick={() => set("active", true)} className={`flex-1 py-2 rounded-lg text-[12px] font-bold border-2 transition-all ${form.active ? "bg-primary/10 text-primary border-primary" : "border-outline-variant text-on-surface-variant hover:border-primary/30"}`}>Active</button>
-                <button type="button" onClick={() => set("active", false)} className={`flex-1 py-2 rounded-lg text-[12px] font-bold border-2 transition-all ${!form.active ? "bg-error/10 text-error border-error" : "border-outline-variant text-on-surface-variant hover:border-error/30"}`}>Inactive</button>
+                <button type="button" disabled={ownAdmin} onClick={() => set("active", true)} className={`flex-1 py-2 rounded-lg text-[12px] font-bold border-2 transition-all ${form.active ? "bg-primary/10 text-primary border-primary" : "border-outline-variant text-on-surface-variant hover:border-primary/30"}`}>Active</button>
+                <button type="button" disabled={ownAdmin} onClick={() => set("active", false)} className={`flex-1 py-2 rounded-lg text-[12px] font-bold border-2 transition-all ${!form.active ? "bg-error/10 text-error border-error" : "border-outline-variant text-on-surface-variant hover:border-error/30"}`}>Inactive</button>
               </div>
             </div>
           </div>
@@ -163,8 +176,8 @@ function UserForm({ initial, onSave, currentUserRole, error, onCancel, isEdit }:
         <div className="p-6 pt-0 flex gap-3">
           <button onClick={onCancel} className="flex-1 py-3 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
           <button
-            disabled={!valid}
-            onClick={() => onSave(form)}
+            disabled={!valid || busy}
+            onClick={() => { if (!busy) onSave(form); }}
             className="flex-1 py-3 bg-primary text-on-primary rounded-lg font-label-md font-bold hover:brightness-110 disabled:opacity-40"
           >
             {isEdit ? "Save Changes" : "Add User"}
@@ -181,35 +194,42 @@ export default function UserManagement() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editUser, setEditUser] = useState<AppUser | null>(null);
+  const [replacementManagerId, setReplacementManagerId] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<AppUser | null>(null);
   const [filterRole, setFilterRole] = useState<Role | "all">("all");
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
   const [search, setSearch] = useState("");
   const [formError, setFormError] = useState("");
+  const [listError, setListError] = useState("");
+  const [userBusy, setUserBusy] = useState(false);
+  const userBusyRef = useRef(false);
   useEffect(() => {
-    if (currentUser.role !== "super_admin") return;
+    if (!["super_admin", "admin"].includes(currentUser.role)) return;
     async function loadUsers() {
       try {
         const response = await getUsers();
 
         if (response.success) {
           setUsers(response.data);
+          setListError("");
         } else {
-          console.error(response.message);
+          setListError("Unable to load users. Please try again.");
         }
       } catch (error) {
-        console.error("Failed to load users:", error);
+        logRequestError("Failed to load users", error);
+        setListError(getRequestErrorMessage(error, "Unable to load users. Please try again."));
       }
     }
 
-    loadUsers();
+    void loadUsers();
+
   }, [currentUser.role]);
-  if (currentUser.role !== "super_admin") {
+  if (!["super_admin", "admin"].includes(currentUser.role)) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-on-surface-variant">
         <span className="material-symbols-outlined text-5xl mb-3">lock</span>
         <p className="font-headline-sm">Access Restricted</p>
-        <p className="font-body-md mt-1">Only Superadmins can manage users.</p>
+        <p className="font-body-md mt-1">Only Admins and Super Admins can manage users.</p>
       </div>
     );
   }
@@ -234,13 +254,14 @@ export default function UserManagement() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 min-w-0">
+      {listError && <p role="alert" className="rounded-lg bg-error/5 p-3 text-sm text-error">{listError}</p>}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
         <div>
           <h1 className="font-headline-md font-bold text-on-surface">User Management</h1>
           <p className="font-body-md text-on-surface-variant mt-1">{users.length} users · {users.filter((u) => u.active).length} active</p>
         </div>
-        {currentUser.role === "super_admin" && <button
+        {["super_admin", "admin"].includes(currentUser.role) && <button
           onClick={() => { setEditUser(null); setShowForm(true); }}
           className="flex items-center gap-2 bg-primary text-on-primary px-5 py-2.5 rounded-xl font-label-md font-bold hover:brightness-110 transition-all shadow-md"
         >
@@ -316,7 +337,7 @@ export default function UserManagement() {
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${meta.color}`}>{meta.label}</span>
                   </td>
                   <td className="px-5 py-3.5">
-                    <span className="font-body-md text-on-surface-variant text-[12px]">{u.prakalpa || "—"}</span>
+                    <span className="font-body-md text-on-surface-variant text-[12px]">{(u.role === "prakalpa_manager" && !u.active && assignmentNames(u).length ? "Historical: " : "") + (assignmentNames(u).join(", ") || (u.role === "prakalpa_manager" ? "Assignments require reconciliation" : "—"))}</span>
                   </td>
                   <td className="px-5 py-3.5">
                     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${u.active ? "bg-primary/10 text-primary" : "bg-error/10 text-error"}`}>
@@ -348,9 +369,9 @@ export default function UserManagement() {
                         onClick={() => {
                           if (!canManageUser(u.role)) return;
                           setFormError("");
-                          setConfirmDelete(u);
+                          setReplacementManagerId(""); setFormError(""); setConfirmDelete(u);
                         }}
-                        disabled={!canManageUser(u.role)}
+                        disabled={!canManageUser(u.role) || (currentUser.role === "admin" && u.id === currentUser.id)}
                         className="p-1.5 rounded-lg hover:bg-error/10 text-on-surface-variant/60 hover:text-error transition-colors"
                         title="Deactivate user"
                       >
@@ -369,6 +390,7 @@ export default function UserManagement() {
       {/* Add / Edit form modal */}
       {showForm && (
         <UserForm
+          managers={users} userId={editUser?.id}
           currentUserRole={currentUser.role}
           error={formError}
           initial={
@@ -380,24 +402,29 @@ export default function UserManagement() {
                   role: editUser.role,
                   phone: editUser.phone ?? "",
                   prakalpa: editUser.prakalpa ?? "",
+                  assignedPrakalpas: assignmentNames(editUser),
                   active: editUser.active,
                 }
               : emptyForm()
           }
           isEdit={!!editUser}
+          busy={userBusy}
           onCancel={() => { setShowForm(false); setEditUser(null); }}
           onSave={async (data) => {
-            setFormError("");
+            if (userBusyRef.current) return;
+            userBusyRef.current = true; setUserBusy(true); setFormError("");
             try {
               if (editUser) {
-                const { password: _password, ...profile } = data;
-                await updateUser(editUser.id, profile);
+                const { password: _password, prakalpa: _legacy, assignedPrakalpas, ...profile } = data;
+                const unchanged = profile.role === editUser.role && JSON.stringify(assignedPrakalpas) === JSON.stringify(assignmentNames(editUser));
+                await updateUser(editUser.id, { ...profile, ...(unchanged ? {} : { assignedPrakalpas }) });
               } else {
-                await createUser(data);
+                const { prakalpa: _legacy, ...creation } = data;
+                await createUser(creation);
               }
 
               await refreshLiveData();
-              const response = await getUsers().catch(() => null);
+              const response = await getUsers().catch(error => { setListError(getRequestErrorMessage(error, "User changes were saved, but the user list could not be refreshed.")); return null; });
 
               if (response?.success) {
                 setUsers(response.data);
@@ -406,8 +433,8 @@ export default function UserManagement() {
               setShowForm(false);
               setEditUser(null);
             } catch (err) {
-              setFormError(err instanceof Error ? err.message : "Unable to save the user.");
-            }
+              setFormError(getRequestErrorMessage(err, "Unable to save the user."));
+            } finally { userBusyRef.current = false; setUserBusy(false); }
           }}
         />
       )}
@@ -430,15 +457,22 @@ export default function UserManagement() {
               This will deactivate <strong>{confirmDelete.name}</strong>. The user will no longer be able to access the platform.
             </p>
             {formError && <p role="alert" className="mb-4 text-sm text-error">{formError}</p>}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
+            {confirmDelete.role === "prakalpa_manager" && <select aria-label="Deactivation replacement Manager" value={replacementManagerId} onChange={event => setReplacementManagerId(event.target.value)} className="w-full rounded-lg border px-3 py-2">
+            <option value="">Select replacement Manager for active Prakalpas…</option>
+            {users.filter(user => user.active && user.role === "prakalpa_manager" && user.id !== confirmDelete.id).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+          </select>}
+            <div className="mt-3 flex flex-col sm:flex-row gap-3">
+          <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 border border-outline-variant rounded-lg font-label-md hover:bg-surface-container-low">Cancel</button>
               <button
+                disabled={userBusy}
                 onClick={async () => {
+                  if (userBusyRef.current) return;
+                  userBusyRef.current = true; setUserBusy(true);
                   try {
-                    await deleteUser(confirmDelete.id);
+                    await deleteUser(confirmDelete.id, replacementManagerId || undefined);
                     await refreshLiveData();
 
-                    const response = await getUsers().catch(() => null);
+                    const response = await getUsers().catch(error => { setListError(getRequestErrorMessage(error, "User changes were saved, but the user list could not be refreshed.")); return null; });
 
                     if (response?.success) {
                       setUsers(response.data);
@@ -446,8 +480,8 @@ export default function UserManagement() {
 
                     setConfirmDelete(null);
                   } catch (err) {
-                    setFormError(err instanceof Error ? err.message : "Unable to deactivate the user.");
-                  }
+                    setFormError(getRequestErrorMessage(err, "Unable to deactivate the user."));
+                  } finally { userBusyRef.current = false; setUserBusy(false); }
                 }}
                 className="flex-1 py-2.5 bg-error text-white rounded-lg font-label-md font-bold hover:brightness-110"
               >

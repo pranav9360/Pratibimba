@@ -1,3 +1,4 @@
+import { isValidNewPassword, PASSWORD_POLICY_MESSAGE } from "../../shared/password-policy.mjs";
 import bcrypt from "bcryptjs";
 import { randomInt } from "node:crypto";
 import User from "../models/User.js";
@@ -115,8 +116,8 @@ export const resetPassword = async ({
   password
 }) => {
   if (typeof identifier !== "string" || typeof otp !== "string" ||
-      typeof password !== "string" || password.length < 8) {
-    throw new AppError("Invalid password reset request", 400);
+      !isValidNewPassword(password)) {
+    throw new AppError(PASSWORD_POLICY_MESSAGE, 400);
   }
   return withSuperAdminMutationTransaction(async (session) => {
     const otpRecord =

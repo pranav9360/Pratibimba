@@ -1,8 +1,10 @@
+import { findingEvidenceStatus } from "../../shared/evidence-status.mjs";
 import mongoose from "mongoose";
 import multer from "multer";
 import { Readable } from "node:stream";
 import AuditFinding from "../models/AuditFinding.js";
 import AuditorSubmission from "../models/AuditorSubmission.js";
+import CoordinatorBatchClosure from "../models/CoordinatorBatchClosure.js";
 import ScheduledAudit from "../models/ScheduledAudit.js";
 import AppError from "../utils/AppError.js";
 import asyncHandler from "../middleware/asyncHandler.js";
@@ -25,7 +27,7 @@ const getContext = async (req) => {
   const audit = await ScheduledAudit.findById(finding.scheduledAudit);
   if (!audit) throw new AppError("Scheduled audit not found",409);
   const role = req.user.role, name = String(req.user.name || "").trim();
-  const isAuditor = role === "auditor" && String(finding.submittedBy) === String(req.user._id) && (audit.auditors || []).includes(name);
+  const isAuditor = role === "auditor" && String(finding.submittedBy) === String(req.user._id) && ((audit.auditors || []).includes(name) || String(audit.leadAuditor || "").trim() === name);
   const isLead = role === "auditor" && audit.leadAuditor === name;
   const isCoordinator = role === "audit_coordinator" && audit.auditCoordinator === name;
   const isAdmin = role === "admin" || role === "super_admin";
@@ -38,6 +40,9 @@ export const uploadFindingEvidence = asyncHandler(async (req,res) => {
   if (!req.file || !allowed.has(req.file.mimetype) || !validSignature(req.file.buffer,req.file.mimetype)) throw new AppError("Upload a valid JPEG, PNG, WebP or PDF",400);
   const originalName = String(req.file.originalname || "evidence").replace(/[\\/\x00-\x1f]/g,"_").slice(0,140);
   const isDraft = isAuditor && finding.workflowStatus === "auditor_draft";
+  if ((isDraft || isLead) && await CoordinatorBatchClosure.exists({ scheduledAudit: audit._id })) {
+    throw new AppError("The Coordinator has finalized this audit; evidence is locked.", 409);
+  }
   if (isDraft && await AuditorSubmission.exists({ scheduledAudit: audit._id, auditor: req.user._id })) {
     throw new AppError("Final batch already submitted; Auditor evidence is locked.", 409);
   }
@@ -62,7 +67,7 @@ export const reviewFindingEvidence = asyncHandler(async (req,res) => {
     throw new AppError("Evidence not found",404);
   if (typeof req.body?.drop !== "boolean") throw new AppError("drop must be boolean",400);
   const lead = isLead && finding.workflowStatus === "submitted_to_lead" && (audit.workflowMode || "legacy") === "legacy";
-  const coordinator = isCoordinator && audit.status === "completed" && finding.workflowStatus === "submitted_to_coordinator" && !finding.coordinatorCompletedAt;
+  const coordinator = isCoordinator && finding.workflowStatus === "submitted_to_coordinator" && !finding.coordinatorCompletedAt;
   if (!lead && !coordinator) throw new AppError("Evidence review is not permitted at this stage",409);
   const stage = lead ? "lead" : "coordinator";
   const field = stage + "Dropped";
@@ -72,18 +77,26 @@ export const reviewFindingEvidence = asyncHandler(async (req,res) => {
   if (coordinator && current?.leadDropped) throw new AppError("Lead-excluded evidence cannot be restored by Coordinator",409);
   const now = new Date();
   // Atomic stage-guarded update. First review inserts a record, subsequent review updates it.
-  const filter = { _id: finding._id, workflowStatus: lead ? "submitted_to_lead" : "submitted_to_coordinator" };
+  const filter = { _id: finding._id, workflowStatus: lead ? "submitted_to_lead" : "submitted_to_coordinator", ...(coordinator ? {coordinatorCompletedAt: null} : {}), ...(!current ? {"evidenceReviews.token": {$ne: token}} : {}) };
   const update = current
     ? { $set: { [`evidenceReviews.$[review].${field}`]: req.body.drop, [`evidenceReviews.$[review].${who}`]: req.user._id, [`evidenceReviews.$[review].${when}`]: now } }
     : { $push: { evidenceReviews: { token, [field]: req.body.drop, [who]: req.user._id, [when]: now } } };
   const options = current ? { new: true, arrayFilters: [{ "review.token": token }] } : { new: true };
+  if (coordinator) update.$set = { ...(update.$set || {}), coordinatorVerifiedAt: null };
+  update.$push = { ...(update.$push || {}), workflowHistory: {
+    action: req.body.drop ? "evidence_excluded" : "evidence_restored", fromStatus: finding.workflowStatus,
+    toStatus: finding.workflowStatus, performedBy: req.user._id, performedByName: req.user.name,
+    role: req.user.role, remarks: `${stage} ${req.body.drop ? "excluded" : "restored"} ${token}`, performedAt: now,
+  } };
   const updated = await AuditFinding.findOneAndUpdate(filter, update, options);
   if (!updated) throw new AppError("Finding changed; reload before reviewing",409);
   res.json({ success:true, data:updated.evidenceReviews });
 });
 export const downloadFindingEvidence = asyncHandler(async (req,res) => {
-  const { finding } = await getContext(req);
+  const { finding, isCoordinator } = await getContext(req);
   const token = PREFIX + req.params.fileId;
+  if (findingEvidenceStatus(finding, token) !== "active") throw new AppError("Evidence is excluded or unavailable in the active viewer.", 404);
+  if (isCoordinator && !["submitted_to_coordinator", "converted_to_report", "discarded_by_coordinator"].includes(finding.workflowStatus)) throw new AppError("Evidence not yet submitted for Coordinator review.", 404);
   if (![...(finding.proofFiles||[]),...(finding.leadEvidenceFiles||[])].includes(token) || !mongoose.isValidObjectId(req.params.fileId)) throw new AppError("Evidence not found",404);
   const fileId = new mongoose.Types.ObjectId(req.params.fileId);
   const file = await mongoose.connection.db.collection("findingEvidence.files").findOne({ _id:fileId, "metadata.findingId":finding._id });
@@ -92,4 +105,21 @@ export const downloadFindingEvidence = asyncHandler(async (req,res) => {
   res.setHeader("Content-Disposition",`inline; filename="${String(file.filename).replace(/["\\\r\n]/g,"_")}"`);
   res.setHeader("Cache-Control","private, no-store");
   bucket().openDownloadStream(fileId).on("error",()=>{if(!res.headersSent)res.status(500).end();else res.destroy();}).pipe(res);
+});
+
+// Logical draft removal only; originals remain in GridFS and an immutable history event.
+export const removeDraftFindingEvidence = asyncHandler(async (req, res) => {
+  const { finding, audit, isAuditor } = await getContext(req);
+  const token = PREFIX + req.params.fileId;
+  if (!mongoose.isValidObjectId(req.params.fileId) || !finding.proofFiles?.includes(token)) throw new AppError("Evidence not found", 404);
+  if (!isAuditor || finding.workflowStatus !== "auditor_draft" || finding.status !== "DRAFT") throw new AppError("Only your unsubmitted draft evidence can be removed.", 409);
+  if (await AuditorSubmission.exists({ scheduledAudit: audit._id, auditor: req.user._id }) || await CoordinatorBatchClosure.exists({ scheduledAudit: audit._id })) throw new AppError("Submitted evidence is locked.", 409);
+  const now = new Date();
+  const updated = await AuditFinding.findOneAndUpdate({ _id: finding._id, workflowStatus: "auditor_draft", status: "DRAFT", proofFiles: token }, {
+    $pull: { proofFiles: token }, $push: { withdrawnEvidenceFiles: { token, by: req.user._id, at: now },
+      workflowHistory: { action: "draft_evidence_removed", fromStatus: finding.workflowStatus, toStatus: finding.workflowStatus,
+        performedBy: req.user._id, performedByName: req.user.name, role: req.user.role, remarks: token, performedAt: now } },
+  }, { new: true });
+  if (!updated) throw new AppError("Finding changed; refresh before removing evidence.", 409);
+  res.json({ success: true });
 });

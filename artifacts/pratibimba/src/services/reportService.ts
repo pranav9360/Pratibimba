@@ -1,3 +1,4 @@
+import { sortAuditRecords } from "../../../../shared/audit-order.mjs";
 import api from "./api";
 
 // =========================
@@ -6,7 +7,7 @@ import api from "./api";
 
 export const getReports = async () => {
   const res = await api.get("/reports");
-  return res.data.data;
+  return Array.isArray(res.data.data) ? sortAuditRecords(res.data.data) : res.data.data;
 };
 
 export const getReportById = async (id: string) => {

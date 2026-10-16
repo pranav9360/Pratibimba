@@ -22,6 +22,7 @@ import errorHandler from "./middleware/errorHandler.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import auditFindingRoutes from "./routes/auditFindingRoutes.js";
 import activityLogRoutes from "./routes/activityLogRoutes.js";
+import zeroFindingRoutes from "./routes/zeroFindingRoutes.js";
 
 dotenv.config();
 
@@ -42,6 +43,10 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,
   "http://localhost:5173",
   "https://localhost:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5174",
+  "http://127.0.0.1:5173",
+  "https://localhost:5174",
 ].filter(Boolean);
 
 function isTrustedCodespacesOrigin(origin) {
@@ -128,6 +133,7 @@ app.use("/api/v1/scheduled-audits", scheduledAuditRoutes);
 app.use("/api/v1/reports", reportRoutes);
 app.use("/api/v1/audit-findings", auditFindingRoutes);
 app.use("/api/v1/activity-logs", activityLogRoutes);
+app.use("/api/v1/zero-findings", zeroFindingRoutes);
 
 // ======================
 // Error Handling

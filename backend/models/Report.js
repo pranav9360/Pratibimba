@@ -127,6 +127,7 @@ const reportSchema = new mongoose.Schema(
     },
 
     actionProofFiles: { type: [String], default: [] },
+    withdrawnActionProofFiles: { type: [{ token: String, status: { type: String, enum: ["draft_removed", "withdrawn"] }, by: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, at: Date }], default: [] },
 
     hasChecklist: {
       type: Boolean,

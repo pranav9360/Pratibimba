@@ -157,3 +157,34 @@ test("failed reset delivery revokes the issued credential", async () => {
   await assert.rejects(forgotPassword({ identifier: user.email }, async () => { throw new Error("Mailer unavailable"); }), /Mailer unavailable/);
   assert.deepEqual(removal, { identifier: user.email, otp: stored.otp });
 });
+
+test("repeated successful logins do not revoke existing sessions or require session-count writes", async () => {
+  let writes = 0; user.save = async () => { writes++; };
+  const first = await login({ identifier: user.email, password: oldPassword });
+  const second = await login({ identifier: user.email, password: oldPassword });
+  assert.equal(await authError(first.token), null);
+  assert.equal(await authError(second.token), null);
+  assert.equal(writes, 0); assert.equal(user.passwordChangedAt, null);
+});
+
+for (const value of ["student123", "hello2026", "Password123", "secure@123"]) {
+ test(`eight-character-compatible policy works for own change, management update and single-use reset: ${value}`, async () => {
+   await changeOwnPassword(user, {currentPassword: oldPassword, newPassword: value}, {});
+   assert.ok(await bcrypt.compare(value,user.password));
+   await updateUser("user",{password:value},actor);assert.ok(await bcrypt.compare(value,user.password));
+   await resetPassword({identifier:user.email,otp:"123456",password:value});assert.ok(await bcrypt.compare(value,user.password));
+   await assert.rejects(resetPassword({identifier:user.email,otp:"123456",password:value}),{statusCode:400});
+ });
+}
+for(const value of ["abcdefg","12345678","abcdefgh","abc123"]){
+ test(`all password services reject ${value} without setting a password`,async()=>{
+  const before=user.password;
+  await assert.rejects(changeOwnPassword(user,{currentPassword:oldPassword,newPassword:value},{}),{statusCode:400});
+  await assert.rejects(updateUser("user",{password:value},actor),{statusCode:400});
+  await assert.rejects(resetPassword({identifier:user.email,otp:"123456",password:value}),{statusCode:400});
+  assert.equal(user.password,before);assert.equal(consumed,false);assert.equal(events.length,0);
+ });
+}
+test("legacy low-complexity stored password still authenticates",async()=>{
+ user.password=await bcrypt.hash("legacy",4);assert.ok((await login({identifier:user.email,password:"legacy"})).token);
+});

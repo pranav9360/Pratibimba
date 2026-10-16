@@ -92,7 +92,7 @@ export const updateUser = asyncHandler(async (req, res) => {
 
 export const deleteUser = asyncHandler(async (req, res) => {
 
-  await userService.deleteUser(req.params.id, req.user);
+  await userService.deleteUser(req.params.id, req.user, req.body?.replacementManagerId);
 
   res.json(
     new ApiResponse(

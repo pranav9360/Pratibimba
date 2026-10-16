@@ -15,6 +15,8 @@ const originalMethods = {
   startSession: mongoose.startSession,
   findById: User.findById,
   userFindOne: User.findOne,
+  userFind: User.find,
+  prakalpaFind: Prakalpa.find,
   createUser: User.create,
   countDocuments: User.countDocuments,
   roleFindOne: Role.findOne,
@@ -71,6 +73,9 @@ beforeEach(() => {
   Role.findOne = ({ name }) => makeUserQuery({ name, active: true });
   User.findOne = () => makeUserQuery(null);
   Prakalpa.findOne = () => makeUserQuery({ name: "Valid" });
+  const query = value => ({ select() { return this; }, session() { return this; }, lean: async () => value });
+  User.find = () => query(target.role === "prakalpa_manager" ? [target] : []);
+  Prakalpa.find = () => query([{ name: "Valid", active: true }]);
   ActivityLog.create = async (event) => {
     activityLogs.push(...event);
     return event;
@@ -81,6 +86,8 @@ afterEach(() => {
   mongoose.startSession = originalMethods.startSession;
   User.findById = originalMethods.findById;
   User.findOne = originalMethods.userFindOne;
+  User.find = originalMethods.userFind;
+  Prakalpa.find = originalMethods.prakalpaFind;
   User.create = originalMethods.createUser;
   User.countDocuments = originalMethods.countDocuments;
   Role.findOne = originalMethods.roleFindOne;
@@ -117,7 +124,7 @@ test("Superadmin-created accounts record their initial role assignment", async (
   await createUser({
     name: createdUser.name,
     email: createdUser.email,
-    password: "not-recorded",
+    password: "not-recorded1",
     role: "auditor",
   }, actor);
 
@@ -125,15 +132,10 @@ test("Superadmin-created accounts record their initial role assignment", async (
   assert.equal(activityLogs[0].target.userId, createdUser._id);
   assert.deepEqual(activityLogs[0].oldValue, { role: null });
   assert.deepEqual(activityLogs[0].newValue, { role: "auditor" });
-  assert.equal(JSON.stringify(activityLogs[0]).includes("not-recorded"), false);
+  assert.equal(JSON.stringify(activityLogs[0]).includes("not-recorded1"), false);
 });
 
-test("Admin cannot assign even ordinary roles", async () => {
-  actor.role = "admin";
-  await assert.rejects(changeUserRole("target-id", "admin", actor), { statusCode: 403 });
-  assert.equal(target.role, "auditor");
-  assert.equal(activityLogs.length, 0);
-});
+test("Admin may assign ordinary roles with traceability", async()=>{actor.role="admin";await changeUserRole("target-id","admin",actor);assert.equal(target.role,"admin");assert.equal(activityLogs.length,1);});
 
 test("Ordinary users cannot create accounts", async () => {
   await assert.rejects(
@@ -142,11 +144,7 @@ test("Ordinary users cannot create accounts", async () => {
   );
 });
 
-test("Admin cannot bypass role restrictions through the profile API", async () => {
-  actor.role = "admin";
-  await assert.rejects(updateUser("target-id", { role: "admin" }, actor), { statusCode: 403 });
-  assert.equal(target.role, "auditor");
-});
+test("Admin may update an ordinary role through profile API",async()=>{actor.role="admin";await updateUser("target-id",{role:"admin"},actor);assert.equal(target.role,"admin");});
 
 test("Unsupported role values are rejected", async () => {
   await assert.rejects(
@@ -159,7 +157,7 @@ test("Prakalpa Manager assignment requires an existing Prakalpa", async () => {
   target.prakalpa = "";
   await assert.rejects(
     changeUserRole("target-id", "prakalpa_manager", actor),
-    { statusCode: 400, message: "Prakalpa Manager must have a prakalpa" }
+    { statusCode: 400, message: "Select Prakalpas for the new Manager." }
   );
 });
 
@@ -230,7 +228,7 @@ test("Superadmin creates Admin accounts without exposing credentials", async () 
     assert.ok(options.session);
     return [{ ...data, _id: "new-user", active: true, password: "hashed-secret" }];
   };
-  const created = await createUser({ name: "New Admin", email: "new@example.test", password: "input-secret", role: "admin" }, actor);
+  const created = await createUser({ name: "New Admin", email: "new@example.test", password: "input-secret123", role: "admin" }, actor);
   assert.equal(created.role, "admin");
   assert.equal(created.password, undefined);
   assert.equal(JSON.stringify(activityLogs).includes("secret"), false);
@@ -252,7 +250,7 @@ test("Admin cannot create, assign, modify, demote, or deactivate Superadmin", as
   await assert.rejects(createUser({ role: "super_admin" }, actor), { statusCode: 403 });
   await assert.rejects(changeUserRole("target-id", "super_admin", actor), { statusCode: 403 });
   target.role = "super_admin";
-  for (const data of [{ name: "Changed" }, { role: "admin" }, { active: false }, { password: "new-secret" }]) {
+  for (const data of [{ name: "Changed" }, { role: "admin" }, { active: false }, { password: "new-secret123" }]) {
     await assert.rejects(updateUser("target-id", data, actor), { statusCode: 403 });
   }
   await assert.rejects(deleteUser("target-id", actor), { statusCode: 403 });
@@ -271,7 +269,7 @@ test("Superadmin profile and status changes produce accurate sanitized snapshots
   target.role = "super_admin";
   target.password = "hash-secret";
   activeSuperAdmins = 2;
-  const updated = await updateUser("target-id", { name: "Updated", active: false, password: "new-secret" }, actor);
+  const updated = await updateUser("target-id", { name: "Updated", active: false, password: "new-secret123" }, actor);
   assert.equal(updated.password, undefined);
   assert.equal(activityLogs[0].action, "superadmin_account_updated");
   assert.equal(activityLogs[0].oldValue.name, "Target User");
@@ -292,9 +290,9 @@ test("PUT validates resulting manager assignment and role availability", async (
   await assert.rejects(updateUser("target-id", { role: "prakalpa_manager" }, actor), { statusCode: 400 });
   target.role = "prakalpa_manager";
   target.prakalpa = "Valid";
-  await assert.rejects(updateUser("target-id", { prakalpa: "" }, actor), { statusCode: 400 });
+  await assert.rejects(updateUser("target-id", { prakalpa: "" }, actor), { statusCode: 409 });
   Prakalpa.findOne = () => makeUserQuery(null);
-  await assert.rejects(updateUser("target-id", { prakalpa: "Missing" }, actor), { statusCode: 400 });
+  await assert.rejects(updateUser("target-id", { prakalpa: "Missing" }, actor), { statusCode: 409 });
   Role.findOne = () => makeUserQuery(null);
   await assert.rejects(updateUser("target-id", { role: "auditor" }, actor), { statusCode: 400 });
 });
@@ -389,13 +387,22 @@ test("malformed top-level user bodies are rejected without mutations", async () 
   assert.equal(activityLogs.length, 0);
 });
 
-test("Admin cannot create, edit, or deactivate non-Superadmin accounts", async () => {
-  actor.role = "admin";
-  for (const operation of [
-    () => createUser({ name: "New", email: "new@example.test", password: "test-password", role: "auditor" }, actor),
-    () => updateUser("target-id", { name: "Forbidden" }, actor),
-    () => deleteUser("target-id", actor),
-  ]) await assert.rejects(operation(), { statusCode: 403 });
-  assert.equal(target.name, "Target User"); assert.equal(target.active, true);
-  assert.equal(activityLogs.length, 0);
+test("Admin can create, edit and deactivate ordinary accounts",async()=>{
+ actor.role="admin";User.create=async ([fields])=>[{...fields,_id:"new-id"}];
+ const created=await createUser({name:"New",email:"new@example.test",password:"student123",role:"auditor"},actor);assert.equal(created.role,"auditor");
+ await updateUser("target-id",{name:"Updated"},actor);assert.equal(target.name,"Updated");
+ await deleteUser("target-id",actor);assert.equal(target.active,false);assert.equal(activityLogs.length,3);
+});
+test("Admin cannot change own role/status or deactivate own account",async()=>{
+ actor.role="admin";for(const fields of [{role:"auditor"},{active:false},{role:"super_admin"}])await assert.rejects(updateUser("actor-id",fields,actor),{statusCode:403});
+ await assert.rejects(deleteUser("actor-id",actor),{statusCode:403});
+});
+
+for(const role of ["admin","super_admin"]) for(const password of ["student123","hello2026","Password123","secure@123"]){
+ test(`${role} creates an ordinary account using approved password policy: ${password}`,async()=>{
+  actor.role=role;User.create=async([fields])=>[{...fields,_id:"created-fixture"}];const created=await createUser({name:"Fixture",email:"fixture@example.test",role:"auditor",password},actor);assert.equal(created.role,"auditor");assert.equal(created.password,undefined);
+ });
+}
+for(const role of ["admin","super_admin"])test(`${role} cannot create accounts with invalid new passwords`,async()=>{
+ actor.role=role;for(const password of ["abcdefg","12345678","abcdefgh","abc123"])await assert.rejects(createUser({name:"Fixture",email:"fixture@example.test",role:"auditor",password},actor),{statusCode:400});assert.equal(activityLogs.length,0);
 });

@@ -3,11 +3,13 @@ import { rateLimit } from "express-rate-limit";
 const createAuthLimiter = ({
   windowMs,
   limit,
-  message
+  message,
+  skipSuccessfulRequests = false
 }) =>
   rateLimit({
     windowMs,
     limit,
+    skipSuccessfulRequests,
     standardHeaders: "draft-8",
     legacyHeaders: false,
 
@@ -22,6 +24,7 @@ const createAuthLimiter = ({
 export const loginRateLimiter = createAuthLimiter({
   windowMs: 15 * 60 * 1000,
   limit: 10,
+  skipSuccessfulRequests: true,
   message:
     "Too many login attempts. Please try again later."
 });

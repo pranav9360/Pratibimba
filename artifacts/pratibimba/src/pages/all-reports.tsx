@@ -1,3 +1,9 @@
+import { ActionEvidenceList } from "../components/action-evidence-list";
+import { actionEvidenceStatus } from "../../../../shared/evidence-status.mjs";
+import { sortAuditRecords } from "../../../../shared/audit-order.mjs";
+import { getRequestErrorMessage, logRequestError } from "../services/request-errors";
+import api from "../services/api";
+import { useManagerPrakalpaScope } from "../components/management/use-manager-prakalpas";
 import { FilterToolbar } from "../components/filters/filter-toolbar";
 import { FilterSelect } from "../components/filters/filter-select";
 import { FilterText } from "../components/filters/filter-text";
@@ -22,6 +28,16 @@ import {
 } from "../services/reportService";
 
 // Step 5: Updated Report Interface
+interface CompletedAllClear {
+  _id: string;
+  iqaNumber: string;
+  prakalpa: string;
+  location: string;
+  leadAuditor: string;
+  auditCoordinator: string;
+  approvedAt?: string;
+}
+
 interface Report {
   _id: string;
   iqrNumber: string;
@@ -37,6 +53,7 @@ interface Report {
   findings: string;
   proofFiles: string[];
   actionProofFiles?: string[];
+  withdrawnActionProofFiles?: {token:string;status:string;at?:string}[];
   hasChecklist: boolean;
   createdAt: string;
   updatedAt?: string;
@@ -116,7 +133,12 @@ function reportDaysOpen(start?: string | null, end?: string | null): number | nu
 
 export default function AllReportsPage() {
   const { currentUser } = useApp();
+  const managerScope = useManagerPrakalpaScope(currentUser);
+  const managerPrakalpas = managerScope.names;
+  const [reportsError, setReportsError] = useState("");
   const [reports, setReports] = useState<Report[]>([]);
+  const [completedAllClear, setCompletedAllClear] = useState<CompletedAllClear[]>([]);
+  const [allClearError, setAllClearError] = useState("");
   const [detailTarget, setDetailTarget] = useState<Report | null>(null);
 
   // Coordinator corrective-action review
@@ -147,13 +169,52 @@ export default function AllReportsPage() {
     loadReports();
   }, []);
 
+  const canViewAllClear = ['auditor', 'audit_coordinator', 'admin', 'super_admin']
+    .includes(currentUser?.role ?? '');
+
+  useEffect(() => {
+    if (!canViewAllClear) return;
+    let cancelled = false;
+    api.get('/zero-findings/completed-summaries')
+      .then(response => {
+        if (!cancelled) {
+          setCompletedAllClear(response.data?.data ?? []);
+          setAllClearError('');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAllClearError('Unable to load completed All Clear audits.');
+      });
+    return () => { cancelled = true; };
+  }, [canViewAllClear]);
+
+  const downloadAllClear = async (id: string) => {
+    try {
+      const response = await api.get(
+        `/zero-findings/scheduled-audits/${encodeURIComponent(id)}/summary.pdf`,
+        { responseType: 'blob' }
+      );
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `all-clear-${id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setAllClearError('Unable to download the All Clear PDF.');
+    }
+  };
+
   const loadReports = async () => {
+    setReportsError("");
     try {
       const data = await getReports();
-      console.log("Reports loaded:", data);
       setReports(Array.isArray(data) ? data : data?.data || []);
     } catch (err) {
-      console.error("Error loading reports:", err);
+      setReportsError(getRequestErrorMessage(err, "Unable to load reports. Refresh the page and try again."));
+      logRequestError("Error loading reports:", err);
     }
   };
 
@@ -161,7 +222,7 @@ export default function AllReportsPage() {
     try {
       await downloadReportPDF(report._id);
     } catch (error) {
-      console.error(error);
+      logRequestError("Report request failed", error);
     }
   };
 
@@ -192,7 +253,7 @@ export default function AllReportsPage() {
       await loadReports();
       setEditTarget(null);
     } catch (err) {
-      console.error(err);
+      logRequestError("Report request failed", err);
       alert("Unable to update report.");
     } finally {
       setSavingEdit(false);
@@ -232,10 +293,7 @@ export default function AllReportsPage() {
         "Official IQR sent to Prakalpa successfully."
       );
     } catch (err) {
-      console.error(
-        "Unable to send IQR to Prakalpa:",
-        err
-      );
+      logRequestError("Unable to send IQR to Prakalpa:", err);
 
       alert(
         "Unable to send the IQR to Prakalpa."
@@ -282,10 +340,7 @@ export default function AllReportsPage() {
         "Corrective action returned to Prakalpa successfully."
       );
     } catch (err) {
-      console.error(
-        "Unable to return corrective action:",
-        err
-      );
+      logRequestError("Unable to return corrective action:", err);
 
       alert(
         "Unable to return corrective action to Prakalpa."
@@ -329,10 +384,7 @@ export default function AllReportsPage() {
         "Corrective action verified and IQR closed successfully."
       );
     } catch (err) {
-      console.error(
-        "Unable to verify corrective action:",
-        err
-      );
+      logRequestError("Unable to verify corrective action:", err);
 
       alert(
         "Unable to verify corrective action and close the IQR."
@@ -343,13 +395,13 @@ export default function AllReportsPage() {
   };
 
   const filterReports = useMemo(() => reports.filter(r =>
-    (isManager ? r.prakalpa === currentUser.prakalpa : isAuditor ? (r.auditors || []).includes(currentUser.name || "") || r.auditor === currentUser.name : true)
-  ), [reports, isManager, isAuditor, currentUser]);
+    (isManager ? managerPrakalpas.includes(r.prakalpa) : isAuditor ? (r.auditors || []).includes(currentUser.name || "") || r.auditor === currentUser.name : true)
+  ), [reports, isManager, isAuditor, currentUser, managerPrakalpas]);
   const filterPrakalpaOptions = useMemo(() => [...new Set(filterReports.map(r => r.prakalpa).filter(Boolean))], [filterReports]);
   const filterCoordinatorOptions = useMemo(() => [...new Set(filterReports.map(r => r.auditCoordinator).filter(Boolean))], [filterReports]);
 
   const filtered = useMemo(() => {
-    return reports.filter((r) => {
+    return sortAuditRecords(reports).filter((r) => {
       const q = search.toLowerCase();
       const reportNum = r.iqrNumber || "";
       const ms =
@@ -385,7 +437,7 @@ export default function AllReportsPage() {
         (r.status ?? "open").toLowerCase() === filterStatus.toLowerCase();
 
       const matchUser = isManager
-        ? r.prakalpa === currentUser.prakalpa
+        ? managerPrakalpas.includes(r.prakalpa)
         : isAuditor
         ? (r.auditors || []).includes(currentUser.name || "") ||
           r.auditor === currentUser.name
@@ -414,6 +466,7 @@ export default function AllReportsPage() {
     isManager,
     isAuditor,
     currentUser,
+    managerPrakalpas,
   ]);
 
   const clearFilters = () => {
@@ -451,12 +504,14 @@ export default function AllReportsPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 min-w-0">
+      {(reportsError || managerScope.error) && <p role="alert" className="rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error">{reportsError || managerScope.error}</p>}
+      {managerScope.loading && <p role="status">Verifying your assigned Prakalpas…</p>}
       <div className="flex flex-wrap justify-between items-start gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">All Reports</h2>
           <p className="font-body-md text-on-surface-variant mt-0.5">
             {filtered.length} reports
-            {isManager ? ` — ${currentUser.prakalpa}` : ""}
+            {isManager ? ` — ${managerPrakalpas.join(", ")}` : ""}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 sm:gap-3">
@@ -480,6 +535,38 @@ export default function AllReportsPage() {
           </button>
         </div>
       </div>
+
+      {canViewAllClear && (
+        <section className="rounded-xl border border-outline-variant/30 bg-white p-4 sm:p-6 space-y-3">
+          <h3 className="text-lg font-semibold">Completed All Clear Audits</h3>
+          <p className="text-sm text-on-surface-variant">
+            Approved satisfactory audit summaries.
+            These are not finding-based IQRs.
+          </p>
+          {allClearError && <p role="alert" className="text-red-700">{allClearError}</p>}
+          {completedAllClear.length === 0 && (
+            <p className="text-sm text-on-surface-variant">
+              No completed All Clear audits available for your account.
+            </p>
+          )}
+          {completedAllClear.map(audit => (
+            <div key={audit._id}
+              className="flex flex-wrap items-center justify-between gap-3 border-t py-3">
+              <div>
+                <p className="font-medium">{audit.iqaNumber} — {audit.prakalpa}</p>
+                <p className="text-sm text-on-surface-variant">
+                  {audit.location} · No Findings — Audit Satisfactory
+                </p>
+              </div>
+              <button type="button"
+                className="rounded-lg border px-3 py-2 text-sm font-medium"
+                onClick={() => void downloadAllClear(audit._id)}>
+                Download All Clear PDF
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
@@ -510,14 +597,14 @@ export default function AllReportsPage() {
           </p>
         </div>
 
-        <div className="bg-white border border-outline-variant/20 rounded-xl p-4 shadow-soft">
+        {ncCount > 0 && (<div className="bg-white border border-outline-variant/20 rounded-xl p-4 shadow-soft">
           <p className="text-on-surface-variant text-sm font-label-md">
             NC Reports
           </p>
           <p className="text-3xl font-bold text-error mt-2 font-data-mono">
             {ncCount}
           </p>
-        </div>
+        </div>)}
       </div>
 
       {/* Warning Banner */}
@@ -809,13 +896,13 @@ export default function AllReportsPage() {
                 Closed : {filtered.filter((r) => r.status === "closed").length}
               </span>
 
-              <span className="text-error font-semibold">
+              {ncCount > 0 && (<span className="text-error font-semibold">
                 NC : {ncCount}
-              </span>
+              </span>)}
 
-              <span className="text-primary font-semibold">
+              {ofiCount > 0 && (<span className="text-primary font-semibold">
                 OFI : {ofiCount}
-              </span>
+              </span>)}
             </div>
           </div>
         </div>
@@ -1047,7 +1134,7 @@ export default function AllReportsPage() {
                   </div>
                 </div>
 
-                {!!detailTarget.actionProofFiles?.length && <div className="space-y-2"><p className="font-semibold text-on-surface">Prakalpa Corrective-Action Proof</p>{detailTarget.actionProofFiles.map((token, index) => <button key={token} type="button" className="block text-sm text-primary underline" onClick={() => void downloadReportActionProof(detailTarget._id, token)}>View action proof {index + 1}</button>)}</div>}
+                <ActionEvidenceList report={detailTarget} onOpen={token=>void downloadReportActionProof(detailTarget._id,token)} />
 
                 {/* Completion Remarks Section */}
                 <div>

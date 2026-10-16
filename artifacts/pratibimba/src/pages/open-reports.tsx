@@ -1,3 +1,9 @@
+import api from "../services/api";
+import { ActionEvidenceList } from "../components/action-evidence-list";
+import { actionEvidenceStatus } from "../../../../shared/evidence-status.mjs";
+import { compareAuditRecords, compareIdentifiers, sortAuditRecords } from "../../../../shared/audit-order.mjs";
+import { getRequestErrorMessage, logRequestError } from "../services/request-errors";
+import { useManagerPrakalpaScope } from "../components/management/use-manager-prakalpas";
 import { FilterToolbar } from "../components/filters/filter-toolbar";
 import { FilterSelect } from "../components/filters/filter-select";
 import { FilterText } from "../components/filters/filter-text";
@@ -41,6 +47,7 @@ interface Report {
   findings: string;
   proofFiles: string[];
   actionProofFiles?: string[];
+  withdrawnActionProofFiles?: {token:string;status:string;at?:string}[];
   hasChecklist: boolean;
   createdAt: string;
   reportCreatedOn?: string;
@@ -121,6 +128,9 @@ function reportDaysOpen(start?: string | null, end?: string | null): number | nu
 
 export default function OpenReportsPage() {
   const { currentUser } = useApp();
+  const managerScope = useManagerPrakalpaScope(currentUser);
+  const managerPrakalpas = managerScope.names;
+  const [reportsError, setReportsError] = useState("");
   const [reports, setReports] = useState<Report[]>([]);
   const [detailTarget, setDetailTarget] = useState<Report | null>(null);
 
@@ -171,12 +181,13 @@ export default function OpenReportsPage() {
   }, []);
 
   const loadReports = async () => {
+    setReportsError("");
     try {
       const data = await getReports();
-      console.log("Open reports loaded:", data);
       setReports(Array.isArray(data) ? data : data?.data || []);
     } catch (err) {
-      console.error("Error loading open reports:", err);
+      setReportsError(getRequestErrorMessage(err, "Unable to load reports. Refresh the page and try again."));
+      logRequestError("Error loading open reports:", err);
     }
   };
 
@@ -185,7 +196,7 @@ export default function OpenReportsPage() {
       const data = await getPrakalpas();
       setPrakalpas(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error("Error loading Prakalpa master data:", error);
+      logRequestError("Error loading Prakalpa master data:", error);
     }
   };
 
@@ -194,7 +205,7 @@ export default function OpenReportsPage() {
       const data = await getScheduledAudits();
       setScheduledAudits(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error("Error loading scheduled audits:", error);
+      logRequestError("Error loading scheduled audits:", error);
     }
   };
 
@@ -243,7 +254,7 @@ export default function OpenReportsPage() {
 
     if (!pramukhEmail) {
       alert(
-        `Cannot prepare ${iqaNumber}. Prakalpa Pramukh email is not configured for "${prakalpaMaster.name}". Please configure it in Prakalpa Management first.`
+        `Cannot prepare ${iqaNumber}. Assigned Manager email is unavailable for "${prakalpaMaster.name}". Ask the Super Admin to verify the Manager account and assignment in User Management and Prakalpa Management.`
       );
       return;
     }
@@ -333,7 +344,7 @@ export default function OpenReportsPage() {
     try {
       await downloadReportPDF(report._id);
     } catch (error) {
-      console.error("Error downloading report PDF:", error);
+      logRequestError("Error downloading report PDF:", error);
     }
   };
 
@@ -381,11 +392,8 @@ export default function OpenReportsPage() {
 
       setSuccessOpen(true);
     } catch (error) {
-      console.error(
-        "Error submitting corrective action:",
-        error
-      );
-      setWorkflowNotice({ title: "Submission Failed", message: "Unable to submit corrective action. Please try again.", kind: "error" });
+      logRequestError("Error submitting corrective action:", error);
+      setWorkflowNotice({ title: "Submission Failed", message: getRequestErrorMessage(error, "Unable to submit corrective action. Please try again."), kind: "error" });
     } finally {
       setClosing(false);
     }
@@ -402,7 +410,7 @@ export default function OpenReportsPage() {
       setDetailTarget(null);
       setVerificationRemarks("");
       setWorkflowNotice({ title: "Returned to Prakalpa Manager", message: `${returnedIqrNumber} was returned for correction. The IQR remains open.`, kind: "success" });
-    } catch (error) { console.error(error); setWorkflowNotice({ title: "Return Failed", message: "Unable to return Actions Taken. Please try again.", kind: "error" }); }
+    } catch (error) { logRequestError("Report request failed", error); setWorkflowNotice({ title: "Return Failed", message: getRequestErrorMessage(error, "Unable to return Actions Taken. Please try again."), kind: "error" }); }
     finally { setProcessingVerification(false); }
   };
 
@@ -417,7 +425,7 @@ export default function OpenReportsPage() {
       setDetailTarget(null);
       setVerificationRemarks("");
       setWorkflowNotice({ title: "IQR Verified & Closed", message: `${closedIqrNumber} has been verified and formally closed.`, kind: "success" });
-    } catch (error) { console.error(error); setWorkflowNotice({ title: "Closure Failed", message: "Unable to verify and close this IQR. Please try again.", kind: "error" }); }
+    } catch (error) { logRequestError("Report request failed", error); setWorkflowNotice({ title: "Closure Failed", message: getRequestErrorMessage(error, "Unable to verify and close this IQR. Please try again."), kind: "error" }); }
     finally { setProcessingVerification(false); }
   };
 
@@ -430,14 +438,14 @@ export default function OpenReportsPage() {
 
   // Filter for reports that are open (or missing status field)
   const openReports = useMemo(() => {
-    return reports.filter(
+    return sortAuditRecords(reports).filter(
       (r) => !r.status || r.status.toLowerCase() === "open"
     );
   }, [reports]);
 
   const filterReports = useMemo(() => reports.filter(r =>
-    (!r.status || r.status.toLowerCase() === "open") && (isManager ? r.prakalpa === currentUser.prakalpa : isAuditor ? (r.auditors || []).includes(currentUser.name || "") || r.auditor === currentUser.name : true)
-  ), [reports, isManager, isAuditor, currentUser]);
+    (!r.status || r.status.toLowerCase() === "open") && (isManager ? managerPrakalpas.includes(r.prakalpa) : isAuditor ? (r.auditors || []).includes(currentUser.name || "") || r.auditor === currentUser.name : true)
+  ), [reports, isManager, isAuditor, currentUser, managerPrakalpas]);
   const filterPrakalpaOptions = useMemo(() => [...new Set(filterReports.map(r => r.prakalpa).filter(Boolean))], [filterReports]);
   const filterCoordinatorOptions = useMemo(() => [...new Set(filterReports.map(r => r.auditCoordinator).filter(Boolean))], [filterReports]);
 
@@ -476,7 +484,7 @@ export default function OpenReportsPage() {
         r.auditCoordinator === filterCoordinator;
 
       const matchUser = isManager
-        ? r.prakalpa === currentUser.prakalpa
+        ? managerPrakalpas.includes(r.prakalpa)
         : isAuditor
         ? (r.auditors || []).includes(currentUser.name || "") ||
           r.auditor === currentUser.name
@@ -501,6 +509,7 @@ export default function OpenReportsPage() {
     isManager,
     isAuditor,
     currentUser,
+    managerPrakalpas,
   ]);
 
   const groupedOpenReports = useMemo(() => {
@@ -520,11 +529,11 @@ export default function OpenReportsPage() {
       .map(([iqaNumber, groupReports]) => ({
         iqaNumber,
         reports: [...groupReports].sort((a, b) =>
-          (a.iqrNumber || "").localeCompare(b.iqrNumber || "")
+          compareAuditRecords(a, b)
         ),
       }))
       .sort((a, b) =>
-        (b.iqaNumber || "").localeCompare(a.iqaNumber || "")
+        compareIdentifiers(a.iqaNumber, b.iqaNumber)
       );
   }, [filtered]);
 
@@ -563,12 +572,14 @@ export default function OpenReportsPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 min-w-0">
+      {(reportsError || managerScope.error) && <p role="alert" className="rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error">{reportsError || managerScope.error}</p>}
+      {managerScope.loading && <p role="status">Verifying your assigned Prakalpas…</p>}
       <div className="flex flex-wrap justify-between items-start gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">Open Reports</h2>
           <p className="font-body-md text-on-surface-variant mt-0.5">
             {filtered.length} active reports
-            {isManager ? ` — ${currentUser.prakalpa}` : ""}
+            {isManager ? ` — ${managerPrakalpas.join(", ")}` : ""}
           </p>
         </div>
 
@@ -614,23 +625,23 @@ export default function OpenReportsPage() {
           </p>
         </div>
 
-        <div className="bg-white border border-outline-variant/20 rounded-xl p-4 shadow-soft">
+        {ncCount > 0 && (<div className="bg-white border border-outline-variant/20 rounded-xl p-4 shadow-soft">
           <p className="text-on-surface-variant text-sm font-label-md">
             NC Reports
           </p>
           <p className="text-3xl font-bold text-error mt-2 font-data-mono">
             {ncCount}
           </p>
-        </div>
+        </div>)}
 
-        <div className="bg-white border border-outline-variant/20 rounded-xl p-4 shadow-soft">
+        {ofiCount > 0 && (<div className="bg-white border border-outline-variant/20 rounded-xl p-4 shadow-soft">
           <p className="text-on-surface-variant text-sm font-label-md">
             OFI Reports
           </p>
           <p className="text-3xl font-bold text-primary mt-2 font-data-mono">
             {ofiCount}
           </p>
-        </div>
+        </div>)}
       </div>
 
       {/* Warning Banner for >30d open reports */}
@@ -713,7 +724,7 @@ export default function OpenReportsPage() {
                 }`}
               >
                 {/* IQA Summary Row */}
-                <button title="Notify about report created"
+                <button title="Expand audit reports"
                   type="button"
                   onClick={() => toggleIQA(group.iqaNumber)}
                   className="w-full p-4 sm:p-5 text-left hover:bg-surface-container-lowest transition-colors"
@@ -732,7 +743,7 @@ export default function OpenReportsPage() {
                             {group.iqaNumber}
                           </span>
 
-                          {reviewCount > 0 && <span className="rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900" title="Click to expand IQRs awaiting review">{reviewCount} Needs Review</span>}
+                          {reviewCount > 0 && <span className="rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900" title="Click to expand IQRs awaiting review">{reviewCount} Review Required</span>}
                           {oldestDays > 30 && (
                             <span
                               className="material-symbols-outlined text-error text-[17px]"
@@ -787,13 +798,13 @@ export default function OpenReportsPage() {
                         </p>
 
                         <div className="flex flex-wrap items-center gap-2 mt-1">
-                          <span className="px-2 py-0.5 rounded-full bg-error/10 text-error text-[10px] font-bold">
+                          {ncInGroup > 0 && (<span className="px-2 py-0.5 rounded-full bg-error/10 text-error text-[10px] font-bold">
                             {ncInGroup} NC
-                          </span>
+                          </span>)}
 
-                          <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+                          {ofiInGroup > 0 && (<span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
                             {ofiInGroup} OFI
-                          </span>
+                          </span>)}
                         </div>
                       </div>
                     </div>
@@ -945,11 +956,11 @@ export default function OpenReportsPage() {
                                     <span className="px-2.5 py-1 rounded-full bg-error/10 text-error font-bold text-[10px]">
                                       NC
                                     </span>
-                                  ) : (
+                                  ) : report.severity === "open_for_improvement" ? (
                                     <span className="px-2.5 py-1 rounded-full bg-primary/10 text-primary font-bold text-[10px]">
                                       OFI
                                     </span>
-                                  )}
+                                  ) : null}
                                 </td>
 
                                 <td className="px-4 py-3">
@@ -1058,15 +1069,15 @@ export default function OpenReportsPage() {
             </span>
 
             <div className="flex gap-3 text-[12px]">
-              <span className="flex items-center gap-1">
+              {ncCount > 0 && (<span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-error/60" />
                 NC: {ncCount}
-              </span>
+              </span>)}
 
-              <span className="flex items-center gap-1">
+              {ofiCount > 0 && (<span className="flex items-center gap-1">
                 <span className="w-2 h-2 rounded-full bg-primary/40" />
                 OFI: {ofiCount}
-              </span>
+              </span>)}
             </div>
           </div>
         </div>
@@ -1230,7 +1241,7 @@ export default function OpenReportsPage() {
                     <p className="text-xs text-on-surface-variant">{entry.performedBy || "User"}</p>
                     {entry.action === "action_submitted" && (entry.actionTakenSnapshot ? <p className="whitespace-pre-wrap text-sm"><strong>Actions Taken: </strong>{entry.actionTakenSnapshot}</p> : <p className="text-xs text-on-surface-variant">Original Actions Taken text was not saved in this older event.</p>)}
                     {entry.completionRemarksSnapshot && <p className="whitespace-pre-wrap text-sm"><strong>Completion Remarks: </strong>{entry.completionRemarksSnapshot}</p>}
-                    {!!entry.actionProofFilesSnapshot?.length && <div className="text-sm"><strong>Evidence: </strong>{entry.actionProofFilesSnapshot.map((token,i) => <button type="button" key={`${token}-${i}`} onClick={() => void downloadReportActionProof(detailTarget._id,token)} className="ml-2 text-primary underline">Proof {i+1}</button>)}</div>}
+                    {!!entry.actionProofFilesSnapshot?.length && <div className="text-sm"><strong>Evidence: </strong>{entry.actionProofFilesSnapshot.filter(token=>actionEvidenceStatus(detailTarget,token)!=="draft_removed").map((token,i) => <button type="button" key={`${token}-${i}`} disabled={actionEvidenceStatus(detailTarget,token)!=="active"} onClick={() => void downloadReportActionProof(detailTarget._id,token)} className="ml-2 text-primary underline">Proof {i+1}{actionEvidenceStatus(detailTarget,token)!=="active" ? " · Withdrawn" : ""}</button>)}</div>}
                     {entry.remarks && <p className="whitespace-pre-wrap text-sm"><strong>{entry.action === "returned_to_prakalpa" ? "Coordinator Remarks" : "Remarks"}: </strong>{entry.remarks}</p>}
                   </div>)}
                 </div>}
@@ -1296,7 +1307,7 @@ export default function OpenReportsPage() {
               )}
 
               {/* Evidence Files Section */}
-              {!!detailTarget.actionProofFiles?.length && <div className="space-y-2"><p className="font-semibold">Corrective-Action Proof</p>{detailTarget.actionProofFiles.map((token, index) => <button key={token} type="button" className="block text-sm text-primary underline" onClick={() => void downloadReportActionProof(detailTarget._id, token)}>View action proof {index + 1}</button>)}</div>}
+              <ActionEvidenceList report={detailTarget} onOpen={token=>void downloadReportActionProof(detailTarget._id,token)} />
               {detailTarget.proofFiles && detailTarget.proofFiles.length > 0 && (
                 <div>
                   <p className="font-semibold text-on-surface mb-2">Evidence Files</p>
@@ -1463,7 +1474,7 @@ export default function OpenReportsPage() {
               </label>
               {actionProof && <button type="button" onClick={() => setActionProof(null)} className="text-xs text-error underline">Remove selected file</button>}
               {actionProofError && <p className="text-xs text-error" role="alert">{actionProofError}</p>}
-              {!!actionTarget.actionProofFiles?.length && <div className="space-y-1"><p className="text-xs font-semibold">Previously uploaded action proof</p>{actionTarget.actionProofFiles.map((token, index) => <button key={token} type="button" className="block text-xs text-primary underline" onClick={() => void downloadReportActionProof(actionTarget._id, token)}>View action proof {index + 1}</button>)}</div>}
+              <ActionEvidenceList report={actionTarget} onOpen={token=>void downloadReportActionProof(actionTarget._id,token)} onRemove={token=>{void api.delete(`/reports/${actionTarget._id}/action-evidence/${token.slice("action-evidence:".length)}`).then(response=>setActionTarget(response.data.data)).catch(err=>setActionProofError(getRequestErrorMessage(err)));}} />
             </div>
 
             {/* Confirmation Banner */}

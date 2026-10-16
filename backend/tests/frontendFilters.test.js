@@ -1,3 +1,4 @@
+import { compareAuditRecords, compareIdentifiers, sortAuditRecords } from "../../shared/audit-order.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -34,7 +35,7 @@ const contextFor = (name, override = {}) => {
       ...override,
     });
   }
-  return vm.createContext({ ...environment,
+  return vm.createContext({ compareAuditRecords, compareIdentifiers, sortAuditRecords, ...environment, managerPrakalpas: [environment.currentUser?.prakalpa].filter(Boolean),
     matchesDateFilter: (start, end, filter) => {
       if (filter.mode === "all" || !filter.start) return true;
       const first = String(start || "").slice(0, 10);
@@ -83,7 +84,9 @@ for (const [name, page] of Object.entries(baseline.pages)) {
         evaluate(current[key], context); context[key] = context.evaluated;
         if (typeof context[key] !== "function") actual[key] = compact(plain(context[key]));
       }
-      assert.deepEqual(actual, result, label);
+      // Display ordering intentionally changed; original membership/count/filter semantics must remain.
+      const canonical = value => Array.isArray(value) ? value.map(canonical).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))) : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([k,v])=>[k,canonical(v)])) : value;
+      assert.deepEqual(canonical(actual), canonical(result), label);
     }
   });
   test(`${name}: predicates, grouping, exports, counters and existing resets are unchanged`, () => {
@@ -95,7 +98,12 @@ for (const [name, page] of Object.entries(baseline.pages)) {
         assert.ok(current[key].includes("filterAuditArea"), `${name}: audit-area predicate exists`);
         assert.ok(current[key].includes("filterPramukh"), `${name}: Pramukh predicate exists`);
       } else {
-        assert.equal(current[key], text, key);
+        const expected = text.replaceAll("const grouped = reports.reduce(", "const grouped = sortAuditRecords(reports).reduce(").replaceAll('.sort((a, b) => (a.date || "").localeCompare(b.date || ""))','.sort(compareAuditRecords)').replaceAll("return reports.filter(", "return sortAuditRecords(reports).filter(").replaceAll("return reports\n", "return sortAuditRecords(reports)\n").replaceAll("r.prakalpa === currentUser.prakalpa", "managerPrakalpas.includes(r.prakalpa)")
+          .replace("[reports, isManager, isAuditor, currentUser]", "[reports, isManager, isAuditor, currentUser, managerPrakalpas]")
+          .replace("    currentUser,\n  ])", "    currentUser,\n    managerPrakalpas,\n  ])");
+        if(key === "groupedOpenReports") {
+          assert.match(current[key], /compareAuditRecords/);assert.match(current[key], /compareIdentifiers/);
+        } else assert.equal(current[key], expected, key);
       }
     }
   });

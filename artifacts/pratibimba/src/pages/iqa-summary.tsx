@@ -1,3 +1,4 @@
+import { sortAuditRecords } from "../../../../shared/audit-order.mjs";
 import { FilterToolbar } from "../components/filters/filter-toolbar";
 import { FilterSelect } from "../components/filters/filter-select";
 import { FilterText } from "../components/filters/filter-text";
@@ -121,7 +122,7 @@ export default function IQASummaryPage() {
 
   // STEP 1: Replace summaryRows by grouping reports directly on report.iqaNumber
   const summaryRows = useMemo(() => {
-    const grouped = reports.reduce((acc: any, report: any) => {
+    const grouped = sortAuditRecords(reports).reduce((acc: any, report: any) => {
       if (!acc[report.iqaNumber]) {
         acc[report.iqaNumber] = [];
       }
