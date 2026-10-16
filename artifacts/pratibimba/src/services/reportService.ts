@@ -1,3 +1,4 @@
+import { sortAuditRecords } from "../../../../shared/audit-order.mjs";
 import api from "./api";
 
 // =========================
@@ -6,7 +7,7 @@ import api from "./api";
 
 export const getReports = async () => {
   const res = await api.get("/reports");
-  return res.data.data;
+  return Array.isArray(res.data.data) ? sortAuditRecords(res.data.data) : res.data.data;
 };
 
 export const getReportById = async (id: string) => {
@@ -20,19 +21,36 @@ export const createReport = async (data: any) => {
 };
 
 // =========================
-// Future Features
+// Send Report Email
 // =========================
 
-export const sendReportEmail = async (id: string) => {
-  // Future backend endpoint
-  // return await api.post(`/reports/${id}/send-email`);
+export interface SendReportEmailPayload {
+  to: string[];
+  cc?: string[];
+  subject?: string;
+  message?: string;
+}
 
-  console.log("Send Report Email:", id);
+export const sendReportEmail = async (
+  id: string,
+  payload: SendReportEmailPayload
+) => {
+  const res = await api.post(`/reports/${id}/send-email`, payload);
+  return res.data.data;
+};
 
-  return {
-    success: true,
-    message: "Email functionality not connected yet.",
-  };
+export const sendIQAReportsEmail = async (
+  iqaNumber: string,
+  payload: SendReportEmailPayload & {
+    reportIds: string[];
+  }
+) => {
+  const res = await api.post(
+    `/reports/iqa/${encodeURIComponent(iqaNumber)}/send-email`,
+    payload
+  );
+
+  return res.data.data;
 };
 
 export const downloadReportPDF = async (id: string) => {
@@ -62,24 +80,6 @@ export const downloadReportPDF = async (id: string) => {
 };
 
 // =========================
-// Close Report
-// =========================
-
-export const closeReport = async (
-  id: string,
-  data: {
-    actionTaken: string;
-    completionRemarks?: string;
-    closedBy?: string;
-    closedAt?: string;
-    proofFiles?: string[];
-  }
-) => {
-  const res = await api.patch(`/reports/${id}/close`, data);
-  return res.data.data;
-};
-
-// =========================
 // Update Report
 // =========================
 
@@ -95,4 +95,100 @@ export const updateReport = async (
 ) => {
   const res = await api.patch(`/reports/${id}`, data);
   return res.data.data;
+};
+
+// =========================
+// Official IQR → Prakalpa
+// =========================
+
+/*
+ * Assigned Audit Coordinator formally releases a
+ * coordinator-generated official IQR to the Prakalpa.
+ */
+export const sendReportToPrakalpa = async (
+  id: string
+) => {
+  const res = await api.patch(
+    `/reports/${id}/send-to-prakalpa`
+  );
+
+  return res.data.data;
+};
+
+
+// =========================
+// Prakalpa Corrective Action
+// =========================
+
+export const submitPrakalpaCorrectiveAction = async (
+  id: string,
+  data: {
+    actionTaken: string;
+    completionRemarks?: string;
+    proofFiles?: string[];
+  }
+) => {
+  const res = await api.patch(
+    `/reports/${id}/submit-action`,
+    data
+  );
+
+  return res.data.data;
+};
+
+
+// ===================================
+// Coordinator Corrective-Action Review
+// ===================================
+
+export interface CoordinatorVerificationPayload {
+  remarks?: string;
+  coordinatorVerificationRemarks?: string;
+}
+
+
+/*
+ * Assigned Audit Coordinator returns a submitted corrective
+ * action to the Prakalpa for further correction.
+ */
+export const returnReportToPrakalpa = async (
+  id: string,
+  data: CoordinatorVerificationPayload
+) => {
+  const res = await api.patch(
+    `/reports/${id}/return-to-prakalpa`,
+    data
+  );
+
+  return res.data.data;
+};
+
+
+/*
+ * Assigned Audit Coordinator accepts the corrective action
+ * and formally closes the IQR.
+ */
+export const verifyAndCloseReport = async (
+  id: string,
+  data: CoordinatorVerificationPayload = {}
+) => {
+  const res = await api.patch(
+    `/reports/${id}/verify-close`,
+    data
+  );
+
+  return res.data.data;
+};
+
+export const uploadReportActionProof = async (id: string, file: File) => {
+  const body = new FormData(); body.append("file", file);
+  const response = await api.post(`/reports/${id}/action-evidence`, body);
+  return response.data.data as { token: string; name: string };
+};
+export const downloadReportActionProof = async (id: string, token: string) => {
+  const fileId = token.replace(/^action-evidence:/, "");
+  const response = await api.get(`/reports/${id}/action-evidence/${encodeURIComponent(fileId)}`, { responseType: "blob" });
+  const url = URL.createObjectURL(response.data);
+  window.open(url, "_blank", "noopener,noreferrer");
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 };

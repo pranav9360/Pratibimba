@@ -5,6 +5,7 @@ import User from "../models/User.js";
 import AppError from "../utils/AppError.js";
 
 import asyncHandler from "./asyncHandler.js";
+import { isPasswordSessionCurrent } from "../utils/passwordSessions.js";
 
 const authenticate = asyncHandler(async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -42,7 +43,12 @@ const authenticate = asyncHandler(async (req, res, next) => {
     );
   }
 
+  if (!isPasswordSessionCurrent(user, decoded)) {
+    throw new AppError("Your password has changed. Please sign in again.", 401);
+  }
+
   req.user = user;
+  req.authClaims = decoded;
 
   next();
 });

@@ -1,3 +1,4 @@
+import { isValidNewPassword, PASSWORD_POLICY_MESSAGE } from "../../shared/password-policy.mjs";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
@@ -34,24 +35,26 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       enum: [
+        "super_admin",
         "admin",
-        "lead_auditor",
         "audit_coordinator",
         "auditor",
         "prakalpa_manager",
       ],
     },
 
-    domain: {
+    prakalpa: {
       type: String,
       default: "",
       trim: true,
     },
 
-    assignedDomains: {
-    type: [String],
-    default: [],
+    assignedPrakalpas: {
+      type: [String],
+      default: [],
     },
+
+    passwordChangedAt: { type: Date, default: null },
 
     active: {
       type: Boolean,
@@ -72,6 +75,8 @@ const userSchema = new mongoose.Schema(
 userSchema.virtual("createdDate").get(function () {
   return this.createdAt;
 });
+
+userSchema.path("password").validate(function(value) { return !this.isModified("password") || isValidNewPassword(value); }, PASSWORD_POLICY_MESSAGE);
 
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();

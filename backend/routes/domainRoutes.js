@@ -26,7 +26,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("admin"),
   createDomainValidator,
   createDomain
 );
@@ -34,7 +34,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("admin"),
   updateDomainValidator,
   updateDomain
 );

@@ -19,7 +19,7 @@ console.log("\n🚀 Starting Master Seed...\n");
 
 const roles = [
   {
-    name: "admin",
+    name: "super_admin",
     permissions: {
       canCreateAuditPlan: true,
       canScheduleAudit: true,
@@ -30,11 +30,12 @@ const roles = [
       canManageUsers: true,
       canViewDashboard: true,
       canAddAuditor: true,
+      canManagePrakalpas: true,
+      canManageAdmins: true,
     },
   },
-
   {
-    name: "lead_auditor",
+    name: "admin",
     permissions: {
       canCreateAuditPlan: true,
       canScheduleAudit: true,
@@ -42,7 +43,7 @@ const roles = [
       canCloseReport: true,
       canViewAllReports: true,
       canManageRoles: true,
-      canManageUsers: false,
+      canManageUsers: true,
       canViewDashboard: true,
       canAddAuditor: true,
     },

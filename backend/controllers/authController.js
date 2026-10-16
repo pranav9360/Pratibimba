@@ -36,7 +36,7 @@ export const forgotPassword = asyncHandler(async (req, res) => {
   res.status(200).json(
     new ApiResponse(
       200,
-      "OTP generated successfully",
+      "If an active account matches, a reset code has been sent to its registered email.",
       result
     )
   );

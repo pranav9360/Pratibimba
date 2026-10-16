@@ -9,8 +9,10 @@ import cookieParser from "cookie-parser";
 import connectDB from "./config/db.js";
 
 import authRoutes from "./routes/authRoutes.js";
+import accountRoutes from "./routes/accountRoutes.js";
 import roleRoutes from "./routes/roleRoutes.js";
 import domainRoutes from "./routes/domainRoutes.js";
+import prakalpaRoutes from "./routes/prakalpaRoutes.js";
 import locationRoutes from "./routes/locationRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import auditPlanRoutes from "./routes/auditPlanRoutes.js";
@@ -18,6 +20,10 @@ import scheduledAuditRoutes from "./routes/scheduledAudit.routes.js";
 import notFound from "./middleware/notFound.js";
 import errorHandler from "./middleware/errorHandler.js";
 import reportRoutes from "./routes/reportRoutes.js";
+import auditFindingRoutes from "./routes/auditFindingRoutes.js";
+import activityLogRoutes from "./routes/activityLogRoutes.js";
+import zeroFindingRoutes from "./routes/zeroFindingRoutes.js";
+
 dotenv.config();
 
 // Connect to MongoDB
@@ -26,68 +32,71 @@ connectDB();
 const app = express();
 
 // ======================
-// Security Middleware
+// Security & CORS Middleware
 // ======================
 
 app.use(helmet());
 
-// The previous config used a single fixed string:
-//   cors({ origin: process.env.FRONTEND_URL, credentials: true })
-// The "cors" package sends a STRING origin back verbatim, without ever
-// comparing it to the request's actual Origin header. In GitHub
-// Codespaces the frontend is served from a forwarded HTTPS domain like
-// "https://<codespace-name>-5173.app.github.dev" — not
-// "http://localhost:5173" — so the fixed string could never match, the
-// browser's CORS check failed, and fetch() threw "Failed to fetch" even
-// though curl (which doesn't enforce CORS) hit the same URL fine.
-//
-// This validates the request's real origin instead of echoing a fixed
-// value, so it works for local dev AND for whichever Codespace forwards
-// the frontend on a given run.
 const allowedOrigins = [
+  "https://pratibimba.pages.dev",
   process.env.ALLOWED_ORIGIN,
+  process.env.FRONTEND_URL,
   "http://localhost:5173",
+  "https://localhost:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5174",
+  "http://127.0.0.1:5173",
+  "https://localhost:5174",
 ].filter(Boolean);
+
+function isTrustedCodespacesOrigin(origin) {
+  try {
+    const url = new URL(origin);
+
+    return (
+      url.protocol === "https:" &&
+      (
+        url.hostname.endsWith(".app.github.dev") ||
+        url.hostname.endsWith(".githubpreview.dev")
+      )
+    );
+  } catch {
+    return false;
+  }
+}
 
 app.use(
   cors({
     origin(origin, callback) {
-      // Requests without an Origin header (curl/Postman/server-to-server)
-      // are not subject to browser CORS checks.
-      if (!origin) return callback(null, true);
-
-      let isAllowed = allowedOrigins.includes(origin);
-
-      // Keep GitHub Codespaces working during development.
-      if (!isAllowed) {
-        try {
-          isAllowed = new URL(origin).hostname.endsWith(".app.github.dev");
-        } catch {
-          isAllowed = false;
-        }
+      // curl/Postman/server-to-server requests may have no Origin header.
+      if (!origin) {
+        return callback(null, true);
       }
 
-      callback(
+      const isAllowed =
+        allowedOrigins.includes(origin) ||
+        isTrustedCodespacesOrigin(origin);
+
+      if (!isAllowed) {
+        console.warn("CORS blocked origin:", origin);
+      }
+
+      return callback(
         isAllowed ? null : new Error("Not allowed by CORS"),
         isAllowed
       );
     },
+
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
 app.use(compression());
-
 app.use(cookieParser());
-
 app.use(express.json());
-
-app.use(
-  express.urlencoded({
-    extended: true,
-  })
-);
-
+app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 
 // ======================
@@ -111,22 +120,21 @@ app.get("/api/v1/health", (req, res) => {
 // ======================
 // API Routes
 // ======================
+
 app.use("/api/v1/auth", authRoutes);
-
+app.use("/api/v1/account", accountRoutes);
 app.use("/api/v1/roles", roleRoutes);
-
-app.use("/api/v1/domains", domainRoutes);
-
+app.use("/api/v1/domains", domainRoutes); // temporary legacy compatibility
+app.use("/api/v1/prakalpas", prakalpaRoutes);
 app.use("/api/v1/locations", locationRoutes);
 app.use("/api/v1/users", userRoutes);
-
 app.use("/api/v1/audit-plans", auditPlanRoutes);
-
 app.use("/api/v1/scheduled-audits", scheduledAuditRoutes);
-app.use(
-  "/api/v1/reports",
-  reportRoutes
-);
+app.use("/api/v1/reports", reportRoutes);
+app.use("/api/v1/audit-findings", auditFindingRoutes);
+app.use("/api/v1/activity-logs", activityLogRoutes);
+app.use("/api/v1/zero-findings", zeroFindingRoutes);
+
 // ======================
 // Error Handling
 // ======================
@@ -138,7 +146,7 @@ app.use(notFound);
 app.use(errorHandler);
 
 // ======================
-// Server
+// Server Initialization
 // ======================
 
 const PORT = process.env.PORT || 5000;

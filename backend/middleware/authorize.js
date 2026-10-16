@@ -8,7 +8,14 @@ const authorize = (...allowedRoles) => {
       );
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    const isSuperAdminInheritingAdminAccess =
+      req.user.role === "super_admin" &&
+      allowedRoles.includes("admin");
+
+    if (
+      !allowedRoles.includes(req.user.role) &&
+      !isSuperAdminInheritingAdminAccess
+    ) {
       return next(
         new AppError(
           "You do not have permission to perform this action.",

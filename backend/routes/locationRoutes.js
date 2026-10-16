@@ -5,7 +5,7 @@ import authorize from "../middleware/authorize.js";
 
 import {
   getLocations,
-  getLocationsByDomain,
+  getLocationsByPrakalpa,
   createLocation,
   updateLocation,
   deleteLocation,
@@ -16,7 +16,8 @@ import {
   updateLocationValidator,
 } from "../validators/locationValidator.js";
 
-const router = express.Router();
+const router =
+  express.Router();
 
 router.get(
   "/",
@@ -25,15 +26,15 @@ router.get(
 );
 
 router.get(
-  "/domain/:domain",
+  "/prakalpa/:prakalpa",
   authenticate,
-  getLocationsByDomain
+  getLocationsByPrakalpa
 );
 
 router.post(
   "/",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("super_admin", "admin"),
   createLocationValidator,
   createLocation
 );
@@ -41,7 +42,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("super_admin", "admin"),
   updateLocationValidator,
   updateLocation
 );
@@ -49,7 +50,7 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("admin"),
+  authorize("super_admin", "admin"),
   deleteLocation
 );
 

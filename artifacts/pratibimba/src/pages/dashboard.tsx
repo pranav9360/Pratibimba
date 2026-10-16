@@ -1,8 +1,22 @@
+import { sortAuditRecords } from "../../../../shared/audit-order.mjs";
+import { useState } from "react";
 import { Link } from "wouter";
-import { useApp, DOMAINS } from "../context/app-context";
+import { useApp, PRAKALPAS } from "../context/app-context";
 
 export default function DashboardPage() {
-  const { auditPlans, scheduledAudits, reports, getDaysOpen, isRedFlagged, isOverdue } = useApp();
+  const { currentUser, auditPlans, scheduledAudits, reports, getDaysOpen, isRedFlagged, isOverdue, refreshLiveData } = useApp();
+  const [lastRefreshed, setLastRefreshed] = useState<string>(new Date().toLocaleTimeString());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    if (typeof refreshLiveData === "function") {
+      await refreshLiveData();
+    }
+    setLastRefreshed(new Date().toLocaleTimeString());
+    // Force a complete browser page re-render/reload
+    window.location.reload();
+  };
 
   const currentYear = new Date().getFullYear();
   const assessmentYear = `${currentYear - 1}-${String(currentYear).slice(2)}`;
@@ -28,48 +42,115 @@ export default function DashboardPage() {
   const redFlagged = reports.filter(isRedFlagged);
   const overdueNCs = ncOpen.filter(isOverdue);
 
-  // Domain coverage
-  const domainsWithAudit = new Set([
-    ...scheduledAudits.map((s) => s.domain),
-    ...auditPlans.map((p) => p.domain),
+  // Prakalpa coverage
+  const prakalpasWithAudit = new Set([
+    ...scheduledAudits.map((s) => s.prakalpa),
+    ...auditPlans.map((p) => p.prakalpa),
   ]);
-  const totalDomains = DOMAINS.length;
-  const domainsWithScope = domainsWithAudit.size;
-  const iqaCoverage = totalDomains > 0 ? Math.round((domainsWithScope / totalDomains) * 100) : 0;
+  const totalPrakalpas = PRAKALPAS.length;
+  const prakalpasWithScope = prakalpasWithAudit.size;
+  const iqaCoverage = totalPrakalpas > 0 ? Math.round((prakalpasWithScope / totalPrakalpas) * 100) : 0;
 
   const auditsPlanned = auditPlans.length + scheduledAudits.length;
-  const avgAuditsPerDomain = domainsWithScope > 0 ? (auditsPlanned / domainsWithScope).toFixed(1) : "0";
-  const auditsCompleted = scheduledAudits.filter((s) => new Date(s.endDate) < new Date()).length;
+  const avgAuditsPerPrakalpa = prakalpasWithScope > 0 ? (auditsPlanned / prakalpasWithScope).toFixed(1) : "0";
+  const auditsCompleted = scheduledAudits.filter((s) => s.status === "completed").length;
 
   const ncClosedPct = ncReports.length > 0 ? Math.round((ncClosed.length / ncReports.length) * 100) : 0;
   const overdueNCPct = ncOpen.length > 0 ? Math.round((overdueNCs.length / ncOpen.length) * 100) : 0;
   const closureRate = reports.length > 0 ? Math.round((closedReports.length / reports.length) * 100) : 0;
 
-  const activeScheduled = scheduledAudits.filter((s) => {
+  const myAssignedAudits =
+    currentUser.role === "auditor"
+      ? sortAuditRecords(scheduledAudits).filter((audit) =>
+          (audit.auditors || []).includes(currentUser.name)
+        )
+      : [];
+
+  const myLeadAudits = myAssignedAudits.filter(
+    (audit) => audit.leadAuditor === currentUser.name
+  );
+
+  const activeScheduled = sortAuditRecords(scheduledAudits).filter((s) => {
     const now = new Date(); return new Date(s.startDate) <= now && new Date(s.endDate) >= now;
   });
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 min-w-0">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">IQA Dashboard</h2>
           <p className="font-body-md text-on-surface-variant mt-0.5">Assessment Year: <strong>{assessmentYear}</strong> · Overview of audit plans, schedules, and compliance status.</p>
         </div>
-        <div className="font-data-mono text-[11px] text-on-surface-variant/60 bg-surface-container-low px-3 py-2 rounded-lg">
-          {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-outline-variant/20 rounded-lg hover:bg-surface-variant/30 text-on-surface font-medium text-xs shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+            title="Refresh Page and Re-fetch Data"
+          >
+            <span className={`material-symbols-outlined text-sm text-primary ${isRefreshing ? "animate-spin" : ""}`}>refresh</span>
+            <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
+            <span className="text-[10px] text-on-surface-variant/60">({lastRefreshed})</span>
+          </button>
+          <div className="font-data-mono text-[11px] text-on-surface-variant/60 bg-surface-container-low px-3 py-2 rounded-lg">
+            {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}
+          </div>
         </div>
       </div>
 
-      {/* Domain Coverage */}
+      {currentUser.role === "auditor" && (
+        <section className="bg-white rounded-xl border border-outline-variant/20 shadow-soft p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-headline-sm text-on-surface">
+                My Audit Responsibilities
+              </h3>
+              <p className="font-body-md text-on-surface-variant mt-1">
+                You are Lead Auditor for {myLeadAudits.length} audit(s)
+                and Team Auditor for {myAssignedAudits.length - myLeadAudits.length} audit(s).
+              </p>
+            </div>
+            <Link
+              href="/scheduled-audits"
+              className="px-4 py-2 bg-primary text-on-primary rounded-lg font-label-md font-bold"
+            >
+              View My Audits
+            </Link>
+          </div>
+
+          {myLeadAudits.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {myLeadAudits.map((audit) => (
+                <span
+                  key={audit.id || audit._id || audit.iqaNumber}
+                  className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold"
+                >
+                  {audit.iqaNumber} · Lead Auditor
+                </span>
+              ))}
+            </div>
+          )}
+
+          {myLeadAudits.length > 0 && (
+            <Link
+              href="/lead-findings"
+              className="inline-block mt-4 text-primary font-label-md font-bold hover:underline"
+            >
+              Review Findings →
+            </Link>
+          )}
+        </section>
+      )}
+
+      {/* Prakalpa Coverage */}
       <section>
-        <h3 className="font-headline-sm text-on-surface mb-4">Domain Coverage</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <h3 className="font-headline-sm text-on-surface mb-4">Prakalpa Coverage</h3>
+        <div className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           {[
-            { label: "Total Domains", value: totalDomains, icon: "domain", color: "text-on-surface", border: "border-l-outline-variant" },
-            { label: "Domains Audited", value: domainsWithScope, icon: "domain_verification", color: "text-secondary", border: "border-l-secondary" },
+            { label: "Total Prakalpas", value: totalPrakalpas, icon: "account_tree", color: "text-on-surface", border: "border-l-outline-variant" },
+            { label: "Prakalpas Audited", value: prakalpasWithScope, icon: "domain_verification", color: "text-secondary", border: "border-l-secondary" },
             { label: "IQA Coverage", value: `${iqaCoverage}%`, icon: "donut_large", color: "text-primary", border: "border-l-primary" },
-            { label: "Avg Audits / Domain", value: avgAuditsPerDomain, icon: "calculate", color: "text-on-secondary-container", border: "border-l-on-secondary-container" },
+            { label: "Avg Audits / Prakalpa", value: avgAuditsPerPrakalpa, icon: "calculate", color: "text-on-secondary-container", border: "border-l-on-secondary-container" },
           ].map((stat) => (
             <div key={stat.label} className={`bg-white p-4 rounded-xl shadow-soft border-l-4 ${stat.border}`}>
               <div className="flex justify-between items-start">
@@ -85,7 +166,7 @@ export default function DashboardPage() {
       {/* Audit Activity */}
       <section>
         <h3 className="font-headline-sm text-on-surface mb-4">Audit Activity</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           {[
             { label: "Audits Planned", value: auditsPlanned, icon: "event_note", color: "text-secondary", border: "border-l-secondary" },
             { label: "Audits Completed", value: auditsCompleted, icon: "task_alt", color: "text-secondary", border: "border-l-secondary" },
@@ -106,7 +187,7 @@ export default function DashboardPage() {
       {/* NC / OFI Stats */}
       <section>
         <h3 className="font-headline-sm text-on-surface mb-4">NC & OFI Findings</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
           {[
             { label: "Total NCs", value: ncReports.length, icon: "error_outline", color: "text-error", border: "border-l-error" },
             { label: "Total OFIs", value: ofiReports.length, icon: "info", color: "text-primary", border: "border-l-primary" },
@@ -203,14 +284,14 @@ export default function DashboardPage() {
             <Link href="/all-reports" className="font-label-md text-primary hover:underline">View All</Link>
           </div>
           <div className="space-y-3">
-            {reports.slice(0, 4).map((report) => (
-              <div key={report.id} className={`flex items-start gap-3 p-3 rounded-lg border ${isRedFlagged(report) ? "border-error/40 bg-error/5" : "border-outline-variant/20"}`}>
+            {sortAuditRecords(reports).slice(0, 4).map((report, idx) => (
+              <div key={report.id || `rep-${idx}`} className={`flex items-start gap-3 p-3 rounded-lg border ${isRedFlagged(report) ? "border-error/40 bg-error/5" : "border-outline-variant/20"}`}>
                 <span className={`material-symbols-outlined text-[16px] mt-0.5 ${report.severity === "non_conformance" ? "text-error" : "text-primary"}`}>
                   {report.severity === "non_conformance" ? "error_outline" : "info"}
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="font-data-mono text-[11px] font-bold text-on-surface">{report.iarNumber}</p>
-                  <p className="font-label-md text-on-surface-variant/70 truncate">{report.domain} — {report.location}</p>
+                  <p className="font-label-md text-on-surface-variant/70 truncate">{report.prakalpa} — {report.location}</p>
                   {report.observations?.length > 0 && (
                     <p className="font-label-md text-on-surface-variant/50 text-[10px]">{report.observations.length} observation{report.observations.length > 1 ? "s" : ""}</p>
                   )}
@@ -232,17 +313,17 @@ export default function DashboardPage() {
             <Link href="/audit-plan" className="font-label-md text-primary hover:underline">View All ({auditPlans.length})</Link>
           </div>
           {auditPlans.length === 0 ? (
-            <div className="p-8 text-center text-on-surface-variant/50 font-body-md">No audit plans pending</div>
+            <div className="p-4 sm:p-8 text-center text-on-surface-variant/50 font-body-md">No audit plans pending</div>
           ) : (
             <div className="divide-y divide-outline-variant/10">
-              {auditPlans.slice(0, 3).map((plan) => (
-                <div key={plan.id} className="p-4 flex items-center gap-4">
+              {sortAuditRecords(auditPlans).slice(0, 3).map((plan, idx) => (
+                <div key={plan.id || `plan-${idx}`} className="p-4 flex items-center gap-4">
                   <div className="w-8 h-8 rounded-lg bg-secondary/10 flex items-center justify-center shrink-0">
                     <span className="material-symbols-outlined text-secondary text-[16px]">event_note</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-data-mono text-[11px] text-primary font-bold">{plan.iqaNumber}</p>
-                    <p className="font-body-md font-medium text-on-surface truncate">{plan.domain} — {plan.location}</p>
+                    <p className="font-body-md font-medium text-on-surface truncate">{plan.prakalpa} — {plan.location}</p>
                     <p className="font-label-md text-on-surface-variant/70 truncate">{plan.auditCoordinator}</p>
                   </div>
                   <div className="text-right shrink-0">
@@ -261,24 +342,42 @@ export default function DashboardPage() {
             <Link href="/scheduled-audits" className="font-label-md text-primary hover:underline">View All ({scheduledAudits.length})</Link>
           </div>
           {scheduledAudits.length === 0 ? (
-            <div className="p-8 text-center text-on-surface-variant/50 font-body-md">No scheduled audits</div>
+            <div className="p-4 sm:p-8 text-center text-on-surface-variant/50 font-body-md">No scheduled audits</div>
           ) : (
             <div className="divide-y divide-outline-variant/10">
-              {scheduledAudits.slice(0, 3).map((audit) => {
+              {sortAuditRecords(scheduledAudits).slice(0, 3).map((audit, idx) => {
                 const now = new Date();
-                const isOngoing = new Date(audit.startDate) <= now && new Date(audit.endDate) >= now;
-                const isUpcoming = new Date(audit.startDate) > now;
+                const isOngoing = audit.status !== "completed" && new Date(audit.startDate) <= now;
+                const isUpcoming = audit.status !== "completed" && new Date(audit.startDate) > now;
+                const isMyLeadAssignment =
+                  currentUser.role === "auditor" &&
+                  audit.leadAuditor === currentUser.name &&
+                  (audit.auditors || []).includes(currentUser.name);
+                const isMyTeamAssignment =
+                  currentUser.role === "auditor" &&
+                  !isMyLeadAssignment &&
+                  (audit.auditors || []).includes(currentUser.name);
                 const auditReports = reports.filter((r) => r.iqaNumber === audit.iqaNumber);
                 const ncCount = auditReports.filter((r) => r.severity === "non_conformance").length;
                 const ofiCount = auditReports.filter((r) => r.severity === "open_for_improvement").length;
                 return (
-                  <div key={audit.id} className="p-4 flex items-center gap-4">
+                  <div key={audit.id || `sched-${idx}`} className="p-4 flex items-center gap-4">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isOngoing ? "bg-primary/10" : "bg-surface-container"}`}>
                       <span className={`material-symbols-outlined text-[16px] ${isOngoing ? "text-primary" : "text-on-surface-variant"}`}>calendar_month</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-data-mono text-[11px] text-primary font-bold">{audit.iqaNumber}</p>
-                      <p className="font-body-md font-medium text-on-surface truncate">{audit.domain} — {audit.location}</p>
+                      <p className="font-body-md font-medium text-on-surface truncate">{audit.prakalpa} — {audit.location}</p>
+                      {isMyLeadAssignment && (
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
+                          Lead Auditor
+                        </span>
+                      )}
+                      {isMyTeamAssignment && (
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-[10px] font-bold">
+                          Team Auditor
+                        </span>
+                      )}
                       <div className="flex gap-2 mt-0.5">
                         {ncCount > 0 && <span className="font-label-md text-[10px] text-error">NC:{ncCount}</span>}
                         {ofiCount > 0 && <span className="font-label-md text-[10px] text-primary">OFI:{ofiCount}</span>}
@@ -286,7 +385,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${isOngoing ? "bg-primary/10 text-primary" : isUpcoming ? "bg-secondary/10 text-secondary" : "bg-surface-container text-on-surface-variant"}`}>
-                      {isOngoing ? "Ongoing" : isUpcoming ? "Upcoming" : "Completed"}
+                      {audit.status === "completed" ? "Completed" : isUpcoming ? "Upcoming" : new Date(audit.endDate) < now ? "Awaiting approval" : "Ongoing"}
                     </span>
                   </div>
                 );

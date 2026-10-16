@@ -1,5 +1,8 @@
+import { sortAuditRecords } from "../../../../shared/audit-order.mjs";
+import { fetchWithTimeout, readApiResponse } from "./request-errors";
+
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
+  import.meta.env.VITE_API_URL || "https://pratibimba-backend-final.onrender.com/api/v1";
 
 const BASE_URL = `${API_BASE_URL}/audit-plans`;
 
@@ -12,48 +15,63 @@ function authHeaders() {
   };
 }
 
-async function handleResponse(res: Response) {
-  const data = await res.json();
+const handleResponse = readApiResponse;
 
-  if (!res.ok) {
-    throw new Error(data.message || "Request failed");
+// AuditPlan's Mongoose schema already exposes a virtual `id` (and
+// `toJSON: { virtuals: true }`), so `.id` should normally be present.
+// This is a defensive fallback only, so a future schema change can never
+// let `undefined` leak into a request URL downstream.
+function withId<T extends Record<string, any>>(doc: T): T {
+  if (!doc) return doc;
+  return { ...doc, id: doc.id || doc._id };
+}
+
+function normalizePlansResponse(response: any) {
+  if (response && Array.isArray(response.data)) {
+    return { ...response, data: sortAuditRecords(response.data.map(withId)) };
   }
-
-  return data;
+  return response;
 }
 
 export async function getAuditPlans() {
-  const res = await fetch(BASE_URL, {
+  const res = await fetchWithTimeout(BASE_URL, {
     headers: authHeaders(),
   });
 
-  return handleResponse(res);
+  const response = await handleResponse(res);
+  return normalizePlansResponse(response);
 }
 
 export async function createAuditPlan(data: any) {
-  const res = await fetch(BASE_URL, {
+  const res = await fetchWithTimeout(BASE_URL, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(data),
   });
 
   const response = await handleResponse(res);
-  return response.data;
+  return withId(response.data);
 }
 
 export async function updateAuditPlan(id: string, data: any) {
-  const res = await fetch(`${BASE_URL}/${id}`, {
+  const resolvedId = id || (data && (data.id || data._id));
+
+  if (!resolvedId) {
+    throw new Error("updateAuditPlan: missing audit plan id");
+  }
+
+  const res = await fetchWithTimeout(`${BASE_URL}/${resolvedId}`, {
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify(data),
   });
 
   const response = await handleResponse(res);
-  return response.data;
+  return withId(response.data);
 }
 
 export async function deleteAuditPlan(id: string) {
-  const res = await fetch(`${BASE_URL}/${id}`, {
+  const res = await fetchWithTimeout(`${BASE_URL}/${id}`, {
     method: "DELETE",
     headers: authHeaders(),
   });
@@ -63,12 +81,30 @@ export async function deleteAuditPlan(id: string) {
 }
 
 export async function scheduleAudit(id: string, data: any) {
-  const res = await fetch(`${BASE_URL}/${id}/schedule`, {
+  if (!id) {
+    throw new Error("scheduleAudit: missing audit plan id");
+  }
+  const res = await fetchWithTimeout(`${BASE_URL}/${id}/schedule`, {
     method: "PUT",
     headers: authHeaders(),
     body: JSON.stringify(data),
   });
 
   const response = await handleResponse(res);
-  return response.data;
+  return withId(response.data);
+}
+
+
+export async function unscheduleAuditPlan(id: string) {
+  if (!id) {
+    throw new Error("unscheduleAuditPlan: missing audit plan id");
+  }
+
+  const res = await fetchWithTimeout(`${BASE_URL}/${id}/unschedule`, {
+    method: "PATCH",
+    headers: authHeaders(),
+  });
+
+  const response = await handleResponse(res);
+  return withId(response.data);
 }

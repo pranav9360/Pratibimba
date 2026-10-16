@@ -21,19 +21,21 @@ const router = express.Router();
 router.get(
   "/",
   authenticate,
+  authorize("super_admin", "audit_coordinator", "auditor", "prakalpa_manager"),
   getRoles
 );
 
 router.get(
   "/:id",
   authenticate,
+  authorize("super_admin", "audit_coordinator", "auditor", "prakalpa_manager"),
   getRoleById
 );
 
 router.post(
   "/",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("super_admin"),
   createRoleValidator,
   createRole
 );
@@ -41,7 +43,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("super_admin"),
   updateRoleValidator,
   updateRole
 );
@@ -49,7 +51,7 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("admin"),
+  authorize("super_admin"),
   deleteRole
 );
 

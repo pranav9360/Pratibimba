@@ -1,39 +1,40 @@
 import mongoose from "mongoose";
 
-const locationSchema = new mongoose.Schema(
-  {
-    domain: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
-    sublocations: [
-      {
+const locationSchema =
+  new mongoose.Schema(
+    {
+      prakalpa: {
         type: String,
+        required: true,
         trim: true,
       },
-    ],
 
-    active: {
-      type: Boolean,
-      default: true,
+      name: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      sublocations: [
+        {
+          type: String,
+          trim: true,
+        },
+      ],
+
+      active: {
+        type: Boolean,
+        default: true,
+      },
     },
-  },
-  {
-    timestamps: true,
-  }
-);
+    {
+      timestamps: true,
+    }
+  );
 
 locationSchema.index(
   {
-    domain: 1,
+    prakalpa: 1,
     name: 1,
   },
   {
@@ -41,4 +42,7 @@ locationSchema.index(
   }
 );
 
-export default mongoose.model("Location", locationSchema);
+export default mongoose.model(
+  "Location",
+  locationSchema
+);

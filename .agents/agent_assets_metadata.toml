@@ -1,8 +1,0 @@
-uploads = []
-generated = []
-
-[[outputs]]
-id = "o_GULEzrkwOsHaRZNKpij"
-uri = "file://pratibimba-frontend-summary.md"
-type = "text"
-title = "Pratibimba Frontend Summary"

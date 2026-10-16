@@ -10,6 +10,7 @@ import {
   updateAuditPlan,
   deleteAuditPlan,
   scheduleAuditPlan,
+  unscheduleAuditPlan,
 } from "../controllers/auditPlanController.js";
 
 import {
@@ -34,7 +35,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("super_admin", "admin"),
   createAuditPlanValidator,
   createAuditPlan
 );
@@ -42,7 +43,7 @@ router.post(
 router.put(
   "/:id",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("super_admin", "admin"),
   updateAuditPlanValidator,
   updateAuditPlan
 );
@@ -50,15 +51,29 @@ router.put(
 router.delete(
   "/:id",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize("super_admin", "admin"),
   deleteAuditPlan
 );
 
 router.put(
   "/:id/schedule",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize(
+    "admin",
+    "audit_coordinator"
+  ),
   scheduleAuditPlan
+);
+
+
+router.patch(
+  "/:id/unschedule",
+  authenticate,
+  authorize(
+    "admin",
+    "audit_coordinator"
+  ),
+  unscheduleAuditPlan
 );
 
 export default router;

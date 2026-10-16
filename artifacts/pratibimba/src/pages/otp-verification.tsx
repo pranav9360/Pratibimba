@@ -1,115 +1,18 @@
-import { useState, useRef, useEffect } from "react";
-import { Link } from "wouter";
-
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { hasResetIdentity, verifyReset, resendReset } from "../services/password-reset-flow";
+import { getRequestErrorMessage as getErrorMessage } from "../services/request-errors";
 export default function OTPVerificationPage() {
-  const [otp, setOtp] = useState<string[]>(["", "", "", "", "", ""]);
-  const [timeLeft, setTimeLeft] = useState(60);
-  const [canResend, setCanResend] = useState(false);
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-  useEffect(() => {
-    if (timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-    setCanResend(true);
-    return undefined;
-  }, [timeLeft]);
-
-  const handleChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
-    if (value && index < 5) {
-      inputRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !otp[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus();
-    }
-  };
-
-  const handleResend = () => {
-    setTimeLeft(60);
-    setCanResend(false);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const code = otp.join("");
-    if (code.length === 6) {
-      window.location.href = "/reset-password";
-    }
-  };
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  return (
-    <div className="w-full max-w-[480px]">
-      <div className="bg-surface-container-lowest rounded-xl p-8 md:p-12 border border-outline-variant/20 shadow-soft">
-        <div className="flex flex-col items-center mb-8 text-center">
-          <div className="w-16 h-16 bg-primary-fixed rounded-full flex items-center justify-center mb-6">
-            <span className="material-symbols-outlined text-primary text-[32px]">shield_person</span>
-          </div>
-          <h1 className="font-headline-md text-on-surface mb-2">Verification Required</h1>
-          <p className="font-body-md text-on-surface-variant px-4">
-            For your security, we&apos;ve sent a 6-digit code to{" "}
-            <span className="font-semibold text-on-surface">ad***@rashtrotthana.org</span>
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-8">
-          <div className="flex justify-between gap-2 md:gap-3">
-            {otp.map((digit, index) => (
-              <input
-                key={index}
-                ref={(el) => { inputRefs.current[index] = el; }}
-                type="text"
-                inputMode="numeric"
-                maxLength={1}
-                value={digit}
-                onChange={(e) => handleChange(index, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(index, e)}
-                className="w-full aspect-square text-center font-headline-md font-bold bg-surface-container-low border border-outline-variant/50 rounded-lg transition-all focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
-              />
-            ))}
-          </div>
-
-          <div className="text-center">
-            {!canResend ? (
-              <p className="font-label-md text-on-surface-variant mb-1">
-                Resend code in{" "}
-                <span className="font-data-mono text-on-surface-variant font-medium">{formatTime(timeLeft)}</span>
-              </p>
-            ) : (
-              <button type="button" onClick={handleResend} className="text-secondary font-semibold font-label-md hover:underline">
-                Didn&apos;t receive the code? Resend
-              </button>
-            )}
-          </div>
-
-          <button
-            type="submit"
-            className="w-full bg-primary text-on-primary rounded-lg font-headline-sm hover:bg-primary-container transition-all active:scale-[0.98] shadow-sm py-3.5 shadow-md"
-          >
-            Verify
-          </button>
-        </form>
-
-        <div className="mt-8 pt-6 border-t border-outline-variant/10 flex items-center justify-center gap-2 opacity-60">
-          <span className="material-symbols-outlined text-[16px] text-on-surface-variant">lock</span>
-          <span className="font-label-md text-[11px] uppercase tracking-wider text-on-surface-variant">
-            Secure AES-256 Encrypted Session
-          </span>
-        </div>
-      </div>
-    </div>
-  );
+  const [, navigate] = useLocation(); const [code,setCode] = useState("");
+  const [busy,setBusy] = useState(false); const [error,setError] = useState(""); const [notice,setNotice] = useState("");
+  return <section className="w-full max-w-md rounded-xl border bg-white p-6 sm:p-8 shadow-lg">
+    <h1 className="font-headline-md mb-3">Verify Reset Code</h1>
+    {!hasResetIdentity() ? <p>Reset verification has not started or this page was reloaded. <Link href="/forgot-password" className="text-primary underline">Request a new code</Link>.</p> : <>
+      <p className="mb-5 text-sm text-on-surface-variant">If your account is active, check its registered email for the six-digit code.</p>
+      <form className="space-y-4" onSubmit={async e=>{e.preventDefault();if(busy)return;setBusy(true);setError("");try{await verifyReset(code);navigate("/reset-password");}catch(err){setError(getErrorMessage(err));}finally{setBusy(false);}}}>
+        <label className="block text-sm font-medium">Verification code<input required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,""))} className="mt-2 w-full rounded-lg border p-3 tracking-widest"/></label>
+        <button disabled={busy || code.length!==6} className="w-full rounded-lg bg-primary p-3 text-white disabled:opacity-50">{busy?"Verifying…":"Verify Code"}</button>
+      </form><button type="button" disabled={busy} className="mt-4 text-sm text-primary underline" onClick={async()=>{setBusy(true);setError("");try{await resendReset();setNotice("If an active account matches, a new code has been sent.");}catch(err){setError(getErrorMessage(err));}finally{setBusy(false);}}}>Resend Code</button>
+    </>}{error&&<p role="alert" className="mt-3 text-sm text-error">{error}</p>}{notice&&<p role="status" className="mt-3 text-sm">{notice}</p>}
+  </section>;
 }

@@ -1,11 +1,17 @@
+import { isValidNewPassword, PASSWORD_POLICY_MESSAGE } from "../../shared/password-policy.mjs";
 import bcrypt from "bcryptjs";
+import { randomInt } from "node:crypto";
 import User from "../models/User.js";
 import PasswordResetOtp from "../models/PasswordResetOtp.js";
 import AppError from "../utils/AppError.js";
 import { generateToken } from "../utils/jwt.js";
+import { markPasswordChanged } from "../utils/passwordSessions.js";
+import { withSuperAdminMutationTransaction } from "./superAdminMutationTransaction.js";
+import { recordActivity, userActivityTarget } from "./activityLogService.js";
+import { sendMail } from "./emailService.js";
 
 const generateOtp = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return randomInt(100000, 1000000).toString();
 };
 
 export const login = async ({ identifier, password }) => {
@@ -26,15 +32,12 @@ export const login = async ({ identifier, password }) => {
 
   const passwordMatches = await bcrypt.compare(password, user.password);
 
-  console.log("EMAIL:", identifier);
-  console.log("PASSWORD ENTERED:", password);
-  console.log("PASSWORD MATCH:", passwordMatches);
 
   if (!passwordMatches) {
     throw new AppError("Invalid credentials", 401);
   }
 
-  const token = generateToken(user._id);
+  const token = generateToken(user._id, user.passwordChangedAt);
 
   const userObject = user.toObject();
   delete userObject.password;
@@ -45,7 +48,10 @@ export const login = async ({ identifier, password }) => {
   };
 };
 
-export const forgotPassword = async ({ identifier }) => {
+export const forgotPassword = async ({ identifier }, deliver = sendMail) => {
+  if (typeof identifier !== "string" || !identifier.trim()) {
+    throw new AppError("An account identifier is required", 400);
+  }
   const user = await User.findOne({
     $or: [
       { email: identifier.toLowerCase() },
@@ -53,9 +59,8 @@ export const forgotPassword = async ({ identifier }) => {
     ]
   });
 
-  if (!user) {
-    throw new AppError("User not found", 404);
-  }
+  // Do not reveal account availability or return a reset credential to callers.
+  if (!user || user.active !== true) return {};
 
   await PasswordResetOtp.deleteMany({
     identifier
@@ -73,9 +78,14 @@ export const forgotPassword = async ({ identifier }) => {
     expiresAt
   });
 
-  return {
-    otp
-  };
+  try {
+    await deliver({ to: user.email, subject: "Pratibimba password reset",
+      text: `Your password-reset code is ${otp}. It expires in 10 minutes.` });
+  } catch (error) {
+    await PasswordResetOtp.deleteMany({ identifier, otp });
+    throw error;
+  }
+  return {};
 };
 
 export const verifyOtp = async ({ identifier, otp }) => {
@@ -105,38 +115,49 @@ export const resetPassword = async ({
   otp,
   password
 }) => {
-  const otpRecord =
-    await PasswordResetOtp.findOne({
-      identifier,
-      otp,
-      verified: true
-    });
-
-  if (!otpRecord) {
-    throw new AppError(
-      "OTP verification required",
-      400
-    );
+  if (typeof identifier !== "string" || typeof otp !== "string" ||
+      !isValidNewPassword(password)) {
+    throw new AppError(PASSWORD_POLICY_MESSAGE, 400);
   }
+  return withSuperAdminMutationTransaction(async (session) => {
+    const otpRecord =
+      await PasswordResetOtp.findOne({
+        identifier,
+        otp,
+        verified: true
+      }).session(session);
 
-  const user = await User.findOne({
-    $or: [
-      { email: identifier.toLowerCase() },
-      { phone: identifier }
-    ]
-  }).select("+password");
+    if (!otpRecord) {
+      throw new AppError(
+        "OTP verification required",
+        400
+      );
+    }
+    if (otpRecord.expiresAt <= new Date()) throw new AppError("OTP has expired", 400);
 
-  if (!user) {
-    throw new AppError("User not found", 404);
-  }
+    const user = await User.findOne({
+      $or: [
+        { email: identifier.toLowerCase() },
+        { phone: identifier }
+      ]
+    }).select("+password").session(session);
 
-  user.password = password;
+    if (!user) {
+      throw new AppError("User not found", 404);
+    }
+    if (user.active !== true) throw new AppError("Account is inactive", 403);
 
-  await user.save();
+    user.password = password;
+    markPasswordChanged(user);
 
-  await PasswordResetOtp.deleteMany({
-    identifier
+    await user.save({ session });
+    await recordActivity({ actor: user, target: userActivityTarget(user),
+      action: "password_reset", oldValue: {}, newValue: { passwordChanged: true }, session });
+
+    await PasswordResetOtp.deleteMany({
+      identifier
+    }, { session });
+
+    return true;
   });
-
-  return true;
 };

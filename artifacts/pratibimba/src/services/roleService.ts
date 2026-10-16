@@ -1,43 +1,28 @@
 import api from "./api";
 
-export interface RolePermissionPayload {
-  canCreateAuditPlan?: boolean;
-  canScheduleAudit?: boolean;
-  canEditReport?: boolean;
-  canCloseReport?: boolean;
-  canViewAllReports?: boolean;
-  canManageRoles?: boolean;
-  canManageUsers?: boolean;
-  canViewDashboard?: boolean;
-  canAddAuditor?: boolean;
+// Configuration only; backend role/assignment policies remain authoritative.
+export async function getRoles(includeInactive = false): Promise<StoredRole[]> {
+  const res = await api.get("/roles", { params: includeInactive ? { includeInactive: true } : {} });
+  return res.data.data;
 }
 
-export interface BackendRole {
+export type StoredRole = {
   _id: string;
   name: string;
-  permissions: {
-    canCreateAuditPlan: boolean;
-    canScheduleAudit: boolean;
-    canEditReport: boolean;
-    canCloseReport: boolean;
-    canViewAllReports: boolean;
-    canManageRoles: boolean;
-    canManageUsers: boolean;
-    canViewDashboard: boolean;
-    canAddAuditor: boolean;
-  };
   active: boolean;
+  permissions: Record<string, boolean>;
+};
+
+export async function updateRole(id: string, data: { permissions?: Record<string, boolean>; name?: string; active?: boolean }) {
+  const res = await api.put(`/roles/${id}`, data);
+  return res.data.data as StoredRole;
 }
 
-export const getRoles = async (): Promise<BackendRole[]> => {
-  const response = await api.get("/roles");
-  return response.data?.data ?? response.data ?? [];
-};
+export async function createRole(name: string) {
+  const res = await api.post("/roles", { name });
+  return res.data.data as StoredRole;
+}
 
-export const updateRole = async (
-  id: string,
-  permissions: RolePermissionPayload
-): Promise<BackendRole> => {
-  const response = await api.put(`/roles/${id}`, { permissions });
-  return response.data?.data ?? response.data;
-};
+export async function deleteRole(id: string) {
+  await api.delete(`/roles/${id}`);
+}

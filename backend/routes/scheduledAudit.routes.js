@@ -4,12 +4,16 @@ import authenticate from "../middleware/authMiddleware.js";
 import authorize from "../middleware/authorize.js";
 
 import {
+  getCompletionEligibility,
   getScheduledAudits,
   getScheduledAuditById,
   updateScheduledAudit,
+  completeScheduledAudit,
   deleteScheduledAudit,
   markMailSent,
+  sendScheduledAuditEmail,
 } from "../controllers/scheduledAuditController.js";
+
 import {
   updateScheduledAuditValidator,
 } from "../validators/scheduleAuditValidator.js";
@@ -22,6 +26,8 @@ router.get(
   getScheduledAudits
 );
 
+router.get("/completion-eligibility", authenticate, authorize("admin", "audit_coordinator"), getCompletionEligibility);
+
 router.get(
   "/:id",
   authenticate,
@@ -31,21 +37,55 @@ router.get(
 router.put(
   "/:id",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize(
+    "admin",
+    "audit_coordinator"
+  ),
   updateScheduledAuditValidator,
   updateScheduledAudit
+);
+
+/*
+ * Explicit completion action.
+ */
+router.patch(
+  "/:id/complete",
+  authenticate,
+  authorize(
+    "admin",
+    "audit_coordinator"
+  ),
+  completeScheduledAudit
+);
+
+router.post(
+  "/:id/send-email",
+  authenticate,
+  authorize(
+    "admin",
+    "audit_coordinator"
+  ),
+  sendScheduledAuditEmail
+);
+
+router.patch(
+  "/:id/mail-sent",
+  authenticate,
+  authorize(
+    "admin",
+    "audit_coordinator"
+  ),
+  markMailSent
 );
 
 router.delete(
   "/:id",
   authenticate,
-  authorize("admin", "lead_auditor"),
+  authorize(
+    "admin",
+    "audit_coordinator"
+  ),
   deleteScheduledAudit
 );
-router.patch(
-  "/:id/mail-sent",
-  authenticate,
-  authorize("admin", "lead_auditor"),
-  markMailSent
-);
+
 export default router;

@@ -1,106 +1,132 @@
 import mongoose from "mongoose";
 
-const scheduledAuditSchema = new mongoose.Schema(
-  {
-    auditPlan: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "AuditPlan",
-      required: true,
-      unique: true,
-    },
+const scheduledAuditSchema =
+  new mongoose.Schema(
+    {
+      auditPlan: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "AuditPlan",
+        required: true,
+        unique: true,
+      },
 
-    iqaNumber: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-    },
+      iqaNumber: {
+        type: String,
+        required: true,
+        unique: true,
+        trim: true,
+      },
 
-    domain: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+      prakalpa: {
+        type: String,
+        required: true,
+        trim: true,
+      },
 
-    location: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+      location: {
+        type: String,
+        required: true,
+        trim: true,
+      },
 
-    sublocation: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+      sublocation: {
+        type: String,
+        default: "",
+        trim: true,
+      },
 
-    prakalpa: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+      prakalphaPramukh: {
+        type: String,
+        default: "",
+        trim: true,
+      },
 
-    prakalphaPramukh: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+      auditCoordinator: {
+        type: String,
+        required: true,
+        trim: true,
+      },
 
-    auditCoordinator: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+      auditors: {
+        type: [String],
+        default: [],
+      },
 
-    auditors: {
-      type: [String],
-      default: [],
-    },
+      // Canonical Lead Auditor assignment.
+      // Stored separately from auditors[] because the Lead Auditor
+      // has different workflow permissions and responsibilities.
+      leadAuditor: {
+        type: String,
+        default: "",
+        trim: true,
+      },
 
-    auditAreas: {
-      type: [String],
-      default: [],
-    },
+      workflowMode: {
+        type: String,
+        enum: ["legacy", "consolidated"],
+        default: "legacy",
+      },
 
-    purpose: {
-      type: String,
-      default: "",
-    },
+      // Shared transaction write-conflict counter for audit outcome changes.
+      workflowRevision: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
 
-    startDate: {
-      type: Date,
-      required: true,
-    },
+      auditAreas: {
+        type: [String],
+        default: [],
+      },
 
-    endDate: {
-      type: Date,
-      required: true,
-    },
+      purpose: {
+        type: String,
+        default: "",
+      },
 
-    status: {
-      type: String,
-      enum: [
-        "upcoming",
-        "ongoing",
-        "completed",
-      ],
-      default: "upcoming",
-    },
+      startDate: {
+        type: Date,
+        required: true,
+      },
 
-    mailSent: {
-      type: Boolean,
-      default: false,
-    },
+      endDate: {
+        type: Date,
+        required: true,
+      },
 
-    mailSentAt: {
-      type: Date,
-      default: null,
+      status: {
+        type: String,
+        enum: [
+          "upcoming",
+          "ongoing",
+          "completed",
+        ],
+        default: "upcoming",
+      },
+
+      outcome: { type: String, enum: ['all_clear', 'consolidated_findings', 'legacy_approved_findings'], default: undefined },
+      completedAt: { type: Date, default: null },
+      completedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+
+      mailSent: {
+        type: Boolean,
+        default: false,
+      },
+
+      mailSentAt: {
+        type: Date,
+        default: null,
+      },
+
+      mailSentTo: {
+        type: [String],
+        default: [],
+      },
     },
-  },
-  {
-    timestamps: true,
-  }
-);
+    {
+      timestamps: true,
+    }
+  );
 
 export default mongoose.model(
   "ScheduledAudit",

@@ -1,23 +1,41 @@
 import { body } from "express-validator";
 
 export const createLocationValidator = [
-  body("domain")
+  body("prakalpa")
+    .isString().bail()
     .trim()
     .notEmpty()
-    .withMessage("Domain is required"),
+    .withMessage(
+      "Prakalpa is required"
+    ),
 
   body("name")
+    .isString().bail()
     .trim()
     .notEmpty()
-    .withMessage("Location name is required"),
+    .withMessage(
+      "Location name is required"
+    ),
 
   body("sublocations")
     .isArray()
-    .withMessage("Sublocations must be an array"),
+    .withMessage(
+      "Sublocations must be an array"
+    ),
 ];
 
 export const updateLocationValidator = [
-  body("domain").optional().trim(),
-  body("name").optional().trim(),
-  body("sublocations").optional().isArray(),
+  body("prakalpa")
+    .optional()
+    .isString().bail()
+    .trim(),
+
+  body("name")
+    .optional()
+    .isString().bail()
+    .trim(),
+
+  body("sublocations")
+    .optional()
+    .isArray(),
 ];

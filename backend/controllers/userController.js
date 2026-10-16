@@ -8,7 +8,7 @@ import * as userService from "../services/userService.js";
 
 export const getUsers = asyncHandler(async (req, res) => {
 
-  const users = await userService.getUsers();
+  const users = await userService.getUsers(req.user);
 
   res.json(
     new ApiResponse(
@@ -20,9 +20,22 @@ export const getUsers = asyncHandler(async (req, res) => {
 
 });
 
+export const getAuditorDirectory = asyncHandler(async (req, res) => {
+  const auditors = await userService.getAuditorDirectory();
+
+  res.json(
+    new ApiResponse(200, "Auditor directory fetched successfully", auditors)
+  );
+});
+
+export const getAuditPersonDirectory = asyncHandler(async (req, res) => {
+  const people = await userService.getAuditPersonDirectory(req.user);
+  res.json(new ApiResponse(200, "Audit-person directory fetched successfully", people));
+});
+
 export const getUserById = asyncHandler(async (req, res) => {
 
-  const user = await userService.getUserById(req.params.id);
+  const user = await userService.getUserById(req.params.id, req.user);
 
   res.json(
     new ApiResponse(
@@ -35,16 +48,13 @@ export const getUserById = asyncHandler(async (req, res) => {
 });
 
 export const createUser = asyncHandler(async (req, res) => {
-  console.log("========== CREATE USER ==========");
-  console.log(req.body);
-  console.log("===============================");
   const errors = validationResult(req);
 
   if (!errors.isEmpty()) {
     throw new AppError(errors.array()[0].msg, 400);
   }
 
-  const user = await userService.createUser(req.body);
+  const user = await userService.createUser(req.body, req.user);
 
   res.status(201).json(
     new ApiResponse(
@@ -66,7 +76,8 @@ export const updateUser = asyncHandler(async (req, res) => {
 
   const user = await userService.updateUser(
     req.params.id,
-    req.body
+    req.body,
+    req.user
   );
 
   res.json(
@@ -81,7 +92,7 @@ export const updateUser = asyncHandler(async (req, res) => {
 
 export const deleteUser = asyncHandler(async (req, res) => {
 
-  await userService.deleteUser(req.params.id);
+  await userService.deleteUser(req.params.id, req.user, req.body?.replacementManagerId);
 
   res.json(
     new ApiResponse(
@@ -90,4 +101,20 @@ export const deleteUser = asyncHandler(async (req, res) => {
     )
   );
 
+});
+
+export const changeUserRole = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+
+  if (!errors.isEmpty()) {
+    throw new AppError(errors.array()[0].msg, 400);
+  }
+
+  const user = await userService.changeUserRole(
+    req.params.id,
+    req.body.role,
+    req.user
+  );
+
+  res.json(new ApiResponse(200, "User role updated successfully", user));
 });

@@ -1,6 +1,12 @@
 import express from "express";
 import authenticate from "../middleware/authMiddleware.js";
 import {
+  loginRateLimiter,
+  forgotPasswordRateLimiter,
+  verifyOtpRateLimiter,
+  resetPasswordRateLimiter
+} from "../middleware/authRateLimit.js";
+import {
   login,
   forgotPassword,
   verifyOtp,
@@ -19,24 +25,28 @@ const router = express.Router();
 
 router.post(
   "/login",
+  loginRateLimiter,
   loginValidator,
   login
 );
 
 router.post(
   "/forgot-password",
+  forgotPasswordRateLimiter,
   forgotPasswordValidator,
   forgotPassword
 );
 
 router.post(
   "/verify-otp",
+  verifyOtpRateLimiter,
   otpValidator,
   verifyOtp
 );
 
 router.post(
   "/reset-password",
+  resetPasswordRateLimiter,
   resetPasswordValidator,
   resetPassword
 );

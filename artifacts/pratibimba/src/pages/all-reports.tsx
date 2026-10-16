@@ -1,22 +1,48 @@
-import { useState, useMemo, useEffect } from "react";
+import { ActionEvidenceList } from "../components/action-evidence-list";
+import { actionEvidenceStatus } from "../../../../shared/evidence-status.mjs";
+import { sortAuditRecords } from "../../../../shared/audit-order.mjs";
+import { getRequestErrorMessage, logRequestError } from "../services/request-errors";
+import api from "../services/api";
+import { useManagerPrakalpaScope } from "../components/management/use-manager-prakalpas";
+import { FilterToolbar } from "../components/filters/filter-toolbar";
+import { FilterSelect } from "../components/filters/filter-select";
+import { FilterText } from "../components/filters/filter-text";
+import {
+  useState,
+  useMemo,
+  useEffect,
+} from "react";
 import {
   useApp,
-  DOMAINS,
+  PRAKALPAS,
   AUDIT_COORDINATORS,
 } from "../context/app-context";
 import {
   getReports,
-  sendReportEmail,
   downloadReportPDF,
   updateReport,
+  returnReportToPrakalpa,
+  verifyAndCloseReport,
+  sendReportToPrakalpa,
+  downloadReportActionProof,
 } from "../services/reportService";
 
 // Step 5: Updated Report Interface
+interface CompletedAllClear {
+  _id: string;
+  iqaNumber: string;
+  prakalpa: string;
+  location: string;
+  leadAuditor: string;
+  auditCoordinator: string;
+  approvedAt?: string;
+}
+
 interface Report {
   _id: string;
   iqrNumber: string;
   iqaNumber: string;
-  domain: string;
+  prakalpa: string;
   location: string;
   sublocation: string;
   auditCoordinator: string;
@@ -26,6 +52,8 @@ interface Report {
   severity: "non_conformance" | "open_for_improvement";
   findings: string;
   proofFiles: string[];
+  actionProofFiles?: string[];
+  withdrawnActionProofFiles?: {token:string;status:string;at?:string}[];
   hasChecklist: boolean;
   createdAt: string;
   updatedAt?: string;
@@ -38,13 +66,24 @@ interface Report {
   closedAt?: string;
   reportCreatedOn?: string;
   reportClosedOn?: string;
+  mailSent?: boolean;
+  mailSentAt?: string;
+  mailSentTo?: string[];
+
+  // Corrective-action workflow
+  workflowStatus?: string;
+  coordinatorVerificationRemarks?: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  actionSubmittedBy?: string;
+  actionSubmittedAt?: string;
 }
 
 function downloadCSV(reports: Report[]) {
   const headers = [
     "Report ID (IQR)",
     "IQA Ref",
-    "Domain",
+    "Prakalpa",
     "Location",
     "Sublocation",
     "Visit Date",
@@ -56,7 +95,7 @@ function downloadCSV(reports: Report[]) {
   const rows = reports.map((r) => [
     r.iqrNumber || "",
     r.iqaNumber || "",
-    r.domain || "",
+    r.prakalpa || "",
     r.location || "",
     r.sublocation || "",
     r.visitDate || "",
@@ -75,23 +114,52 @@ function downloadCSV(reports: Report[]) {
   URL.revokeObjectURL(url);
 }
 
+// Calendar-day age, using India-local dates (not elapsed 24-hour periods).
+// Null means that no reliable start date was supplied.
+function reportDaysOpen(start?: string | null, end?: string | null): number | null {
+  if (!start) return null;
+  const first = new Date(start);
+  const last = end ? new Date(end) : new Date();
+  if (!Number.isFinite(first.getTime()) || !Number.isFinite(last.getTime())) return null;
+  const calendarDay = (date: Date) => {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(date);
+    const part = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+    return Date.UTC(part("year"), part("month") - 1, part("day"));
+  };
+  return Math.max(0, Math.round((calendarDay(last) - calendarDay(first)) / 86400000));
+}
+
 export default function AllReportsPage() {
   const { currentUser } = useApp();
+  const managerScope = useManagerPrakalpaScope(currentUser);
+  const managerPrakalpas = managerScope.names;
+  const [reportsError, setReportsError] = useState("");
   const [reports, setReports] = useState<Report[]>([]);
+  const [completedAllClear, setCompletedAllClear] = useState<CompletedAllClear[]>([]);
+  const [allClearError, setAllClearError] = useState("");
   const [detailTarget, setDetailTarget] = useState<Report | null>(null);
+
+  // Coordinator corrective-action review
+  const [verificationRemarks, setVerificationRemarks] = useState("");
+  const [processingVerification, setProcessingVerification] = useState(false);
+  const [
+    sendingToPrakalpa,
+    setSendingToPrakalpa,
+  ] = useState(false);
+
+
 
   // Edit State
   const [editTarget, setEditTarget] = useState<Report | null>(null);
   const [editFindings, setEditFindings] = useState("");
   const [editSeverity, setEditSeverity] = useState<string>("open_for_improvement");
-  const [editStatus, setEditStatus] = useState("open");
-  const [editActionTaken, setEditActionTaken] = useState("");
-  const [editCompletionRemarks, setEditCompletionRemarks] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [filterAuditId, setFilterAuditId] = useState("");
   const [filterReportId, setFilterReportId] = useState("");
-  const [filterDomain, setFilterDomain] = useState("All");
+  const [filterPrakalpa, setFilterPrakalpa] = useState("All");
   const [filterClassification, setFilterClassification] = useState("All");
   const [filterCoordinator, setFilterCoordinator] = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
@@ -101,22 +169,52 @@ export default function AllReportsPage() {
     loadReports();
   }, []);
 
-  const loadReports = async () => {
+  const canViewAllClear = ['auditor', 'audit_coordinator', 'admin', 'super_admin']
+    .includes(currentUser?.role ?? '');
+
+  useEffect(() => {
+    if (!canViewAllClear) return;
+    let cancelled = false;
+    api.get('/zero-findings/completed-summaries')
+      .then(response => {
+        if (!cancelled) {
+          setCompletedAllClear(response.data?.data ?? []);
+          setAllClearError('');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAllClearError('Unable to load completed All Clear audits.');
+      });
+    return () => { cancelled = true; };
+  }, [canViewAllClear]);
+
+  const downloadAllClear = async (id: string) => {
     try {
-      const data = await getReports();
-      console.log("Reports loaded:", data);
-      setReports(Array.isArray(data) ? data : data?.data || []);
-    } catch (err) {
-      console.error("Error loading reports:", err);
+      const response = await api.get(
+        `/zero-findings/scheduled-audits/${encodeURIComponent(id)}/summary.pdf`,
+        { responseType: 'blob' }
+      );
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `all-clear-${id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setAllClearError('Unable to download the All Clear PDF.');
     }
   };
 
-  const handleSendMail = async (report: Report) => {
+  const loadReports = async () => {
+    setReportsError("");
     try {
-      await sendReportEmail(report._id);
-      alert(`Email functionality for ${report.iqrNumber} will be connected to backend.`);
-    } catch (error) {
-      console.error(error);
+      const data = await getReports();
+      setReports(Array.isArray(data) ? data : data?.data || []);
+    } catch (err) {
+      setReportsError(getRequestErrorMessage(err, "Unable to load reports. Refresh the page and try again."));
+      logRequestError("Error loading reports:", err);
     }
   };
 
@@ -124,40 +222,38 @@ export default function AllReportsPage() {
     try {
       await downloadReportPDF(report._id);
     } catch (error) {
-      console.error(error);
+      logRequestError("Report request failed", error);
     }
   };
 
   const handleViewReport = (report: Report) => {
     setDetailTarget(report);
+    setVerificationRemarks(
+      report.coordinatorVerificationRemarks || ""
+    );
   };
 
   const handleEditReport = (report: Report) => {
+    if (currentUser.role !== "audit_coordinator" || report.workflowStatus === "verified_closed") return;
     setEditTarget(report);
     setEditFindings(report.findings || "");
     setEditSeverity(report.severity || "open_for_improvement");
-    setEditStatus(report.status ?? "open");
-    setEditActionTaken(report.actionTaken || "");
-    setEditCompletionRemarks(report.completionRemarks || "");
   };
 
   const handleSaveEdit = async () => {
-    if (!editTarget) return;
+    if (!editTarget || currentUser.role !== "audit_coordinator") return;
 
     setSavingEdit(true);
     try {
       await updateReport(editTarget._id, {
         findings: editFindings,
         severity: editSeverity,
-        status: editStatus,
-        actionTaken: editActionTaken,
-        completionRemarks: editCompletionRemarks,
       });
 
       await loadReports();
       setEditTarget(null);
     } catch (err) {
-      console.error(err);
+      logRequestError("Report request failed", err);
       alert("Unable to update report.");
     } finally {
       setSavingEdit(false);
@@ -166,16 +262,153 @@ export default function AllReportsPage() {
 
   const isAuditor = currentUser.role === "auditor";
   const isManager = currentUser.role === "prakalpa_manager";
+  const isCoordinator =
+    currentUser.role === "audit_coordinator";
+
+  const handleSendToPrakalpa = async () => {
+    if (!detailTarget) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Send ${detailTarget.iqrNumber} to the Prakalpa for corrective action?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setSendingToPrakalpa(true);
+
+    try {
+      await sendReportToPrakalpa(
+        detailTarget._id
+      );
+
+      await loadReports();
+
+      setDetailTarget(null);
+
+      alert(
+        "Official IQR sent to Prakalpa successfully."
+      );
+    } catch (err) {
+      logRequestError("Unable to send IQR to Prakalpa:", err);
+
+      alert(
+        "Unable to send the IQR to Prakalpa."
+      );
+    } finally {
+      setSendingToPrakalpa(false);
+    }
+  };
+
+
+
+  const handleReturnToPrakalpa = async () => {
+    if (!detailTarget) {
+      return;
+    }
+
+    const remarks =
+      verificationRemarks.trim();
+
+    if (!remarks) {
+      alert(
+        "Return remarks are required."
+      );
+      return;
+    }
+
+    setProcessingVerification(true);
+
+    try {
+      await returnReportToPrakalpa(
+        detailTarget._id,
+        {
+          coordinatorVerificationRemarks:
+            remarks,
+        }
+      );
+
+      await loadReports();
+
+      setDetailTarget(null);
+      setVerificationRemarks("");
+
+      alert(
+        "Corrective action returned to Prakalpa successfully."
+      );
+    } catch (err) {
+      logRequestError("Unable to return corrective action:", err);
+
+      alert(
+        "Unable to return corrective action to Prakalpa."
+      );
+    } finally {
+      setProcessingVerification(false);
+    }
+  };
+
+  const handleVerifyAndClose = async () => {
+    if (!detailTarget) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        `Verify the corrective action and close ${detailTarget.iqrNumber}?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setProcessingVerification(true);
+
+    try {
+      await verifyAndCloseReport(
+        detailTarget._id,
+        {
+          coordinatorVerificationRemarks:
+            verificationRemarks.trim(),
+        }
+      );
+
+      await loadReports();
+
+      setDetailTarget(null);
+      setVerificationRemarks("");
+
+      alert(
+        "Corrective action verified and IQR closed successfully."
+      );
+    } catch (err) {
+      logRequestError("Unable to verify corrective action:", err);
+
+      alert(
+        "Unable to verify corrective action and close the IQR."
+      );
+    } finally {
+      setProcessingVerification(false);
+    }
+  };
+
+  const filterReports = useMemo(() => reports.filter(r =>
+    (isManager ? managerPrakalpas.includes(r.prakalpa) : isAuditor ? (r.auditors || []).includes(currentUser.name || "") || r.auditor === currentUser.name : true)
+  ), [reports, isManager, isAuditor, currentUser, managerPrakalpas]);
+  const filterPrakalpaOptions = useMemo(() => [...new Set(filterReports.map(r => r.prakalpa).filter(Boolean))], [filterReports]);
+  const filterCoordinatorOptions = useMemo(() => [...new Set(filterReports.map(r => r.auditCoordinator).filter(Boolean))], [filterReports]);
 
   const filtered = useMemo(() => {
-    return reports.filter((r) => {
+    return sortAuditRecords(reports).filter((r) => {
       const q = search.toLowerCase();
       const reportNum = r.iqrNumber || "";
       const ms =
         !q ||
         reportNum.toLowerCase().includes(q) ||
         (r.iqaNumber || "").toLowerCase().includes(q) ||
-        (r.domain || "").toLowerCase().includes(q) ||
+        (r.prakalpa || "").toLowerCase().includes(q) ||
         (r.findings || "").toLowerCase().includes(q);
 
       const matchAuditId =
@@ -188,7 +421,7 @@ export default function AllReportsPage() {
         !filterReportId ||
         reportNum.toLowerCase().includes(filterReportId.toLowerCase());
 
-      const matchDomain = filterDomain === "All" || r.domain === filterDomain;
+      const matchPrakalpa = filterPrakalpa === "All" || r.prakalpa === filterPrakalpa;
 
       const matchClass =
         filterClassification === "All" ||
@@ -204,7 +437,7 @@ export default function AllReportsPage() {
         (r.status ?? "open").toLowerCase() === filterStatus.toLowerCase();
 
       const matchUser = isManager
-        ? r.domain === currentUser.domain
+        ? managerPrakalpas.includes(r.prakalpa)
         : isAuditor
         ? (r.auditors || []).includes(currentUser.name || "") ||
           r.auditor === currentUser.name
@@ -214,7 +447,7 @@ export default function AllReportsPage() {
         ms &&
         matchAuditId &&
         matchReportId &&
-        matchDomain &&
+        matchPrakalpa &&
         matchClass &&
         matchCoord &&
         matchStatus &&
@@ -226,20 +459,21 @@ export default function AllReportsPage() {
     search,
     filterAuditId,
     filterReportId,
-    filterDomain,
+    filterPrakalpa,
     filterClassification,
     filterCoordinator,
     filterStatus,
     isManager,
     isAuditor,
     currentUser,
+    managerPrakalpas,
   ]);
 
   const clearFilters = () => {
     setSearch("");
     setFilterAuditId("");
     setFilterReportId("");
-    setFilterDomain("All");
+    setFilterPrakalpa("All");
     setFilterClassification("All");
     setFilterCoordinator("All");
     setFilterStatus("All");
@@ -263,24 +497,24 @@ export default function AllReportsPage() {
         (r.status ?? "open") === "closed" && (r.reportClosedOn || r.closedAt)
           ? new Date(r.reportClosedOn || r.closedAt!)
           : new Date();
-      const daysOpen = Math.floor(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
+      const daysOpen = reportDaysOpen(Number.isFinite(startDate.getTime()) ? startDate.toISOString() : null, Number.isFinite(endDate.getTime()) ? endDate.toISOString() : null) ?? 0;
       return (r.status ?? "open") === "open" && daysOpen > 30;
     }).length;
   }, [filtered]);
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 min-w-0">
+      {(reportsError || managerScope.error) && <p role="alert" className="rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error">{reportsError || managerScope.error}</p>}
+      {managerScope.loading && <p role="status">Verifying your assigned Prakalpas…</p>}
       <div className="flex flex-wrap justify-between items-start gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">All Reports</h2>
           <p className="font-body-md text-on-surface-variant mt-0.5">
             {filtered.length} reports
-            {isManager ? ` — ${currentUser.domain}` : ""}
+            {isManager ? ` — ${managerPrakalpas.join(", ")}` : ""}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2 sm:gap-3">
           <button
             onClick={loadReports}
             className="flex items-center gap-2 px-4 py-2.5 border border-outline-variant rounded-lg font-label-md font-medium hover:bg-surface-container-low transition-colors"
@@ -302,8 +536,40 @@ export default function AllReportsPage() {
         </div>
       </div>
 
+      {canViewAllClear && (
+        <section className="rounded-xl border border-outline-variant/30 bg-white p-4 sm:p-6 space-y-3">
+          <h3 className="text-lg font-semibold">Completed All Clear Audits</h3>
+          <p className="text-sm text-on-surface-variant">
+            Approved satisfactory audit summaries.
+            These are not finding-based IQRs.
+          </p>
+          {allClearError && <p role="alert" className="text-red-700">{allClearError}</p>}
+          {completedAllClear.length === 0 && (
+            <p className="text-sm text-on-surface-variant">
+              No completed All Clear audits available for your account.
+            </p>
+          )}
+          {completedAllClear.map(audit => (
+            <div key={audit._id}
+              className="flex flex-wrap items-center justify-between gap-3 border-t py-3">
+              <div>
+                <p className="font-medium">{audit.iqaNumber} — {audit.prakalpa}</p>
+                <p className="text-sm text-on-surface-variant">
+                  {audit.location} · No Findings — Audit Satisfactory
+                </p>
+              </div>
+              <button type="button"
+                className="rounded-lg border px-3 py-2 text-sm font-medium"
+                onClick={() => void downloadAllClear(audit._id)}>
+                Download All Clear PDF
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
+
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white border border-outline-variant/20 rounded-xl p-4 shadow-soft">
           <p className="text-on-surface-variant text-sm font-label-md">
             Total Reports
@@ -331,14 +597,14 @@ export default function AllReportsPage() {
           </p>
         </div>
 
-        <div className="bg-white border border-outline-variant/20 rounded-xl p-4 shadow-soft">
+        {ncCount > 0 && (<div className="bg-white border border-outline-variant/20 rounded-xl p-4 shadow-soft">
           <p className="text-on-surface-variant text-sm font-label-md">
             NC Reports
           </p>
           <p className="text-3xl font-bold text-error mt-2 font-data-mono">
             {ncCount}
           </p>
-        </div>
+        </div>)}
       </div>
 
       {/* Warning Banner */}
@@ -359,90 +625,24 @@ export default function AllReportsPage() {
       )}
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-xl border border-outline-variant/20 shadow-soft space-y-3">
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative flex-1 min-w-[180px]">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[18px]">
-              search
-            </span>
-            <input
-              type="text"
-              placeholder="Search reports..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-outline-variant/40 rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-surface-container-lowest"
-            />
-          </div>
-          <input
-            type="text"
-            placeholder="Audit ID"
-            value={filterAuditId}
-            onChange={(e) => setFilterAuditId(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none w-32"
-          />
-          <input
-            type="text"
-            placeholder="Report ID (IQR)"
-            value={filterReportId}
-            onChange={(e) => setFilterReportId(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none w-36"
-          />
-          {!isManager && (
-            <select
-              value={filterDomain}
-              onChange={(e) => setFilterDomain(e.target.value)}
-              className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
-            >
-              <option value="All">All Domains</option>
-              {DOMAINS.map((d) => (
-                <option key={d}>{d}</option>
-              ))}
-            </select>
-          )}
-          <select
-            value={filterClassification}
-            onChange={(e) => setFilterClassification(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
-          >
-            <option value="All">All Types</option>
-            <option value="NC">NC</option>
-            <option value="OFI">OFI</option>
-          </select>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
-          >
-            <option value="All">All Status</option>
-            <option value="open">Open</option>
-            <option value="closed">Closed</option>
-          </select>
-          <select
-            value={filterCoordinator}
-            onChange={(e) => setFilterCoordinator(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
-          >
-            <option value="All">All Coordinators</option>
-            {AUDIT_COORDINATORS.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-          {(search ||
-            filterAuditId ||
-            filterReportId ||
-            filterDomain !== "All" ||
-            filterClassification !== "All" ||
-            filterCoordinator !== "All" ||
-            filterStatus !== "All") && (
-            <button
-              onClick={clearFilters}
-              className="font-label-md text-on-surface-variant/60 hover:text-primary"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      </div>
+      <FilterToolbar search={{ value: search, onChange: setSearch, placeholder: "Search reports..." }}
+          filters={[
+            ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+            ...(filterAuditId !== "" ? [{ key: "filterAuditId", label: "Audit ID", value: filterAuditId, onRemove: () => setFilterAuditId("") }] : []),
+            ...(filterReportId !== "" ? [{ key: "filterReportId", label: "IQR ID", value: filterReportId, onRemove: () => setFilterReportId("") }] : []),
+            ...(!isManager && filterPrakalpa !== "All" ? [{ key: "filterPrakalpa", label: "Prakalpa", value: filterPrakalpa, onRemove: () => setFilterPrakalpa("All") }] : []),
+            ...(filterClassification !== "All" ? [{ key: "filterClassification", label: "Classification", value: filterClassification, onRemove: () => setFilterClassification("All") }] : []),
+            ...(filterStatus !== "All" ? [{ key: "filterStatus", label: "Status", value: filterStatus, onRemove: () => setFilterStatus("All") }] : []),
+            ...(filterCoordinator !== "All" ? [{ key: "filterCoordinator", label: "Coordinator", value: filterCoordinator, onRemove: () => setFilterCoordinator("All") }] : [])
+          ]}
+          onClearAll={clearFilters} resultCount={filtered.length} resultLabel="reports shown">
+          <FilterText label="Audit ID" value={filterAuditId} onChange={setFilterAuditId} placeholder="Partial Audit ID" />
+          <FilterText label="IQR ID" value={filterReportId} onChange={setFilterReportId} placeholder="Partial IQR ID" />
+          {!isManager && <FilterSelect label="Prakalpa" value={filterPrakalpa} onChange={setFilterPrakalpa} options={filterPrakalpaOptions.map(value => ({ value, label: value }))} searchable allLabel="All Prakalpas" />}
+          <FilterSelect label="Classification" value={filterClassification} onChange={setFilterClassification} options={[{ value: "NC", label: "NC" }, { value: "OFI", label: "OFI" }]} allLabel="All Types" />
+          <FilterSelect label="Status" value={filterStatus} onChange={setFilterStatus} options={[{ value: "open", label: "Open" }, { value: "closed", label: "Closed" }]} allLabel="All Statuses" />
+          <FilterSelect label="Coordinator" value={filterCoordinator} onChange={setFilterCoordinator} options={filterCoordinatorOptions.map(value => ({ value, label: value }))} searchable allLabel="All Coordinators" />
+        </FilterToolbar>
 
       {filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-outline-variant/10 shadow-soft p-16 flex flex-col items-center justify-center gap-4 text-center">
@@ -465,13 +665,13 @@ export default function AllReportsPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
           <div className="overflow-x-auto max-h-[600px]">
-            <table className="w-full text-left">
+            <table className="w-full min-w-[1100px] text-left">
               <thead className="sticky top-0 z-10 bg-white shadow-sm border-b border-outline-variant/20">
                 <tr>
                   {[
                     "Report ID",
                     "IQA Ref",
-                    "Domain",
+                    "Prakalpa",
                     "Location",
                     "Auditor",
                     "Audit Date",
@@ -503,9 +703,7 @@ export default function AllReportsPage() {
                       ? new Date(report.reportClosedOn || report.closedAt!)
                       : new Date();
 
-                  const daysOpen = Math.floor(
-                    (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-                  );
+                  const daysOpen = reportDaysOpen(Number.isFinite(startDate.getTime()) ? startDate.toISOString() : null, Number.isFinite(endDate.getTime()) ? endDate.toISOString() : null) ?? 0;
 
                   const isRedFlagged = (report.status ?? "open") === "open" && daysOpen > 30;
                   const ncObs = report.severity === "non_conformance" ? 1 : 0;
@@ -561,7 +759,7 @@ export default function AllReportsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-primary/10 text-primary font-bold text-[10px] tracking-wide whitespace-nowrap">
-                          {report.domain}
+                          {report.prakalpa}
                         </span>
                       </td>
                       <td className="px-4 py-3 font-body-md text-on-surface-variant text-[12px] whitespace-nowrap">
@@ -634,8 +832,8 @@ export default function AllReportsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          {/* Edit */}
-                          <button
+                          {/* Coordinator-only editing */}
+                          {isCoordinator && report.workflowStatus !== "verified_closed" && <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleEditReport(report);
@@ -646,7 +844,7 @@ export default function AllReportsPage() {
                             <span className="material-symbols-outlined text-[18px]">
                               edit
                             </span>
-                          </button>
+                          </button>}
 
                           {/* View */}
                           <button
@@ -659,20 +857,6 @@ export default function AllReportsPage() {
                           >
                             <span className="material-symbols-outlined text-[18px]">
                               open_in_new
-                            </span>
-                          </button>
-
-                          {/* Mail */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSendMail(report);
-                            }}
-                            className="p-2 rounded-lg transition-all hover:scale-110 hover:bg-secondary/10 text-secondary"
-                            title="Send Report Email"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              mail
                             </span>
                           </button>
 
@@ -712,13 +896,13 @@ export default function AllReportsPage() {
                 Closed : {filtered.filter((r) => r.status === "closed").length}
               </span>
 
-              <span className="text-error font-semibold">
+              {ncCount > 0 && (<span className="text-error font-semibold">
                 NC : {ncCount}
-              </span>
+              </span>)}
 
-              <span className="text-primary font-semibold">
+              {ofiCount > 0 && (<span className="text-primary font-semibold">
                 OFI : {ofiCount}
-              </span>
+              </span>)}
             </div>
           </div>
         </div>
@@ -737,9 +921,7 @@ export default function AllReportsPage() {
             ? new Date(detailTarget.reportClosedOn || detailTarget.closedAt!)
             : new Date();
 
-        const modalDaysOpen = Math.floor(
-          (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-        );
+        const modalDaysOpen = reportDaysOpen(Number.isFinite(startDate.getTime()) ? startDate.toISOString() : null, Number.isFinite(endDate.getTime()) ? endDate.toISOString() : null) ?? 0;
 
         return (
           <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
@@ -782,7 +964,7 @@ export default function AllReportsPage() {
 
               {/* Modal Body */}
               <div className="p-6 overflow-y-auto space-y-5 flex-1">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   <div>
                     <p className="text-xs text-on-surface-variant">IQR Number</p>
                     <p className="font-semibold text-on-surface font-data-mono">{detailTarget.iqrNumber}</p>
@@ -794,8 +976,8 @@ export default function AllReportsPage() {
                   </div>
 
                   <div>
-                    <p className="text-xs text-on-surface-variant">Domain</p>
-                    <p className="font-semibold text-on-surface">{detailTarget.domain}</p>
+                    <p className="text-xs text-on-surface-variant">Prakalpa</p>
+                    <p className="font-semibold text-on-surface">{detailTarget.prakalpa}</p>
                   </div>
 
                   <div>
@@ -952,6 +1134,8 @@ export default function AllReportsPage() {
                   </div>
                 </div>
 
+                <ActionEvidenceList report={detailTarget} onOpen={token=>void downloadReportActionProof(detailTarget._id,token)} />
+
                 {/* Completion Remarks Section */}
                 <div>
                   <p className="font-semibold text-on-surface mb-2">Completion Remarks</p>
@@ -959,6 +1143,122 @@ export default function AllReportsPage() {
                     {detailTarget.completionRemarks || "—"}
                   </div>
                 </div>
+
+                
+                  {/* Coordinator → Prakalpa Release */}
+                  {isCoordinator &&
+                    detailTarget.workflowStatus ===
+                      "coordinator_generated" && (
+                      <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-primary">
+                              send
+                            </span>
+
+                            <p className="font-semibold text-on-surface">
+                              Release Official IQR
+                            </p>
+                          </div>
+
+                          <p className="text-sm text-on-surface-variant mt-1">
+                            Send this coordinator-generated official IQR
+                            to the Prakalpa for corrective action.
+                          </p>
+                        </div>
+
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleSendToPrakalpa}
+                            disabled={sendingToPrakalpa}
+                            className="px-5 py-2.5 bg-primary text-on-primary rounded-lg font-label-md font-bold hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                          >
+                            <span className="material-symbols-outlined text-[18px]">
+                              send
+                            </span>
+
+                            {sendingToPrakalpa
+                              ? "Sending..."
+                              : "Send to Prakalpa"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                  {isCoordinator && ["sent_to_prakalpa", "returned_to_prakalpa"].includes(detailTarget.workflowStatus || "") && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800" title="Awaiting Actions Taken from Prakalpa Manager">
+                      <span className="material-symbols-outlined align-middle mr-2">pending_actions</span>
+                      Verify & Close unavailable — awaiting Actions Taken from Prakalpa Manager for this IQR.
+                    </div>
+                  )}
+                  {/* Coordinator Corrective-Action Verification */}
+                {isCoordinator &&
+                  detailTarget.workflowStatus === "action_submitted" && (
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 space-y-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-primary">
+                            fact_check
+                          </span>
+
+                          <p className="font-semibold text-on-surface">
+                            Coordinator Verification
+                          </p>
+                        </div>
+
+                        <p className="text-sm text-on-surface-variant mt-1">
+                          Review the Prakalpa corrective action before
+                          returning it for correction or closing the IQR.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="coordinator-verification-remarks"
+                          className="font-semibold block text-sm text-on-surface mb-1"
+                        >
+                          Verification Remarks
+                        </label>
+
+                        <textarea
+                          id="coordinator-verification-remarks"
+                          rows={4}
+                          value={verificationRemarks}
+                          onChange={(e) =>
+                            setVerificationRemarks(e.target.value)
+                          }
+                          disabled={processingVerification}
+                          className="w-full border border-outline-variant/40 rounded-xl p-3 font-body-md text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none bg-white disabled:opacity-60"
+                          placeholder="Add verification remarks. Remarks are required when returning the action to Prakalpa."
+                        />
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={handleReturnToPrakalpa}
+                          disabled={processingVerification}
+                          className="px-5 py-2.5 border border-error/40 text-error rounded-lg font-label-md font-bold hover:bg-error/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {processingVerification
+                            ? "Processing..."
+                            : "Return to Prakalpa"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleVerifyAndClose}
+                          disabled={processingVerification}
+                          className="px-5 py-2.5 bg-primary text-on-primary rounded-lg font-label-md font-bold hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {processingVerification
+                            ? "Processing..."
+                            : "Verify & Close IQR"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                 {/* Evidence Files Section */}
                 {detailTarget.proofFiles && detailTarget.proofFiles.length > 0 && (
@@ -996,7 +1296,7 @@ export default function AllReportsPage() {
       })()}
 
       {/* Edit Report Modal */}
-      {editTarget && (
+      {editTarget && isCoordinator && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/40"
@@ -1040,57 +1340,6 @@ export default function AllReportsPage() {
                 </select>
               </div>
 
-              {/* Action */}
-              <div>
-                <label className="font-semibold block text-sm text-on-surface mb-1">
-                  Action Taken
-                </label>
-                <textarea
-                  rows={4}
-                  value={editActionTaken}
-                  onChange={(e) => setEditActionTaken(e.target.value)}
-                  className="w-full border border-outline-variant/40 rounded-xl p-3 font-body-md text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-                  placeholder="Record or update actions taken..."
-                />
-              </div>
-
-              {/* Completion */}
-              <div>
-                <label className="font-semibold block text-sm text-on-surface mb-1">
-                  Completion Remarks
-                </label>
-                <textarea
-                  rows={4}
-                  value={editCompletionRemarks}
-                  onChange={(e) => setEditCompletionRemarks(e.target.value)}
-                  className="w-full border border-outline-variant/40 rounded-xl p-3 font-body-md text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-                  placeholder="Record or update completion remarks..."
-                />
-              </div>
-
-              {/* Status */}
-              <div>
-                <label className="font-semibold block text-sm text-on-surface mb-1">
-                  Status
-                </label>
-
-                {editTarget.status === "closed" ? (
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
-                    className="w-full border border-outline-variant/40 rounded-xl p-3 font-body-md text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
-                  >
-                    <option value="closed">Closed</option>
-                    <option value="open">Reopen Report</option>
-                  </select>
-                ) : (
-                  <input
-                    readOnly
-                    value="Open"
-                    className="w-full border border-outline-variant/40 rounded-xl p-3 font-body-md text-sm bg-surface-container-low text-on-surface-variant cursor-not-allowed outline-none"
-                  />
-                )}
-              </div>
             </div>
 
             <div className="border-t border-outline-variant/10 p-5 flex justify-end gap-3 shrink-0">

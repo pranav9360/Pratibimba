@@ -1,40 +1,68 @@
 import { body } from "express-validator";
 
 export const createAuditPlanValidator = [
-
-  body("domain")
+  body("prakalpa")
     .trim()
     .notEmpty()
-    .withMessage("Domain is required"),
+    .withMessage(
+      "Prakalpa is required"
+    ),
 
   body("location")
     .trim()
     .notEmpty()
-    .withMessage("Location is required"),
+    .withMessage(
+      "Location is required"
+    ),
 
   body("auditPlannedDate")
     .notEmpty()
-    .withMessage("Audit date is required"),
+    .withMessage(
+      "Audit date is required"
+    ),
 
   body("auditCoordinator")
     .trim()
     .notEmpty()
-    .withMessage("Audit Coordinator is required"),
+    .withMessage(
+      "Audit Coordinator is required"
+    ),
 
-  body("prakalphaPramukh")
-    .trim()
-    .notEmpty()
-    .withMessage("Prakalpa Pramukh is required"),
+  /*
+   * prakalphaPramukh is intentionally NOT accepted as
+   * required client master data.
+   *
+   * auditPlanService derives it from the selected
+   * Prakalpa master record.
+   */
 
   body("auditAreas")
     .isArray()
-    .withMessage("Audit Areas must be an array"),
+    .withMessage(
+      "Audit Areas must be an array"
+    ),
 
+  /*
+   * Auditors are NOT required during Audit Planning.
+   *
+   * Auditor assignment happens only when the audit
+   * enters the scheduling phase.
+   *
+   * We still accept an auditors array if an older
+   * client sends it, but planning does not require it.
+   */
   body("auditors")
+    .optional()
     .isArray()
-    .withMessage("Auditors must be an array"),
+    .withMessage(
+      "Auditors must be an array"
+    ),
 
   body("purpose")
+    .optional()
+    .trim(),
+
+  body("sublocation")
     .optional()
     .trim(),
 
@@ -43,25 +71,12 @@ export const createAuditPlanValidator = [
     .isIn([
       "pending",
       "scheduled",
+      "completed",
     ]),
-
-  body("domain")
-    .optional()
-    .trim(),
-
-  body("sublocation")
-    .optional()
-    .trim(),
-
-  body("prakalpa")
-    .optional()
-    .trim(),
-
 ];
 
 export const updateAuditPlanValidator = [
-
-  body("domain")
+  body("prakalpa")
     .optional()
     .trim(),
 
@@ -70,19 +85,26 @@ export const updateAuditPlanValidator = [
     .trim(),
 
   body("sublocation")
-    .optional()
-    .trim(),
-
-  body("prakalpa")
     .optional()
     .trim(),
 
   body("auditPlannedDate")
     .optional(),
 
+  /*
+   * Coordinator is editable while the AuditPlan
+   * is still in its planned/pending phase.
+   *
+   * Scheduled-audit coordinator edits are also
+   * synchronized back to AuditPlan by the backend.
+   */
   body("auditCoordinator")
     .optional()
-    .trim(),
+    .trim()
+    .notEmpty()
+    .withMessage(
+      "Audit Coordinator cannot be empty"
+    ),
 
   body("prakalphaPramukh")
     .optional()
@@ -92,9 +114,18 @@ export const updateAuditPlanValidator = [
     .optional()
     .isArray(),
 
+  /*
+   * Kept here because AuditPlan remains the master
+   * record for scheduled auditor assignments.
+   *
+   * The planning UI does not expose this field.
+   */
   body("auditors")
     .optional()
-    .isArray(),
+    .isArray()
+    .withMessage(
+      "Auditors must be an array"
+    ),
 
   body("purpose")
     .optional()
@@ -105,6 +136,6 @@ export const updateAuditPlanValidator = [
     .isIn([
       "pending",
       "scheduled",
+      "completed",
     ]),
-
 ];

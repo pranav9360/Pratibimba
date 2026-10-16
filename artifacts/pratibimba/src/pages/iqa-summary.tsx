@@ -1,5 +1,9 @@
-import { useState, useMemo, useEffect } from "react";
-import { DOMAINS, AUDIT_COORDINATORS } from "../context/app-context";
+import { sortAuditRecords } from "../../../../shared/audit-order.mjs";
+import { FilterToolbar } from "../components/filters/filter-toolbar";
+import { FilterSelect } from "../components/filters/filter-select";
+import { FilterText } from "../components/filters/filter-text";
+import { useState, useMemo, useEffect, Fragment } from "react";
+import { PRAKALPAS, AUDIT_COORDINATORS } from "../context/app-context";
 import { getReports } from "../services/reportService";
 import { getAuditPlans } from "../services/auditPlanService";
 
@@ -9,7 +13,7 @@ function downloadCSV(
 ) {
   const headers = [
     "Audit ID",
-    "Domain",
+    "Prakalpa",
     "Location",
     "Sublocation",
     "Audit Planned Date",
@@ -19,56 +23,27 @@ function downloadCSV(
     "Audit Days",
     "Auditors",
     "Audit Areas",
-    "Audit Completion Date",
-    "Classification (OFI/NC)",
     "Total Audit Findings",
     "Status",
     "Prakalpa Pramukh",
-    "NC IARs",
-    "OFI IARs",
   ];
   const lines = rows.map(({ report, reports: r }) => {
     const ncIARs = r.filter((x) => x.severity === "non_conformance").length;
     const ofiIARs = r.filter((x) => x.severity === "open_for_improvement").length;
     const allClosed = r.length > 0 && r.every((x) => x.status === "closed");
-    const hasNC = r.some((x) => x.severity === "non_conformance" && x.status === "open");
-    const hasOpen = r.some((x) => x.status === "open");
     const status =
-      r.length === 0
-        ? "Planned"
-        : allClosed
+      allClosed
         ? "Completed"
-        : hasNC
-        ? "NC Open"
-        : hasOpen
-        ? "In Progress"
-        : "Planned";
+        : "In Progress";
 
     const daysList = r.map(getDaysOpen);
     const auditDays = daysList.length > 0 ? Math.max(...daysList) : 0;
 
-    const classifications = [
-      ...new Set(r.map((x) => (x.severity === "non_conformance" ? "NC" : "OFI"))),
-    ].join("/");
 
-    const completionDate =
-      allClosed && r.length > 0
-        ? new Date(
-            [...r].sort(
-              (a, b) =>
-                new Date(b.reportClosedOn || b.closedAt).getTime() -
-                new Date(a.reportClosedOn || a.closedAt).getTime()
-            )[0]?.reportClosedOn || r[0]?.closedAt
-          ).toLocaleDateString("en-IN", {
-            day: "2-digit",
-            month: "short",
-            year: "2-digit",
-          })
-        : "";
 
     return [
       report.iqaNumber,
-      report.domain,
+      report.prakalpa,
       report.location || "",
       report.sublocation || "",
       report.visitDate || "",
@@ -78,13 +53,9 @@ function downloadCSV(
       auditDays,
       (report.auditors || []).join("; "),
       (report.auditAreas || []).join("; "),
-      completionDate,
-      classifications || "—",
       r.length,
       status,
       report.prakalphaPramukh || "",
-      ncIARs,
-      ofiIARs,
     ]
       .map(String)
       .join(",");
@@ -103,7 +74,7 @@ export default function IQASummaryPage() {
   const [auditPlans, setAuditPlans] = useState<any[]>([]);
   const [reports, setReports] = useState<any[]>([]);
 
-  const [filterDomain, setFilterDomain] = useState("All");
+  const [filterPrakalpa, setFilterPrakalpa] = useState("All");
   const [filterLocation, setFilterLocation] = useState("All");
   const [filterCoordinator, setFilterCoordinator] = useState("All");
   const [filterStatus, setFilterStatus] = useState("All");
@@ -151,7 +122,7 @@ export default function IQASummaryPage() {
 
   // STEP 1: Replace summaryRows by grouping reports directly on report.iqaNumber
   const summaryRows = useMemo(() => {
-    const grouped = reports.reduce((acc: any, report: any) => {
+    const grouped = sortAuditRecords(reports).reduce((acc: any, report: any) => {
       if (!acc[report.iqaNumber]) {
         acc[report.iqaNumber] = [];
       }
@@ -187,30 +158,37 @@ export default function IQASummaryPage() {
   }, [summaryRows]);
 
   const getAuditStatus = (r: any[]) => {
-    if (r.length === 0)
-      return { label: "Planned", style: "bg-secondary/10 text-secondary" };
-    if (r.every((x) => x.status === "closed"))
+    if (
+      r.length > 0 &&
+      r.every((x) => x.status === "closed")
+    ) {
       return {
         label: "Completed",
-        style: "bg-surface-container text-on-surface-variant",
+        style: "bg-secondary/10 text-secondary",
       };
-    const hasNC = r.some((x) => x.severity === "non_conformance" && x.status === "open");
-    if (hasNC) return { label: "NC Open", style: "bg-error/10 text-error" };
-    return { label: "In Progress", style: "bg-primary/10 text-primary" };
+    }
+
+    return {
+      label: "In Progress",
+      style: "bg-primary/10 text-primary",
+    };
   };
 
   // STEP 2 & 3: Filter logic updated to evaluate 'report' fields
+  const filterPrakalpaOptions = useMemo(() => [...new Set(summaryRows.map(({ report }) => report.prakalpa).filter(Boolean))], [summaryRows]);
+  const filterCoordinatorOptions = useMemo(() => [...new Set(summaryRows.map(({ report }) => report.auditCoordinator).filter(Boolean))], [summaryRows]);
+
   const filtered = useMemo(() => {
     return summaryRows.filter(({ report, reports: r }) => {
       const { label: statusLabel } = getAuditStatus(r);
       const matchSearch =
         !search ||
         report.iqaNumber.toLowerCase().includes(search.toLowerCase()) ||
-        report.domain.toLowerCase().includes(search.toLowerCase()) ||
+        report.prakalpa.toLowerCase().includes(search.toLowerCase()) ||
         (report.prakalphaPramukh || "")
           .toLowerCase()
           .includes(search.toLowerCase());
-      const matchDomain = filterDomain === "All" || report.domain === filterDomain;
+      const matchPrakalpa = filterPrakalpa === "All" || report.prakalpa === filterPrakalpa;
       const matchLocation = filterLocation === "All" || report.location === filterLocation;
       const matchCoord =
         filterCoordinator === "All" || report.auditCoordinator === filterCoordinator;
@@ -226,7 +204,7 @@ export default function IQASummaryPage() {
         (report.auditAreas || []).includes(filterAuditArea);
       return (
         matchSearch &&
-        matchDomain &&
+        matchPrakalpa &&
         matchLocation &&
         matchCoord &&
         matchStatus &&
@@ -237,7 +215,7 @@ export default function IQASummaryPage() {
   }, [
     summaryRows,
     search,
-    filterDomain,
+    filterPrakalpa,
     filterLocation,
     filterCoordinator,
     filterStatus,
@@ -247,7 +225,7 @@ export default function IQASummaryPage() {
 
   const clearFilters = () => {
     setSearch("");
-    setFilterDomain("All");
+    setFilterPrakalpa("All");
     setFilterLocation("All");
     setFilterCoordinator("All");
     setFilterStatus("All");
@@ -257,7 +235,7 @@ export default function IQASummaryPage() {
 
   const hasFilters =
     search ||
-    filterDomain !== "All" ||
+    filterPrakalpa !== "All" ||
     filterLocation !== "All" ||
     filterCoordinator !== "All" ||
     filterStatus !== "All" ||
@@ -265,7 +243,7 @@ export default function IQASummaryPage() {
     filterAuditArea !== "All";
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 min-w-0">
       <div className="flex flex-wrap justify-between items-start gap-4">
         <div>
           <h2 className="font-headline-md text-on-surface">IQA Summary</h2>
@@ -284,100 +262,34 @@ export default function IQASummaryPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-xl border border-outline-variant/20 shadow-soft space-y-3">
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative flex-1 min-w-[180px]">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-[18px]">
-              search
-            </span>
-            <input
-              type="text"
-              placeholder="Search Audit ID, Domain..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-outline-variant/40 rounded-lg font-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-surface-container-lowest"
-            />
-          </div>
-          <select
-            value={filterDomain}
-            onChange={(e) => setFilterDomain(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
-          >
-            <option value="All">All Domains</option>
-            {DOMAINS.map((d) => (
-              <option key={d}>{d}</option>
-            ))}
-          </select>
-          <select
-            value={filterLocation}
-            onChange={(e) => setFilterLocation(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
-          >
-            <option value="All">All Locations</option>
-            {allLocations.map((l) => (
-              <option key={l}>{l}</option>
-            ))}
-          </select>
-          <select
-            value={filterCoordinator}
-            onChange={(e) => setFilterCoordinator(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
-          >
-            <option value="All">All Coordinators</option>
-            {AUDIT_COORDINATORS.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
-          >
-            <option value="All">All Status</option>
-            <option value="Planned">Planned</option>
-            <option value="In Progress">In Progress</option>
-            <option value="NC Open">NC Open</option>
-            <option value="Completed">Completed</option>
-          </select>
-        </div>
-        <div className="flex flex-wrap gap-3 items-center">
-          <input
-            type="text"
-            placeholder="Prakalpa Pramukh"
-            value={filterPramukh}
-            onChange={(e) => setFilterPramukh(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none w-44"
-          />
-          <select
-            value={filterAuditArea}
-            onChange={(e) => setFilterAuditArea(e.target.value)}
-            className="border border-outline-variant/40 rounded-lg py-2 px-3 font-body-md bg-white outline-none"
-          >
-            <option value="All">All Audit Areas</option>
-            {allAuditAreas.map((a) => (
-              <option key={a}>{a}</option>
-            ))}
-          </select>
-          {hasFilters && (
-            <button
-              onClick={clearFilters}
-              className="font-label-md text-on-surface-variant/60 hover:text-primary transition-colors"
-            >
-              Clear all
-            </button>
-          )}
-        </div>
-      </div>
+      <FilterToolbar search={{ value: search, onChange: setSearch, placeholder: "Search Audit ID, Prakalpa..." }}
+          filters={[
+            ...(search ? [{ key: "search", label: "Search", value: search, onRemove: () => setSearch("") }] : []),
+            ...(filterPrakalpa !== "All" ? [{ key: "filterPrakalpa", label: "Prakalpa", value: filterPrakalpa, onRemove: () => setFilterPrakalpa("All") }] : []),
+            ...(filterLocation !== "All" ? [{ key: "filterLocation", label: "Location", value: filterLocation, onRemove: () => setFilterLocation("All") }] : []),
+            ...(filterCoordinator !== "All" ? [{ key: "filterCoordinator", label: "Coordinator", value: filterCoordinator, onRemove: () => setFilterCoordinator("All") }] : []),
+            ...(filterStatus !== "All" ? [{ key: "filterStatus", label: "Status", value: filterStatus, onRemove: () => setFilterStatus("All") }] : []),
+            ...(filterPramukh !== "" ? [{ key: "filterPramukh", label: "Pramukh", value: filterPramukh, onRemove: () => setFilterPramukh("") }] : []),
+            ...(filterAuditArea !== "All" ? [{ key: "filterAuditArea", label: "Audit area", value: filterAuditArea, onRemove: () => setFilterAuditArea("All") }] : [])
+          ]}
+          onClearAll={clearFilters} resultCount={filtered.length} resultLabel="IQAs shown">
+          <FilterSelect label="Prakalpa" value={filterPrakalpa} onChange={setFilterPrakalpa} options={filterPrakalpaOptions.map(value => ({ value, label: value }))} searchable allLabel="All Prakalpas" />
+          <FilterSelect label="Location" value={filterLocation} onChange={setFilterLocation} options={allLocations.map(value => ({ value, label: value }))} searchable allLabel="All Locations" />
+          <FilterSelect label="Coordinator" value={filterCoordinator} onChange={setFilterCoordinator} options={filterCoordinatorOptions.map(value => ({ value, label: value }))} searchable allLabel="All Coordinators" />
+          <FilterSelect label="Status" value={filterStatus} onChange={setFilterStatus} options={[{ value: "In Progress", label: "In Progress" }, { value: "Completed", label: "Completed" }]} allLabel="All Statuses" />
+          <FilterText label="Pramukh" value={filterPramukh} onChange={setFilterPramukh} placeholder="Partial Pramukh name" />
+          <FilterSelect label="Audit area" value={filterAuditArea} onChange={setFilterAuditArea} options={allAuditAreas.map(value => ({ value, label: value }))} searchable allLabel="All Audit Areas" />
+        </FilterToolbar>
 
       {/* Summary Table */}
       <div className="bg-white rounded-xl shadow-soft border border-outline-variant/10 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-[12px]">
+          <table className="w-full min-w-[1200px] text-left text-[12px]">
             <thead className="bg-surface-container-lowest border-b border-outline-variant/20">
               <tr>
                 {[
                   "Audit ID",
-                  "Domain",
+                  "Prakalpa",
                   "Location",
                   "Sublocation",
                   "Planned Date",
@@ -386,14 +298,9 @@ export default function IQASummaryPage() {
                   "End Date",
                   "Days",
                   "Auditors",
-                  "Areas",
-                  "Completion",
-                  "Classification",
-                  "Findings",
+                  "Areas",                  "Findings",
                   "Status",
                   "Pramukh",
-                  "NC",
-                  "OFI",
                   "",
                 ].map((h) => (
                   <th
@@ -409,7 +316,7 @@ export default function IQASummaryPage() {
               {filtered.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={19}
+                    colSpan={15}
                     className="px-4 py-16 text-center font-body-md text-on-surface-variant/50"
                   >
                     No audits found
@@ -438,28 +345,10 @@ export default function IQASummaryPage() {
                   // STEP 7: Auditor list mapping
                   const auditorList = report.auditors || [];
 
-                  // STEP 6: Completion Date computed from latest closed report
-                  const completionDateStr =
-                    allClosed && auditReports.length > 0
-                      ? new Date(
-                          [...auditReports].sort(
-                            (a, b) =>
-                              new Date(
-                                b.reportClosedOn || b.closedAt
-                              ).getTime() -
-                              new Date(
-                                a.reportClosedOn || a.closedAt
-                              ).getTime()
-                          )[0]?.reportClosedOn || auditReports[0]?.closedAt
-                        ).toLocaleDateString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "2-digit",
-                        })
-                      : "—";
+
 
                   return (
-                    <div key={report.iqaNumber || idx} className="contents">
+                    <Fragment key={report.iqaNumber || idx}>
                       <tr
                         onClick={() =>
                           setExpandedId(isExpanded ? null : report.iqaNumber)
@@ -486,10 +375,10 @@ export default function IQASummaryPage() {
                           </div>
                         </td>
 
-                        {/* Domain */}
+                        {/* Prakalpa */}
                         <td className="px-3 py-3">
                           <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-bold whitespace-nowrap">
-                            {report.domain}
+                            {report.prakalpa}
                           </span>
                         </td>
 
@@ -583,31 +472,6 @@ export default function IQASummaryPage() {
                           </div>
                         </td>
 
-                        {/* STEP 6: Completion Date */}
-                        <td className="px-3 py-3 font-data-mono text-[11px] whitespace-nowrap text-on-surface-variant">
-                          {completionDateStr}
-                        </td>
-
-                        {/* Classifications */}
-                        <td className="px-3 py-3">
-                          {auditReports.length > 0 ? (
-                            <div className="flex gap-1">
-                              {ncIARs > 0 && (
-                                <span className="px-1.5 py-0.5 bg-error/10 text-error rounded text-[10px] font-bold">
-                                  NC:{ncIARs}
-                                </span>
-                              )}
-                              {ofiIARs > 0 && (
-                                <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded text-[10px] font-bold">
-                                  OFI:{ofiIARs}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-on-surface-variant/50">—</span>
-                          )}
-                        </td>
-
                         {/* Total Findings */}
                         <td className="px-3 py-3 font-data-mono font-bold text-center text-on-surface">
                           {auditReports.length}
@@ -625,28 +489,6 @@ export default function IQASummaryPage() {
                         {/* STEP 10: Prakalpa Pramukh */}
                         <td className="px-3 py-3 text-on-surface-variant whitespace-nowrap">
                           {report.prakalphaPramukh || "—"}
-                        </td>
-
-                        {/* NC Count */}
-                        <td className="px-3 py-3 font-data-mono font-bold text-center">
-                          <span
-                            className={
-                              ncIARs > 0 ? "text-error" : "text-on-surface-variant"
-                            }
-                          >
-                            {ncIARs}
-                          </span>
-                        </td>
-
-                        {/* OFI Count */}
-                        <td className="px-3 py-3 font-data-mono font-bold text-center">
-                          <span
-                            className={
-                              ofiIARs > 0 ? "text-primary" : "text-on-surface-variant"
-                            }
-                          >
-                            {ofiIARs}
-                          </span>
                         </td>
 
                         {/* Expand Chevron */}
@@ -669,7 +511,7 @@ export default function IQASummaryPage() {
                           className="bg-surface-container-lowest/80"
                         >
                           <td
-                            colSpan={19}
+                            colSpan={15}
                             className="px-6 py-4 border-b border-outline-variant/20"
                           >
                             <div className="space-y-3">
@@ -807,7 +649,7 @@ export default function IQASummaryPage() {
                                         </div>
 
                                         {/* Rich Backend Lifecycle Metadata Cards */}
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-outline-variant/10 text-[11px] text-on-surface-variant">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-outline-variant/10 text-[11px] text-on-surface-variant">
                                           <div>
                                             <span className="block text-[10px] text-on-surface-variant/60">
                                               Created
@@ -867,7 +709,7 @@ export default function IQASummaryPage() {
                           </td>
                         </tr>
                       )}
-                    </div>
+                    </Fragment>
                   );
                 })
               )}

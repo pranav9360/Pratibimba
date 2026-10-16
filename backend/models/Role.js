@@ -46,6 +46,70 @@ const permissionSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+    // =========================
+    // Workflow Permissions
+    // =========================
+
+    canAssignAuditCoordinator: {
+      type: Boolean,
+      default: false,
+    },
+
+    canAssignAuditors: {
+      type: Boolean,
+      default: false,
+    },
+
+    canAssignLeadAuditor: {
+      type: Boolean,
+      default: false,
+    },
+
+    canSubmitFindings: {
+      type: Boolean,
+      default: false,
+    },
+
+    canReviewFindings: {
+      type: Boolean,
+      default: false,
+    },
+
+    canSubmitFindingsToCoordinator: {
+      type: Boolean,
+      default: false,
+    },
+
+    canGenerateReport: {
+      type: Boolean,
+      default: false,
+    },
+
+    canSendReportToPrakalpa: {
+      type: Boolean,
+      default: false,
+    },
+
+    canSubmitCorrectiveAction: {
+      type: Boolean,
+      default: false,
+    },
+
+    canVerifyCorrectiveAction: {
+      type: Boolean,
+      default: false,
+    },
+
+    canManagePrakalpas: {
+      type: Boolean,
+      default: false,
+    },
+
+    canManageAdmins: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     _id: false,
